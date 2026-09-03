@@ -13,16 +13,19 @@
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run --project unit",
+    "test": "vitest run --project unit --project server",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
   "dependencies": {
     "@mantine/core": "^9.6.0",
     "@mantine/hooks": "^9.6.0",
+    "firebase": "^12.18.0",
+    "firebase-admin": "^14.3.0",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^5.3.1",
