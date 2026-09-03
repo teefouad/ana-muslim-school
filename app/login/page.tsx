@@ -21,7 +21,7 @@ import {
   Title,
 } from "@mantine/core";
 
-import { auth } from "@/lib/firebase/client";
+import { getClientAuth } from "@/lib/firebase/client";
 import { getAuthErrorMessage } from "./auth-error";
 import { GoogleIcon } from "./google-icon";
 
@@ -54,6 +54,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const auth = getClientAuth();
       const credential =
         mode === "sign-in"
           ? await signInWithEmailAndPassword(auth, email, password)
@@ -73,7 +74,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+      const credential = await signInWithPopup(
+        getClientAuth(),
+        new GoogleAuthProvider(),
+      );
       await establishSession(await credential.user.getIdToken());
       router.push("/admin");
       router.refresh();

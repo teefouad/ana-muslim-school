@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, type Auth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -10,6 +10,23 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+let cachedAuth: Auth | undefined;
 
-export const auth = getAuth(firebaseApp);
+/**
+ * Lazily initializes Firebase client auth on first use rather than at
+ * module load. `getAuth()` throws immediately if `apiKey` is missing/
+ * invalid, and `/login` is statically prerendered, so an eager call here
+ * would fail `next build` in any environment without client config
+ * available at build time (e.g. CI) even though this only runs in the
+ * browser at request time.
+ */
+export function getClientAuth(): Auth {
+  if (!cachedAuth) {
+    const firebaseApp = getApps().length
+      ? getApp()
+      : initializeApp(firebaseConfig);
+    cachedAuth = getAuth(firebaseApp);
+  }
+
+  return cachedAuth;
+}

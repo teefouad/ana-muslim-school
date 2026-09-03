@@ -5,7 +5,7 @@ const { verifySessionCookieMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/firebase/admin", () => ({
-  adminAuth: { verifySessionCookie: verifySessionCookieMock },
+  getAdminAuth: () => ({ verifySessionCookie: verifySessionCookieMock }),
 }));
 
 const { verifySessionCookie } = await import("./verify-session");

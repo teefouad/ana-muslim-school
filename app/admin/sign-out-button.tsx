@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { Button } from "@mantine/core";
 
-import { auth } from "@/lib/firebase/client";
+import { getClientAuth } from "@/lib/firebase/client";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -15,7 +15,7 @@ export function SignOutButton() {
     setLoading(true);
 
     try {
-      await signOut(auth);
+      await signOut(getClientAuth());
       await fetch("/api/auth/session", { method: "DELETE" });
     } finally {
       router.push("/login");

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { adminAuth } from "@/lib/firebase/admin";
+import { getAdminAuth } from "@/lib/firebase/admin";
 
 export { isSuperAdminEmail } from "./is-super-admin-email";
 
@@ -37,7 +37,7 @@ export async function verifySessionCookie(
   }
 
   try {
-    const decoded = await adminAuth.verifySessionCookie(
+    const decoded = await getAdminAuth().verifySessionCookie(
       sessionCookie,
       true /* checkRevoked */,
     );

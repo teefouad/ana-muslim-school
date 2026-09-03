@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { adminAuth } from "@/lib/firebase/admin";
+import { getAdminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } from "@/lib/auth/session";
 
 /**
@@ -20,6 +20,8 @@ export async function POST(request: Request) {
   if (typeof idToken !== "string" || !idToken) {
     return NextResponse.json({ error: "Missing ID token." }, { status: 400 });
   }
+
+  const adminAuth = getAdminAuth();
 
   try {
     await adminAuth.verifyIdToken(idToken);

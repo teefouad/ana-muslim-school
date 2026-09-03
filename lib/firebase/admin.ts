@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getAuth, type Auth } from "firebase-admin/auth";
 
 function getAdminApp() {
   if (getApps().length) {
@@ -23,4 +23,20 @@ function getAdminApp() {
   });
 }
 
-export const adminAuth = getAuth(getAdminApp());
+let cachedAdminAuth: Auth | undefined;
+
+/**
+ * Lazily initializes the Firebase Admin SDK on first use rather than at
+ * module load. `next build` statically evaluates route modules (and their
+ * imports) to collect page data, so an eager `initializeApp()` call here
+ * would fail the production build in any environment without Admin
+ * credentials configured (e.g. CI) even though those routes only need
+ * credentials at request time.
+ */
+export function getAdminAuth(): Auth {
+  if (!cachedAdminAuth) {
+    cachedAdminAuth = getAuth(getAdminApp());
+  }
+
+  return cachedAdminAuth;
+}
