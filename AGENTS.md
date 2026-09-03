@@ -19,7 +19,7 @@ These rules are durable — they apply to every task in this repository, for eve
 3. Create a dedicated feature/fix branch from `main` before changing any application code. **Never** implement feature work directly on `main`, and never work on whatever branch happens to already be checked out without first branching off `main` for the task at hand.
 4. Work only within the scope of the assigned Linear issue. Do not perform unrelated refactors, cleanup, dependency changes, architecture changes, or feature additions unless strictly necessary for the assigned task, and say so explicitly if you do.
 5. Before adding new UI, check `components/ui/` and existing Storybook stories first (see `components/README.md`). Reuse or extend an existing component instead of introducing an equivalent one.
-6. Run the required validation: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run build-storybook`.
+6. Run the required validation: `npm run lint`, `npm run typecheck`, `npm run format:check`, `npm run test`, `npm run build`, `npm run build-storybook`.
 7. Critically self-review the full diff before opening a PR — look for regressions, unnecessary complexity, duplicated code/components, scope creep, missing validation, weak error handling, and security-sensitive mistakes. Fix what you find, then re-run validation.
 8. Commit the scoped changes, push the branch, and open a PR against `main` using the PR template: summary, validation performed, security/review notes, known limitations.
 9. Let CI, the dependency audit, Semgrep, and Copilot code review run. Address relevant findings on the same branch and update the PR.
@@ -35,7 +35,7 @@ Never implement a task that has sub-issues as a single mega PR. If a Linear issu
 
 ## CI/CD expectations
 
-`main` is protected; changes land only through reviewed PRs. CI (`.github/workflows/ci.yml`) runs lint, typecheck, test, build, and a Storybook build on every push/PR — required checks must pass before merge. Merging to `main` deploys production automatically on Vercel; PRs get preview deployments.
+`main` is protected; changes land only through reviewed PRs. CI (`.github/workflows/ci.yml`) runs lint, typecheck, a formatting check, tests, a production build, and a Storybook build on every push/PR — required checks must pass before merge. Merging to `main` deploys production automatically on Vercel; PRs get preview deployments.
 
 ## Security & secrets
 

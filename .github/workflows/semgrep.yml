@@ -1,0 +1,21 @@
+name: Semgrep
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  semgrep:
+    name: Semgrep scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # No SEMGREP_APP_TOKEN configured: runs the free, local OSS registry
+      # rulesets directly, without a Semgrep account or the AppSec Platform.
+      - name: Run Semgrep
+        run: semgrep scan --config=auto --error

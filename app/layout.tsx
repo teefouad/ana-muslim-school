@@ -33,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <ColorSchemeScript />
       </head>
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col">
         <MantineProvider>{children}</MantineProvider>
       </body>
     </html>

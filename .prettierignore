@@ -1,0 +1,7 @@
+node_modules
+.next
+out
+build
+coverage
+storybook-static
+package-lock.json
