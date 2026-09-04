@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import { NextResponse } from "next/server";
 
 import { getSessionUser, isSuperAdminEmail } from "@/lib/auth/session";
@@ -66,16 +67,19 @@ export async function POST(request: Request) {
   const rawExpiresAt = body?.expiresAt;
 
   if (typeof rawExpiresAt === "string" && rawExpiresAt) {
-    const parsed = new Date(rawExpiresAt);
+    // The client sends Mantine's DateTimePicker value, e.g.
+    // "YYYY-MM-DD HH:mm:ss" -- dayjs parses that (and ISO strings) reliably
+    // across JS engines, unlike the native `Date` constructor.
+    const parsed = dayjs(rawExpiresAt);
 
-    if (Number.isNaN(parsed.getTime())) {
+    if (!parsed.isValid()) {
       return NextResponse.json(
         { error: "Invalid expiration date." },
         { status: 400 },
       );
     }
 
-    expiresAt = parsed;
+    expiresAt = parsed.toDate();
   }
 
   await upsertPermission({

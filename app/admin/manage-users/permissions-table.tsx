@@ -38,6 +38,7 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
             <TableTh>Manage Users</TableTh>
             <TableTh>Expires</TableTh>
             <TableTh>Created</TableTh>
+            <TableTh>Last Login</TableTh>
             <TableTh>Status</TableTh>
           </TableTr>
         </TableThead>
@@ -63,6 +64,7 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
                 </TableTd>
                 <TableTd>{formatDateTime(record.expiresAt)}</TableTd>
                 <TableTd>{formatDateTime(record.createdAt)}</TableTd>
+                <TableTd>{formatDateTime(record.lastLoginAt)}</TableTd>
                 <TableTd>
                   <Badge color={expired ? "red" : "green"} variant="light">
                     {expired ? "Expired" : "Active"}

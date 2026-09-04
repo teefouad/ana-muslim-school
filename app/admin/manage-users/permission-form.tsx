@@ -13,6 +13,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { DateTimePicker } from "@mantine/dates";
 
 const initialPermissions = {
   booksRead: false,
@@ -27,7 +28,7 @@ type PermissionKey = keyof typeof initialPermissions;
 export function PermissionForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [permissions, setPermissions] = useState(initialPermissions);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,7 @@ export function PermissionForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          expiresAt: expiresAt || null,
+          expiresAt,
           permissions: {
             books: {
               read: permissions.booksRead,
@@ -68,7 +69,7 @@ export function PermissionForm() {
       }
 
       setEmail("");
-      setExpiresAt("");
+      setExpiresAt(null);
       setPermissions(initialPermissions);
       router.refresh();
     } catch (err) {
@@ -124,12 +125,12 @@ export function PermissionForm() {
             onChange={() => togglePermission("usersManage")}
           />
 
-          <TextInput
+          <DateTimePicker
             label="Access expires"
             description="Leave blank for no expiration"
-            type="datetime-local"
+            clearable
             value={expiresAt}
-            onChange={(event) => setExpiresAt(event.currentTarget.value)}
+            onChange={(value) => setExpiresAt(value)}
           />
 
           {error && (

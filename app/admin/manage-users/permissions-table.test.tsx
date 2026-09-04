@@ -57,6 +57,28 @@ describe("PermissionsTable", () => {
     expect(screen.getByText("Expired")).toBeInTheDocument();
   });
 
+  it("shows 'Never' when the account has no recorded login", () => {
+    renderWithProvider(
+      <PermissionsTable
+        records={[
+          buildRecord({
+            lastLoginAt: null,
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Never")).toBeInTheDocument();
+  });
+
+  it("shows the formatted last login date when present", () => {
+    const lastLoginAt = new Date("2026-03-01T12:00:00.000Z");
+    renderWithProvider(
+      <PermissionsTable records={[buildRecord({ lastLoginAt })]} />,
+    );
+    expect(screen.getByText(lastLoginAt.toLocaleString())).toBeInTheDocument();
+  });
+
   it("lists the granted book permissions", () => {
     renderWithProvider(
       <PermissionsTable

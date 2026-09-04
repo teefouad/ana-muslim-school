@@ -107,6 +107,26 @@ describe("POST /api/permissions", () => {
     });
   });
 
+  it("parses the DateTimePicker's 'YYYY-MM-DD HH:mm:ss' value", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+
+    await POST(
+      jsonRequest({
+        email: "someone@example.com",
+        expiresAt: "2030-01-01 10:30:00",
+      }),
+    );
+
+    expect(upsertPermissionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expiresAt: new Date(2030, 0, 1, 10, 30, 0),
+      }),
+    );
+  });
+
   it("treats a missing expiration as no expiration", async () => {
     getSessionUserMock.mockResolvedValueOnce({
       uid: "1",
