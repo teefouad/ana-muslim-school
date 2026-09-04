@@ -11,6 +11,7 @@ const {
   docMock,
   docUpdateMock,
   docGetMock,
+  docDeleteMock,
   orderByMock,
   getMock,
   collectionMock,
@@ -25,6 +26,7 @@ const {
   const docMock = vi.fn();
   const docUpdateMock = vi.fn();
   const docGetMock = vi.fn();
+  const docDeleteMock = vi.fn();
   const orderByMock = vi.fn();
   const getMock = vi.fn();
   const collectionMock = vi.fn();
@@ -40,6 +42,7 @@ const {
     docMock,
     docUpdateMock,
     docGetMock,
+    docDeleteMock,
     orderByMock,
     getMock,
     collectionMock,
@@ -71,6 +74,7 @@ const {
   getPermissionForEmail,
   recordPermissionLogin,
   updatePermissionById,
+  deletePermissionById,
 } = await import("./permissions-repository");
 
 const permissions = {
@@ -90,7 +94,7 @@ function setUpFirestoreMocks() {
   docMock.mockImplementation((id?: string) =>
     id === undefined
       ? AUTO_DOC_REF
-      : { update: docUpdateMock, get: docGetMock },
+      : { update: docUpdateMock, get: docGetMock, delete: docDeleteMock },
   );
   orderByMock.mockReturnValue({ get: getMock });
   collectionMock.mockReturnValue({
@@ -404,5 +408,31 @@ describe("updatePermissionById", () => {
 
     expect(updated).toBe(false);
     expect(docUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("deletePermissionById", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setUpFirestoreMocks();
+  });
+
+  it("deletes the document for the given id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    const deleted = await deletePermissionById("doc-1");
+
+    expect(deleted).toBe(true);
+    expect(docMock).toHaveBeenCalledWith("doc-1");
+    expect(docDeleteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false and deletes nothing when no document exists for the id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: false });
+
+    const deleted = await deletePermissionById("missing-doc");
+
+    expect(deleted).toBe(false);
+    expect(docDeleteMock).not.toHaveBeenCalled();
   });
 });

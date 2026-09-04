@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getSessionUserMock, updatePermissionByIdMock } = vi.hoisted(() => ({
+const {
+  getSessionUserMock,
+  updatePermissionByIdMock,
+  deletePermissionByIdMock,
+} = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   updatePermissionByIdMock: vi.fn(),
+  deletePermissionByIdMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -13,15 +18,22 @@ vi.mock("@/lib/auth/session", () => ({
 
 vi.mock("@/lib/permissions/permissions-repository", () => ({
   updatePermissionById: updatePermissionByIdMock,
+  deletePermissionById: deletePermissionByIdMock,
 }));
 
-const { PATCH } = await import("./route");
+const { PATCH, DELETE } = await import("./route");
 
 function jsonRequest(body: unknown) {
   return new Request("http://localhost/api/permissions/doc-1", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+function deleteRequest() {
+  return new Request("http://localhost/api/permissions/doc-1", {
+    method: "DELETE",
   });
 }
 
@@ -138,5 +150,69 @@ describe("PATCH /api/permissions/[id]", () => {
     expect(updatePermissionByIdMock).toHaveBeenCalledWith(
       expect.objectContaining({ expiresAt: null }),
     );
+  });
+});
+
+describe("DELETE /api/permissions/[id]", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    getSessionUserMock.mockResolvedValueOnce(null);
+
+    const response = await DELETE(deleteRequest(), patchContext("doc-1"));
+
+    expect(response.status).toBe(403);
+    expect(deletePermissionByIdMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects requests from an authenticated non-super-admin", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "someone-else@example.com",
+    });
+
+    const response = await DELETE(deleteRequest(), patchContext("doc-1"));
+
+    expect(response.status).toBe(403);
+    expect(deletePermissionByIdMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an id containing a slash", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+
+    const response = await DELETE(deleteRequest(), patchContext("a/b"));
+
+    expect(response.status).toBe(400);
+    expect(deletePermissionByIdMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the record doesn't exist", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+    deletePermissionByIdMock.mockResolvedValueOnce(false);
+
+    const response = await DELETE(deleteRequest(), patchContext("missing"));
+
+    expect(response.status).toBe(404);
+  });
+
+  it("deletes the record by the id from the route", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+    deletePermissionByIdMock.mockResolvedValueOnce(true);
+
+    const response = await DELETE(deleteRequest(), patchContext("doc-1"));
+
+    expect(response.status).toBe(200);
+    expect(deletePermissionByIdMock).toHaveBeenCalledWith("doc-1");
   });
 });

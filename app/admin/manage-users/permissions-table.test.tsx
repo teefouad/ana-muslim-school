@@ -115,6 +115,23 @@ describe("PermissionsTable", () => {
     );
   });
 
+  it("opens the delete confirmation with that record's email when Delete is clicked", async () => {
+    renderWithProvider(
+      <PermissionsTable
+        records={[buildRecord({ email: "someone@example.com" })]}
+      />,
+    );
+
+    expect(screen.queryByText("Delete access")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Delete access")).toBeInTheDocument();
+    expect(
+      screen.getByText("someone@example.com", { selector: "strong" }),
+    ).toBeInTheDocument();
+  });
+
   it("lists the granted book permissions", () => {
     renderWithProvider(
       <PermissionsTable

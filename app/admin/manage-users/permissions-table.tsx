@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import {
   Badge,
   Button,
+  Group,
   Modal,
   Table,
   TableScrollContainer,
@@ -16,6 +17,7 @@ import {
 } from "@mantine/core";
 
 import type { PermissionRecord } from "@/lib/permissions/types";
+import { DeleteConfirmModal } from "./delete-confirm-modal";
 import { PermissionForm } from "./permission-form";
 
 function subscribeNoop() {
@@ -64,6 +66,9 @@ function isExpired(expiresAt: Date | null): boolean {
 // `undefined` under Next's Turbopack dev bundler for this Mantine version.
 export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
   const [editingRecord, setEditingRecord] = useState<PermissionRecord | null>(
+    null,
+  );
+  const [deletingRecord, setDeletingRecord] = useState<PermissionRecord | null>(
     null,
   );
 
@@ -122,13 +127,23 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
                     </Badge>
                   </TableTd>
                   <TableTd>
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => setEditingRecord(record)}
-                    >
-                      Edit
-                    </Button>
+                    <Group gap="xs" wrap="nowrap">
+                      <Button
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => setEditingRecord(record)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="subtle"
+                        color="red"
+                        size="xs"
+                        onClick={() => setDeletingRecord(record)}
+                      >
+                        Delete
+                      </Button>
+                    </Group>
                   </TableTd>
                 </TableTr>
               );
@@ -150,6 +165,11 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
           />
         )}
       </Modal>
+
+      <DeleteConfirmModal
+        record={deletingRecord}
+        onClose={() => setDeletingRecord(null)}
+      />
     </>
   );
 }

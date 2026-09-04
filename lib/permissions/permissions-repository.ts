@@ -116,6 +116,28 @@ export async function updatePermissionById({
 }
 
 /**
+ * Deletes a `permissions` record by its Firestore document ID (see ANA-51).
+ * Only removes the permission document -- it never touches the
+ * corresponding Firebase Authentication account.
+ *
+ * Returns `false` without writing if `id` doesn't match an existing
+ * document, so the caller can respond with a 404 rather than a false
+ * "deleted" success.
+ */
+export async function deletePermissionById(id: string): Promise<boolean> {
+  const ref = getAdminFirestore().collection(PERMISSIONS_COLLECTION).doc(id);
+  const snapshot = await ref.get();
+
+  if (!snapshot.exists) {
+    return false;
+  }
+
+  await ref.delete();
+
+  return true;
+}
+
+/**
  * Parses a `permissions` document into a `PermissionRecord`, or `null` if
  * the document doesn't match the expected shape. Used on the dashboard
  * access path (see `getPermissionForEmail`), where a malformed record must
