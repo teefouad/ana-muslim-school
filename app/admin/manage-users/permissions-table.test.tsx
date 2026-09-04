@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { MantineProvider } from "@mantine/core";
 
 import type { PermissionRecord } from "@/lib/permissions/types";
@@ -77,6 +78,19 @@ describe("PermissionsTable", () => {
       <PermissionsTable records={[buildRecord({ lastLoginAt })]} />,
     );
     expect(screen.getByText(lastLoginAt.toLocaleString())).toBeInTheDocument();
+  });
+
+  it("renders a placeholder rather than a locale-formatted string on the server-rendered pass, to avoid a hydration mismatch", () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+
+    const html = renderToString(
+      <MantineProvider>
+        <PermissionsTable records={[buildRecord({ createdAt })]} />
+      </MantineProvider>,
+    );
+
+    expect(html).toContain("—");
+    expect(html).not.toContain(createdAt.toLocaleString());
   });
 
   it("lists the granted book permissions", () => {

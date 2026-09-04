@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import {
   Badge,
   Table,
@@ -14,11 +15,40 @@ import {
 
 import type { PermissionRecord } from "@/lib/permissions/types";
 
-// A Client Component so `toLocaleString()` below formats in the viewing
-// admin's own browser locale/timezone, rather than the server's (e.g. UTC
-// in production) -- the underlying `expiresAt`/`createdAt` timestamps and
-// the Active/Expired computation are timezone-safe regardless.
-function formatDateTime(date: Date | null): string {
+function subscribeNoop() {
+  return () => {};
+}
+
+/**
+ * True once the component has mounted in the browser. Client Components
+ * are still rendered on the server for the initial HTML, so this needs to
+ * be false there and only flip to true after hydration -- `useSyncExternalStore`
+ * is the primitive React provides for a value that legitimately differs
+ * between the server-rendered snapshot and the client snapshot (unlike a
+ * plain `useState`/`useEffect` pair, it doesn't trigger an extra render).
+ */
+function useHasMounted(): boolean {
+  return useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
+}
+
+/**
+ * Renders `date` formatted in the viewer's own browser locale/timezone.
+ * Calling `toLocaleString()` unconditionally would use the *server's*
+ * locale/timezone during the initial server-rendered pass and mismatch
+ * what the browser renders on hydration, so a deterministic placeholder is
+ * rendered until `useHasMounted` flips to true.
+ */
+function LocalDateTime({ date }: { date: Date | null }) {
+  const hasMounted = useHasMounted();
+
+  if (!hasMounted) {
+    return "—";
+  }
+
   return date ? date.toLocaleString() : "Never";
 }
 
@@ -68,9 +98,15 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
                 <TableTd>
                   {record.permissions.users.manage ? "Yes" : "No"}
                 </TableTd>
-                <TableTd>{formatDateTime(record.expiresAt)}</TableTd>
-                <TableTd>{formatDateTime(record.createdAt)}</TableTd>
-                <TableTd>{formatDateTime(record.lastLoginAt)}</TableTd>
+                <TableTd>
+                  <LocalDateTime date={record.expiresAt} />
+                </TableTd>
+                <TableTd>
+                  <LocalDateTime date={record.createdAt} />
+                </TableTd>
+                <TableTd>
+                  <LocalDateTime date={record.lastLoginAt} />
+                </TableTd>
                 <TableTd>
                   <Badge color={expired ? "red" : "green"} variant="light">
                     {expired ? "Expired" : "Active"}
