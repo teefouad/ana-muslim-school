@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users } from "lucide-react";
+import { LayoutDashboard, UserCircle, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type NavItem = {
@@ -17,7 +17,10 @@ export type NavGroup = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Dashboard",
-    items: [{ label: "Overview", href: "/admin", icon: LayoutDashboard }],
+    items: [
+      { label: "Overview", href: "/admin", icon: LayoutDashboard },
+      { label: "Profile", href: "/admin/profile", icon: UserCircle },
+    ],
   },
   {
     label: "Administration",

@@ -23,22 +23,10 @@ import {
 
 import { getClientAuth } from "@/lib/firebase/client";
 import { getAuthErrorMessage } from "./auth-error";
+import { establishSession } from "./establish-session";
 import { GoogleIcon } from "./google-icon";
 
 type Mode = "sign-in" | "sign-up";
-
-async function establishSession(idToken: string) {
-  const response = await fetch("/api/auth/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ idToken }),
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    throw new Error(data?.error ?? "Something went wrong. Please try again.");
-  }
-}
 
 export default function LoginPage() {
   const router = useRouter();
