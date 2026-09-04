@@ -64,7 +64,7 @@ export function DashboardShell({
             key={group.label}
             label={group.label}
             defaultOpened
-            childrenOffset={28}
+            childrenOffset={0}
           >
             {group.items.map((item) => {
               const Icon = item.icon;

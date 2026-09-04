@@ -66,7 +66,7 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
 
   return (
     <TableScrollContainer minWidth={800}>
-      <Table striped highlightOnHover verticalSpacing="sm">
+      <Table highlightOnHover verticalSpacing="sm">
         <TableThead>
           <TableTr>
             <TableTh>Email</TableTh>
