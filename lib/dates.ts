@@ -9,3 +9,14 @@ import dayjs from "dayjs";
 export function toIsoStringOrNull(value: string | null): string | null {
   return value ? dayjs(value).toISOString() : null;
 }
+
+/**
+ * The inverse of `toIsoStringOrNull` -- formats a `Date` into the
+ * timezone-less "YYYY-MM-DD HH:mm:ss" string the DateTimePicker's `value`
+ * prop expects, in the current runtime's local timezone, so a previously
+ * saved instant prefills the picker as the same wall-clock time the admin
+ * originally picked.
+ */
+export function toDateTimePickerValueOrNull(value: Date | null): string | null {
+  return value ? dayjs(value).format("YYYY-MM-DD HH:mm:ss") : null;
+}

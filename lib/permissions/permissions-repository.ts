@@ -73,6 +73,48 @@ export async function upsertPermission({
   });
 }
 
+type UpdatePermissionByIdInput = {
+  id: string;
+  permissions: PermissionsInput;
+  expiresAt: Date | null;
+  actorEmail: string;
+};
+
+/**
+ * Updates the `permissions`/`expiresAt` of an existing record by its
+ * Firestore document ID (see ANA-51) -- unlike `upsertPermission`, this
+ * never creates a record and never looks the record up by email, so it
+ * can't be tricked into editing (or creating a duplicate for) a different
+ * account. `createdAt`, `createdBy`, and `lastLoginAt` are left untouched
+ * since `update()` only writes the fields given here.
+ *
+ * Returns `false` without writing if `id` doesn't match an existing
+ * document, so the caller can respond with a 404 instead of silently
+ * creating Firestore's implicit empty document.
+ */
+export async function updatePermissionById({
+  id,
+  permissions,
+  expiresAt,
+  actorEmail,
+}: UpdatePermissionByIdInput): Promise<boolean> {
+  const ref = getAdminFirestore().collection(PERMISSIONS_COLLECTION).doc(id);
+  const snapshot = await ref.get();
+
+  if (!snapshot.exists) {
+    return false;
+  }
+
+  await ref.update({
+    permissions,
+    expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: actorEmail,
+  });
+
+  return true;
+}
+
 /**
  * Parses a `permissions` document into a `PermissionRecord`, or `null` if
  * the document doesn't match the expected shape. Used on the dashboard

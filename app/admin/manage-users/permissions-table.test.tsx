@@ -1,9 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { MantineProvider } from "@mantine/core";
+import { vi } from "vitest";
 
 import type { PermissionRecord } from "@/lib/permissions/types";
 import { PermissionsTable } from "./permissions-table";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
@@ -91,6 +96,23 @@ describe("PermissionsTable", () => {
 
     expect(html).toContain("—");
     expect(html).not.toContain(createdAt.toLocaleString());
+  });
+
+  it("opens the edit modal with that record's email prefilled when Edit is clicked", async () => {
+    renderWithProvider(
+      <PermissionsTable
+        records={[buildRecord({ email: "someone@example.com" })]}
+      />,
+    );
+
+    expect(screen.queryByText("Edit access")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByText("Edit access")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Email address/)).toHaveValue(
+      "someone@example.com",
+    );
   });
 
   it("lists the granted book permissions", () => {
