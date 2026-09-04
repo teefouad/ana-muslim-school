@@ -7,7 +7,7 @@ import { Alert, Loader, Paper, Stack, Text, Title } from "@mantine/core";
 import { getClientAuth } from "@/lib/firebase/client";
 import { ChangePasswordForm } from "./change-password-form";
 
-function getProviderLabel(providerId: string | undefined): string {
+function getProviderLabel(providerId: string): string {
   switch (providerId) {
     case "password":
       return "Email and password";
@@ -16,6 +16,19 @@ function getProviderLabel(providerId: string | undefined): string {
     default:
       return "Unknown";
   }
+}
+
+// A Firebase account can have more than one linked provider, and the order
+// of `providerData` isn't guaranteed -- check every entry (not just the
+// first) and list every linked method rather than assuming a single one.
+function getProviderLabels(providerData: { providerId: string }[]): string {
+  if (providerData.length === 0) {
+    return "Unknown";
+  }
+
+  return providerData
+    .map((provider) => getProviderLabel(provider.providerId))
+    .join(", ");
 }
 
 export function ProfileView({ email }: { email: string }) {
@@ -29,8 +42,10 @@ export function ProfileView({ email }: { email: string }) {
     });
   }, []);
 
-  const providerId = authUser?.providerData[0]?.providerId;
-  const hasPasswordProvider = providerId === "password";
+  const hasPasswordProvider =
+    authUser?.providerData.some(
+      (provider) => provider.providerId === "password",
+    ) ?? false;
 
   return (
     <Stack gap="xl" maw={480}>
@@ -40,7 +55,9 @@ export function ProfileView({ email }: { email: string }) {
           <Text size="sm">Email: {authUser?.email ?? email}</Text>
           <Text size="sm">
             Sign-in method:{" "}
-            {authLoading ? "Loading..." : getProviderLabel(providerId)}
+            {authLoading
+              ? "Loading..."
+              : getProviderLabels(authUser?.providerData ?? [])}
           </Text>
         </Stack>
       </Paper>
@@ -59,7 +76,7 @@ export function ProfileView({ email }: { email: string }) {
           ) : hasPasswordProvider ? (
             <ChangePasswordForm />
           ) : (
-            <Alert color="blue" variant="light">
+            <Alert color="#333" variant="filled">
               Password management for this account is handled by your sign-in
               provider. There is nothing to change here.
             </Alert>

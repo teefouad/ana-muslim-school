@@ -55,6 +55,22 @@ describe("ProfileView", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the change-password form for a multi-provider account where password isn't the first entry", () => {
+    renderWithProvider(<ProfileView email="server@example.com" />);
+
+    emitUser({
+      email: "client@example.com",
+      providerData: [{ providerId: "google.com" }, { providerId: "password" }],
+    });
+
+    expect(
+      screen.getByText("Sign-in method: Google, Email and password"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Update password" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows a provider message instead of a password form for a Google-only account", () => {
     renderWithProvider(<ProfileView email="server@example.com" />);
 
