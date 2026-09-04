@@ -1,26 +1,19 @@
-import { redirect } from "next/navigation";
-import { Center, Stack, Text } from "@mantine/core";
+import { Center, Text } from "@mantine/core";
 
 import { getSessionUser, isSuperAdminEmail } from "@/lib/auth/session";
-import { SignOutButton } from "./sign-out-button";
 
 export default async function AdminPage() {
+  // The admin layout already redirects unauthenticated requests to /login,
+  // so `user` is guaranteed here -- see app/admin/layout.tsx.
   const user = await getSessionUser();
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  const message = isSuperAdminEmail(user.email)
+  const message = isSuperAdminEmail(user?.email)
     ? "hello"
     : "Your account is pending approval.";
 
   return (
-    <Center flex={1} p="xl">
-      <Stack align="center" gap="md">
-        <Text>{message}</Text>
-        <SignOutButton />
-      </Stack>
+    <Center p="xl">
+      <Text>{message}</Text>
     </Center>
   );
 }
