@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppShell, Burger, Group, NavLink, Text, Title } from "@mantine/core";
@@ -14,36 +14,6 @@ type DashboardShellProps = {
   userEmail: string;
   isSuperAdmin: boolean;
 };
-
-// Group labels ("Dashboard", "Administration") are section toggles, not
-// links -- they get a faint background at rest instead of Mantine's default
-// solid hover fill, and fade to fully transparent on hover.
-function NavGroupLabel({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <NavLink
-      label={label}
-      defaultOpened
-      childrenOffset={28}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        padding: 0,
-        backgroundColor: hovered ? "transparent" : "rgba(255, 255, 255, 0.05)",
-        transition: "background-color 150ms ease",
-      }}
-    >
-      {children}
-    </NavLink>
-  );
-}
 
 export function DashboardShell({
   children,
@@ -90,7 +60,12 @@ export function DashboardShell({
 
       <AppShell.Navbar p="md">
         {visibleGroups.map((group) => (
-          <NavGroupLabel key={group.label} label={group.label}>
+          <NavLink
+            key={group.label}
+            label={group.label}
+            defaultOpened
+            childrenOffset={28}
+          >
             {group.items.map((item) => {
               const Icon = item.icon;
 
@@ -102,15 +77,10 @@ export function DashboardShell({
                   label={item.label}
                   leftSection={<Icon size={16} />}
                   active={pathname === item.href}
-                  style={{
-                    padding: 0,
-                    borderRadius: "var(--mantine-radius-sm)",
-                    transition: "background-color 150ms ease, color 150ms ease",
-                  }}
                 />
               );
             })}
-          </NavGroupLabel>
+          </NavLink>
         ))}
       </AppShell.Navbar>
 

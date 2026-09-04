@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Button,
   Checkbox,
-  Flex,
+  Fieldset,
   Group,
   Paper,
   Stack,
@@ -80,78 +80,71 @@ export function PermissionForm() {
   }
 
   return (
-    <Paper withBorder shadow="sm" radius="md" p="xl">
+    <Paper withBorder shadow="sm" radius="md" p="xl" maw={520}>
       <form onSubmit={handleSubmit}>
-        <Title order={4} mb="md">
-          Grant or update access
-        </Title>
+        <Stack gap="md">
+          <Title order={4}>Grant or update access</Title>
 
-        <Flex gap="md" align="stretch">
-          <Stack gap="md" flex={1}>
-            <Group grow align="flex-start">
-              <TextInput
-                label="Email address"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.currentTarget.value)}
-                autoComplete="email"
-                required
-              />
+          <TextInput
+            label="Email address"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.currentTarget.value)}
+            autoComplete="email"
+            required
+          />
 
-              <DateTimePicker
-                label="Access expires"
-                description="Leave blank for no expiration"
-                clearable
-                value={expiresAt}
-                onChange={(value) => setExpiresAt(value)}
-              />
-            </Group>
-
-            <Group gap="xl">
-              <Group gap="sm">
-                <Text size="sm" fw={500}>
-                  Books
-                </Text>
-                <Checkbox
-                  label="Read"
-                  checked={permissions.booksRead}
-                  onChange={() => togglePermission("booksRead")}
-                />
-                <Checkbox
-                  label="Add"
-                  checked={permissions.booksCreate}
-                  onChange={() => togglePermission("booksCreate")}
-                />
-                <Checkbox
-                  label="Edit"
-                  checked={permissions.booksUpdate}
-                  onChange={() => togglePermission("booksUpdate")}
-                />
-                <Checkbox
-                  label="Delete"
-                  checked={permissions.booksDelete}
-                  onChange={() => togglePermission("booksDelete")}
-                />
-              </Group>
-
+          <Fieldset legend="Books">
+            <Group>
               <Checkbox
-                label="Manage Users"
-                checked={permissions.usersManage}
-                onChange={() => togglePermission("usersManage")}
+                label="Read"
+                checked={permissions.booksRead}
+                onChange={() => togglePermission("booksRead")}
+              />
+              <Checkbox
+                label="Add"
+                checked={permissions.booksCreate}
+                onChange={() => togglePermission("booksCreate")}
+              />
+              <Checkbox
+                label="Edit"
+                checked={permissions.booksUpdate}
+                onChange={() => togglePermission("booksUpdate")}
+              />
+              <Checkbox
+                label="Delete"
+                checked={permissions.booksDelete}
+                onChange={() => togglePermission("booksDelete")}
               />
             </Group>
-          </Stack>
+          </Fieldset>
 
-          <Button type="submit" loading={loading} h="auto" miw={140}>
-            Save access
-          </Button>
-        </Flex>
+          <Checkbox
+            label="Manage Users"
+            checked={permissions.usersManage}
+            onChange={() => togglePermission("usersManage")}
+          />
 
-        {error && (
-          <Text c="red" size="sm" mt="md">
-            {error}
-          </Text>
-        )}
+          <DateTimePicker
+            label="Access expires"
+            description="Leave blank for no expiration"
+            clearable
+            value={expiresAt}
+            onChange={(value) => setExpiresAt(value)}
+          />
+
+          {error && (
+            <Text c="red" size="sm">
+              {error}
+            </Text>
+          )}
+
+          <Group justify="flex-end">
+            <Button type="submit" loading={loading}>
+              Save access
+            </Button>
+          </Group>
+        </Stack>
       </form>
     </Paper>
   );
