@@ -13,7 +13,11 @@ import {
 } from "@mantine/core";
 import { DateTimePicker } from "@mantine/dates";
 
-import { toIsoStringOrNull } from "@/lib/dates";
+import { toDateTimePickerValueOrNull, toIsoStringOrNull } from "@/lib/dates";
+import type {
+  PermissionRecord,
+  PermissionsInput,
+} from "@/lib/permissions/types";
 
 const initialPermissions = {
   booksRead: false,
@@ -25,11 +29,37 @@ const initialPermissions = {
 
 type PermissionKey = keyof typeof initialPermissions;
 
-export function PermissionForm({ onSuccess }: { onSuccess?: () => void }) {
+function toFormPermissions(
+  permissions: PermissionsInput,
+): typeof initialPermissions {
+  return {
+    booksRead: permissions.books.read,
+    booksCreate: permissions.books.create,
+    booksUpdate: permissions.books.update,
+    booksDelete: permissions.books.delete,
+    usersManage: permissions.users.manage,
+  };
+}
+
+export function PermissionForm({
+  record,
+  onSuccess,
+  onCancel,
+}: {
+  /** When given, the form edits this existing record instead of creating a new one. */
+  record?: PermissionRecord;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+}) {
+  const isEditing = record !== undefined;
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [expiresAt, setExpiresAt] = useState<string | null>(null);
-  const [permissions, setPermissions] = useState(initialPermissions);
+  const [email, setEmail] = useState(record?.email ?? "");
+  const [expiresAt, setExpiresAt] = useState<string | null>(
+    toDateTimePickerValueOrNull(record?.expiresAt ?? null),
+  );
+  const [permissions, setPermissions] = useState(
+    record ? toFormPermissions(record.permissions) : initialPermissions,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -43,27 +73,30 @@ export function PermissionForm({ onSuccess }: { onSuccess?: () => void }) {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/permissions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          // The picker's value has no timezone info -- convert it to an
-          // ISO string (in the browser's own timezone) before sending, so
-          // the server stores the instant the admin actually picked rather
-          // than reinterpreting the same digits in the server's timezone.
-          expiresAt: toIsoStringOrNull(expiresAt),
-          permissions: {
-            books: {
-              read: permissions.booksRead,
-              create: permissions.booksCreate,
-              update: permissions.booksUpdate,
-              delete: permissions.booksDelete,
+      const response = await fetch(
+        isEditing ? `/api/permissions/${record.id}` : "/api/permissions",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(isEditing ? {} : { email }),
+            // The picker's value has no timezone info -- convert it to an
+            // ISO string (in the browser's own timezone) before sending, so
+            // the server stores the instant the admin actually picked rather
+            // than reinterpreting the same digits in the server's timezone.
+            expiresAt: toIsoStringOrNull(expiresAt),
+            permissions: {
+              books: {
+                read: permissions.booksRead,
+                create: permissions.booksCreate,
+                update: permissions.booksUpdate,
+                delete: permissions.booksDelete,
+              },
+              users: { manage: permissions.usersManage },
             },
-            users: { manage: permissions.usersManage },
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -72,9 +105,11 @@ export function PermissionForm({ onSuccess }: { onSuccess?: () => void }) {
         );
       }
 
-      setEmail("");
-      setExpiresAt(null);
-      setPermissions(initialPermissions);
+      if (!isEditing) {
+        setEmail("");
+        setExpiresAt(null);
+        setPermissions(initialPermissions);
+      }
       router.refresh();
       onSuccess?.();
     } catch (err) {
@@ -92,6 +127,7 @@ export function PermissionForm({ onSuccess }: { onSuccess?: () => void }) {
           type="email"
           value={email}
           onChange={(event) => setEmail(event.currentTarget.value)}
+          readOnly={isEditing}
           autoComplete="email"
           required
         />
@@ -142,8 +178,13 @@ export function PermissionForm({ onSuccess }: { onSuccess?: () => void }) {
         )}
 
         <Group justify="flex-end">
+          {isEditing && (
+            <Button variant="default" onClick={onCancel} disabled={loading}>
+              Cancel
+            </Button>
+          )}
           <Button type="submit" loading={loading}>
-            Save access
+            {isEditing ? "Save changes" : "Save access"}
           </Button>
         </Group>
       </Stack>

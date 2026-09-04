@@ -10,6 +10,8 @@ const {
   limitMock,
   docMock,
   docUpdateMock,
+  docGetMock,
+  docDeleteMock,
   orderByMock,
   getMock,
   collectionMock,
@@ -23,6 +25,8 @@ const {
   const whereGetMock = vi.fn();
   const docMock = vi.fn();
   const docUpdateMock = vi.fn();
+  const docGetMock = vi.fn();
+  const docDeleteMock = vi.fn();
   const orderByMock = vi.fn();
   const getMock = vi.fn();
   const collectionMock = vi.fn();
@@ -37,6 +41,8 @@ const {
     limitMock,
     docMock,
     docUpdateMock,
+    docGetMock,
+    docDeleteMock,
     orderByMock,
     getMock,
     collectionMock,
@@ -67,6 +73,8 @@ const {
   listPermissions,
   getPermissionForEmail,
   recordPermissionLogin,
+  updatePermissionById,
+  deletePermissionById,
 } = await import("./permissions-repository");
 
 const permissions = {
@@ -81,9 +89,12 @@ function setUpFirestoreMocks() {
   whereMock.mockReturnValue({ limit: limitMock, get: whereGetMock });
   // `collection.doc()` (no id) is the auto-id path used to create a new
   // record; `collection.doc(id)` is the update-by-id path used to stamp
-  // `lastLoginAt` -- see upsertPermission/recordPermissionLogin.
+  // `lastLoginAt` and to update a record directly by ID -- see
+  // upsertPermission/recordPermissionLogin/updatePermissionById.
   docMock.mockImplementation((id?: string) =>
-    id === undefined ? AUTO_DOC_REF : { update: docUpdateMock },
+    id === undefined
+      ? AUTO_DOC_REF
+      : { update: docUpdateMock, get: docGetMock, delete: docDeleteMock },
   );
   orderByMock.mockReturnValue({ get: getMock });
   collectionMock.mockReturnValue({
@@ -338,5 +349,90 @@ describe("recordPermissionLogin", () => {
     expect(docUpdateMock).toHaveBeenCalledWith({
       lastLoginAt: SERVER_TIMESTAMP_SENTINEL,
     });
+  });
+});
+
+describe("updatePermissionById", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setUpFirestoreMocks();
+  });
+
+  it("updates the record's permissions/expiration/updatedBy without touching createdAt/createdBy/lastLoginAt", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    const updated = await updatePermissionById({
+      id: "doc-1",
+      permissions,
+      expiresAt: null,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(updated).toBe(true);
+    expect(docMock).toHaveBeenCalledWith("doc-1");
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      permissions,
+      expiresAt: null,
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
+  });
+
+  it("converts a provided expiration date to a Firestore Timestamp", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+    const expiresAt = new Date("2030-01-01T00:00:00.000Z");
+
+    await updatePermissionById({
+      id: "doc-1",
+      permissions,
+      expiresAt,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expiresAt: expect.objectContaining({ __isTimestamp: true }),
+      }),
+    );
+  });
+
+  it("returns false and writes nothing when no document exists for the id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: false });
+
+    const updated = await updatePermissionById({
+      id: "missing-doc",
+      permissions,
+      expiresAt: null,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(updated).toBe(false);
+    expect(docUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("deletePermissionById", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setUpFirestoreMocks();
+  });
+
+  it("deletes the document for the given id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    const deleted = await deletePermissionById("doc-1");
+
+    expect(deleted).toBe(true);
+    expect(docMock).toHaveBeenCalledWith("doc-1");
+    expect(docDeleteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false and deletes nothing when no document exists for the id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: false });
+
+    const deleted = await deletePermissionById("missing-doc");
+
+    expect(deleted).toBe(false);
+    expect(docDeleteMock).not.toHaveBeenCalled();
   });
 });

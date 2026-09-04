@@ -1,8 +1,11 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   Badge,
+  Button,
+  Group,
+  Modal,
   Table,
   TableScrollContainer,
   TableTbody,
@@ -14,6 +17,8 @@ import {
 } from "@mantine/core";
 
 import type { PermissionRecord } from "@/lib/permissions/types";
+import { DeleteConfirmModal } from "./delete-confirm-modal";
+import { PermissionForm } from "./permission-form";
 
 function subscribeNoop() {
   return () => {};
@@ -60,63 +65,111 @@ function isExpired(expiresAt: Date | null): boolean {
 // `Table.Thead` etc. -- the compound-component properties resolve to
 // `undefined` under Next's Turbopack dev bundler for this Mantine version.
 export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
+  const [editingRecord, setEditingRecord] = useState<PermissionRecord | null>(
+    null,
+  );
+  const [deletingRecord, setDeletingRecord] = useState<PermissionRecord | null>(
+    null,
+  );
+
   if (records.length === 0) {
     return <Text c="dimmed">No access records yet.</Text>;
   }
 
   return (
-    <TableScrollContainer minWidth={800}>
-      <Table highlightOnHover verticalSpacing="sm">
-        <TableThead>
-          <TableTr>
-            <TableTh>Email</TableTh>
-            <TableTh>Books</TableTh>
-            <TableTh>Manage Users</TableTh>
-            <TableTh>Expires</TableTh>
-            <TableTh>Created</TableTh>
-            <TableTh>Last Login</TableTh>
-            <TableTh>Status</TableTh>
-          </TableTr>
-        </TableThead>
-        <TableTbody>
-          {records.map((record) => {
-            const expired = isExpired(record.expiresAt);
-            const { books } = record.permissions;
-            const bookLabels = [
-              books.read && "Read",
-              books.create && "Add",
-              books.update && "Edit",
-              books.delete && "Delete",
-            ].filter(Boolean);
+    <>
+      <TableScrollContainer minWidth={800}>
+        <Table highlightOnHover verticalSpacing="sm">
+          <TableThead>
+            <TableTr>
+              <TableTh>Email</TableTh>
+              <TableTh>Books</TableTh>
+              <TableTh>Manage Users</TableTh>
+              <TableTh>Expires</TableTh>
+              <TableTh>Created</TableTh>
+              <TableTh>Last Login</TableTh>
+              <TableTh>Status</TableTh>
+              <TableTh />
+            </TableTr>
+          </TableThead>
+          <TableTbody>
+            {records.map((record) => {
+              const expired = isExpired(record.expiresAt);
+              const { books } = record.permissions;
+              const bookLabels = [
+                books.read && "Read",
+                books.create && "Add",
+                books.update && "Edit",
+                books.delete && "Delete",
+              ].filter(Boolean);
 
-            return (
-              <TableTr key={record.id}>
-                <TableTd>{record.email}</TableTd>
-                <TableTd>
-                  {bookLabels.length > 0 ? bookLabels.join(", ") : "None"}
-                </TableTd>
-                <TableTd>
-                  {record.permissions.users.manage ? "Yes" : "No"}
-                </TableTd>
-                <TableTd>
-                  <LocalDateTime date={record.expiresAt} />
-                </TableTd>
-                <TableTd>
-                  <LocalDateTime date={record.createdAt} />
-                </TableTd>
-                <TableTd>
-                  <LocalDateTime date={record.lastLoginAt} />
-                </TableTd>
-                <TableTd>
-                  <Badge color={expired ? "red" : "green"} variant="light">
-                    {expired ? "Expired" : "Active"}
-                  </Badge>
-                </TableTd>
-              </TableTr>
-            );
-          })}
-        </TableTbody>
-      </Table>
-    </TableScrollContainer>
+              return (
+                <TableTr key={record.id}>
+                  <TableTd>{record.email}</TableTd>
+                  <TableTd>
+                    {bookLabels.length > 0 ? bookLabels.join(", ") : "None"}
+                  </TableTd>
+                  <TableTd>
+                    {record.permissions.users.manage ? "Yes" : "No"}
+                  </TableTd>
+                  <TableTd>
+                    <LocalDateTime date={record.expiresAt} />
+                  </TableTd>
+                  <TableTd>
+                    <LocalDateTime date={record.createdAt} />
+                  </TableTd>
+                  <TableTd>
+                    <LocalDateTime date={record.lastLoginAt} />
+                  </TableTd>
+                  <TableTd>
+                    <Badge color={expired ? "red" : "green"} variant="light">
+                      {expired ? "Expired" : "Active"}
+                    </Badge>
+                  </TableTd>
+                  <TableTd>
+                    <Group gap="xs" wrap="nowrap">
+                      <Button
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => setEditingRecord(record)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="subtle"
+                        color="red"
+                        size="xs"
+                        onClick={() => setDeletingRecord(record)}
+                      >
+                        Delete
+                      </Button>
+                    </Group>
+                  </TableTd>
+                </TableTr>
+              );
+            })}
+          </TableTbody>
+        </Table>
+      </TableScrollContainer>
+
+      <Modal
+        opened={editingRecord !== null}
+        onClose={() => setEditingRecord(null)}
+        title="Edit access"
+      >
+        {editingRecord && (
+          <PermissionForm
+            record={editingRecord}
+            onSuccess={() => setEditingRecord(null)}
+            onCancel={() => setEditingRecord(null)}
+          />
+        )}
+      </Modal>
+
+      <DeleteConfirmModal
+        record={deletingRecord}
+        onClose={() => setDeletingRecord(null)}
+      />
+    </>
   );
 }
