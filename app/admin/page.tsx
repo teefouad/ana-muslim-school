@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import { Center, Stack, Text } from "@mantine/core";
+import { Center, Text } from "@mantine/core";
 
 import { getSessionUser, isSuperAdminEmail } from "@/lib/auth/session";
-import { SignOutButton } from "./sign-out-button";
 
 export default async function AdminPage() {
   const user = await getSessionUser();
@@ -17,10 +16,7 @@ export default async function AdminPage() {
 
   return (
     <Center flex={1} p="xl">
-      <Stack align="center" gap="md">
-        <Text>{message}</Text>
-        <SignOutButton />
-      </Stack>
+      <Text>{message}</Text>
     </Center>
   );
 }

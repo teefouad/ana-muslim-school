@@ -1,8 +1,17 @@
 import type { Preview } from "@storybook/nextjs-vite";
+import { MantineProvider } from "@mantine/core";
 
+import "@mantine/core/styles.css";
 import "../app/globals.css";
 
 const preview: Preview = {
+  decorators: [
+    (Story) => (
+      <MantineProvider defaultColorScheme="dark">
+        <Story />
+      </MantineProvider>
+    ),
+  ],
   parameters: {
     controls: {
       matchers: {
