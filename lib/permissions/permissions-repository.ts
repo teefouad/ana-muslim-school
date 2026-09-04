@@ -19,24 +19,13 @@ function toDate(value: Timestamp | null | undefined): Date | null {
 }
 
 /**
- * Looks up a record by normalized email so `upsertPermission` can update the
- * existing record instead of creating a duplicate.
- */
-async function findPermissionDocByEmail(email: string) {
-  const snapshot = await getAdminFirestore()
-    .collection(PERMISSIONS_COLLECTION)
-    .where("email", "==", email)
-    .limit(1)
-    .get();
-
-  return snapshot.empty ? null : snapshot.docs[0];
-}
-
-/**
  * Creates a permission record for `email`, or updates the existing record
  * for that normalized email if one already exists -- the `permissions`
  * collection is looked up by the `email` field rather than by document ID
- * (see ANA-49), so this lookup-then-write is how duplicates are prevented.
+ * (see ANA-49). Runs in a transaction so the lookup-then-write is atomic:
+ * `transaction.get(query)` holds a lock on the matched documents for the
+ * life of the transaction, so two concurrent requests for the same email
+ * can't both see "no existing record" and each create a duplicate.
  *
  * `email` must already be normalized (trimmed/lowercased) by the caller --
  * see lib/validation/email.ts.
@@ -48,28 +37,34 @@ export async function upsertPermission({
   actorEmail,
 }: UpsertPermissionInput): Promise<void> {
   const firestore = getAdminFirestore();
-  const existing = await findPermissionDocByEmail(email);
+  const collection = firestore.collection(PERMISSIONS_COLLECTION);
   const expiresAtValue = expiresAt ? Timestamp.fromDate(expiresAt) : null;
 
-  if (existing) {
-    await existing.ref.update({
+  await firestore.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(
+      collection.where("email", "==", email).limit(1),
+    );
+
+    if (!snapshot.empty) {
+      transaction.update(snapshot.docs[0].ref, {
+        permissions,
+        expiresAt: expiresAtValue,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actorEmail,
+      });
+      return;
+    }
+
+    transaction.set(collection.doc(), {
+      email,
       permissions,
       expiresAt: expiresAtValue,
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: actorEmail,
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: actorEmail,
+      lastLoginAt: null,
     });
-    return;
-  }
-
-  await firestore.collection(PERMISSIONS_COLLECTION).add({
-    email,
-    permissions,
-    expiresAt: expiresAtValue,
-    createdAt: FieldValue.serverTimestamp(),
-    createdBy: actorEmail,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: actorEmail,
-    lastLoginAt: null,
   });
 }
 

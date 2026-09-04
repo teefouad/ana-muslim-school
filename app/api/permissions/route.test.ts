@@ -127,6 +127,34 @@ describe("POST /api/permissions", () => {
     );
   });
 
+  it("treats a truthy non-boolean permission value as false, not true", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+
+    await POST(
+      jsonRequest({
+        email: "someone@example.com",
+        permissions: {
+          // "false" is a non-empty string -- truthy in JS, but must not be
+          // coerced to `true` for a boolean permission flag.
+          books: { read: "false", create: 1, update: "yes", delete: [] },
+          users: { manage: "0" },
+        },
+      }),
+    );
+
+    expect(upsertPermissionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        permissions: {
+          books: { read: false, create: false, update: false, delete: false },
+          users: { manage: false },
+        },
+      }),
+    );
+  });
+
   it("treats a missing expiration as no expiration", async () => {
     getSessionUserMock.mockResolvedValueOnce({
       uid: "1",

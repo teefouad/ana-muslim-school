@@ -20,13 +20,13 @@ function toBooleanFlags(value: unknown): PermissionsInput {
 
   return {
     books: {
-      read: Boolean(booksObj.read),
-      create: Boolean(booksObj.create),
-      update: Boolean(booksObj.update),
-      delete: Boolean(booksObj.delete),
+      read: booksObj.read === true,
+      create: booksObj.create === true,
+      update: booksObj.update === true,
+      delete: booksObj.delete === true,
     },
     users: {
-      manage: Boolean(usersObj.manage),
+      manage: usersObj.manage === true,
     },
   };
 }
@@ -67,9 +67,11 @@ export async function POST(request: Request) {
   const rawExpiresAt = body?.expiresAt;
 
   if (typeof rawExpiresAt === "string" && rawExpiresAt) {
-    // The client sends Mantine's DateTimePicker value, e.g.
-    // "YYYY-MM-DD HH:mm:ss" -- dayjs parses that (and ISO strings) reliably
-    // across JS engines, unlike the native `Date` constructor.
+    // The client converts the DateTimePicker's timezone-less value to an
+    // ISO string (with an explicit UTC offset) before sending it, so the
+    // instant is preserved regardless of which timezone the server runs in
+    // -- see app/admin/manage-users/permission-form.tsx. dayjs parses that
+    // reliably across JS engines, unlike the native `Date` constructor.
     const parsed = dayjs(rawExpiresAt);
 
     if (!parsed.isValid()) {

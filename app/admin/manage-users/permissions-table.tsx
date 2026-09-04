@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Badge,
   Table,
@@ -12,6 +14,10 @@ import {
 
 import type { PermissionRecord } from "@/lib/permissions/types";
 
+// A Client Component so `toLocaleString()` below formats in the viewing
+// admin's own browser locale/timezone, rather than the server's (e.g. UTC
+// in production) -- the underlying `expiresAt`/`createdAt` timestamps and
+// the Active/Expired computation are timezone-safe regardless.
 function formatDateTime(date: Date | null): string {
   return date ? date.toLocaleString() : "Never";
 }

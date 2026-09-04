@@ -15,6 +15,8 @@ import {
 } from "@mantine/core";
 import { DateTimePicker } from "@mantine/dates";
 
+import { toIsoStringOrNull } from "@/lib/dates";
+
 const initialPermissions = {
   booksRead: false,
   booksCreate: false,
@@ -48,7 +50,11 @@ export function PermissionForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          expiresAt,
+          // The picker's value has no timezone info -- convert it to an
+          // ISO string (in the browser's own timezone) before sending, so
+          // the server stores the instant the admin actually picked rather
+          // than reinterpreting the same digits in the server's timezone.
+          expiresAt: toIsoStringOrNull(expiresAt),
           permissions: {
             books: {
               read: permissions.booksRead,
