@@ -7,25 +7,27 @@ import { AppShell, Burger, Group, NavLink, Text, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 
 import { SignOutButton } from "../sign-out-button";
-import { NAV_GROUPS } from "./nav-config";
+import { NAV_GROUPS, type NavAccess } from "./nav-config";
 
 type DashboardShellProps = {
   children: ReactNode;
   userEmail: string;
-  isSuperAdmin: boolean;
+  navAccess: NavAccess;
 };
 
 export function DashboardShell({
   children,
   userEmail,
-  isSuperAdmin,
+  navAccess,
 }: DashboardShellProps) {
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const pathname = usePathname();
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.superAdminOnly || isSuperAdmin),
+    items: group.items.filter(
+      (item) => !item.isVisible || item.isVisible(navAccess),
+    ),
   })).filter((group) => group.items.length > 0);
 
   return (

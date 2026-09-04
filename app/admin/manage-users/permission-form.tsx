@@ -157,11 +157,15 @@ export function PermissionForm({
           </Group>
         </Fieldset>
 
-        <Checkbox
-          label="Manage Users"
-          checked={permissions.usersManage}
-          onChange={() => togglePermission("usersManage")}
-        />
+        <Fieldset legend="Users">
+          <Group>
+            <Checkbox
+              label="Manage Users"
+              checked={permissions.usersManage}
+              onChange={() => togglePermission("usersManage")}
+            />
+          </Group>
+        </Fieldset>
 
         <DateTimePicker
           label="Access expires"

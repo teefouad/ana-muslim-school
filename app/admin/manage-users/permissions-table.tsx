@@ -2,8 +2,8 @@
 
 import { useState, useSyncExternalStore } from "react";
 import {
+  ActionIcon,
   Badge,
-  Button,
   Group,
   Modal,
   Table,
@@ -14,7 +14,9 @@ import {
   TableThead,
   TableTr,
   Text,
+  Tooltip,
 } from "@mantine/core";
+import { Pencil, Trash2 } from "lucide-react";
 
 import type { PermissionRecord } from "@/lib/permissions/types";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
@@ -128,21 +130,25 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
                   </TableTd>
                   <TableTd>
                     <Group gap="xs" wrap="nowrap">
-                      <Button
-                        variant="subtle"
-                        size="xs"
-                        onClick={() => setEditingRecord(record)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="subtle"
-                        color="red"
-                        size="xs"
-                        onClick={() => setDeletingRecord(record)}
-                      >
-                        Delete
-                      </Button>
+                      <Tooltip label="Edit">
+                        <ActionIcon
+                          variant="subtle"
+                          aria-label="Edit"
+                          onClick={() => setEditingRecord(record)}
+                        >
+                          <Pencil size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Delete">
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          aria-label="Delete"
+                          onClick={() => setDeletingRecord(record)}
+                        >
+                          <Trash2 size={16} />
+                        </ActionIcon>
+                      </Tooltip>
                     </Group>
                   </TableTd>
                 </TableTr>
