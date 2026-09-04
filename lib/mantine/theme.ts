@@ -15,6 +15,31 @@ export const theme = createTheme({
         bg: "dark.7",
       },
     },
+    // Modal content is a Paper (bg dark.7, see above), but its header uses
+    // the raw body background var, which `cssVariablesResolver` darkens to
+    // dark.9 -- pin it back to the Paper shade so the title bar doesn't
+    // read as a darker band than the rest of the modal.
+    Modal: {
+      styles: {
+        header: {
+          backgroundColor: "var(--mantine-color-dark-7)",
+        },
+      },
+    },
+    NavLink: {
+      styles: {
+        root: {
+          transition: "background-color 150ms ease",
+        },
+      },
+    },
+    Table: {
+      styles: {
+        tr: {
+          transition: "background-color 150ms ease",
+        },
+      },
+    },
   },
 });
 
