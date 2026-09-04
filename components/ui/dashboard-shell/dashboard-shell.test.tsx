@@ -66,6 +66,14 @@ describe("DashboardShell", () => {
     ).not.toHaveAttribute("data-active");
   });
 
+  it("does not crash and marks nothing active when the pathname is unavailable", () => {
+    renderShell(null as unknown as string);
+
+    expect(
+      screen.getByRole("link", { name: /manage users/i }),
+    ).not.toHaveAttribute("data-active");
+  });
+
   it("renders a placeholder when there are no nav groups", () => {
     usePathnameMock.mockReturnValue("/admin");
 

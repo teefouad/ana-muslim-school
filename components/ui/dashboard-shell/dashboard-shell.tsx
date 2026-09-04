@@ -35,8 +35,8 @@ export type DashboardShellProps = {
   children: ReactNode;
 };
 
-function isLinkActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isLinkActive(pathname: string | null, href: string): boolean {
+  return pathname === href || Boolean(pathname?.startsWith(`${href}/`));
 }
 
 /**
