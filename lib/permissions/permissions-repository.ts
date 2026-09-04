@@ -1,9 +1,14 @@
 import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 
 import { getAdminFirestore } from "@/lib/firebase/admin";
-import type { PermissionRecord, PermissionsInput } from "./types";
+import {
+  isValidPermissionsInput,
+  type PermissionRecord,
+  type PermissionsInput,
+} from "./types";
 
 export const PERMISSIONS_COLLECTION = "permissions";
 
@@ -65,6 +70,76 @@ export async function upsertPermission({
       updatedBy: actorEmail,
       lastLoginAt: null,
     });
+  });
+}
+
+/**
+ * Parses a `permissions` document into a `PermissionRecord`, or `null` if
+ * the document doesn't match the expected shape. Used on the dashboard
+ * access path (see `getPermissionForEmail`), where a malformed record must
+ * fail closed rather than grant access with coerced/default values.
+ */
+function parsePermissionRecord(
+  doc: QueryDocumentSnapshot,
+): PermissionRecord | null {
+  try {
+    const data = doc.data();
+
+    if (
+      typeof data.email !== "string" ||
+      !isValidPermissionsInput(data.permissions)
+    ) {
+      return null;
+    }
+
+    return {
+      id: doc.id,
+      email: data.email,
+      permissions: data.permissions,
+      expiresAt: toDate(data.expiresAt),
+      createdAt: toDate(data.createdAt) ?? new Date(0),
+      createdBy: data.createdBy,
+      updatedAt: toDate(data.updatedAt) ?? new Date(0),
+      updatedBy: data.updatedBy,
+      lastLoginAt: toDate(data.lastLoginAt),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Looks up the permission record for a normalized email, for use on the
+ * dashboard access-control path (see ANA-50). Returns `null` for a missing,
+ * malformed, or duplicate/ambiguous record -- callers must treat `null` as
+ * "no active permission" and fail closed rather than grant access.
+ *
+ * `email` must already be normalized (trimmed/lowercased) by the caller --
+ * see lib/validation/email.ts.
+ */
+export async function getPermissionForEmail(
+  email: string,
+): Promise<PermissionRecord | null> {
+  const snapshot = await getAdminFirestore()
+    .collection(PERMISSIONS_COLLECTION)
+    .where("email", "==", email)
+    .get();
+
+  if (snapshot.size !== 1) {
+    return null;
+  }
+
+  return parsePermissionRecord(snapshot.docs[0]);
+}
+
+/**
+ * Stamps a permission document with the current time as its last login.
+ * Callers must not let a failure here weaken or bypass authorization --
+ * see ANA-50.
+ */
+export async function recordPermissionLogin(id: string): Promise<void> {
+  await getAdminFirestore().collection(PERMISSIONS_COLLECTION).doc(id).update({
+    lastLoginAt: FieldValue.serverTimestamp(),
   });
 }
 
