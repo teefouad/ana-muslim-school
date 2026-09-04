@@ -71,6 +71,8 @@ describe("PermissionForm", () => {
     expect(screen.getByLabelText("Delete")).not.toBeChecked();
     expect(screen.getByLabelText("Manage Users")).toBeChecked();
 
+    expect(screen.getByText("Users")).toBeInTheDocument();
+
     expect(
       screen.getByRole("button", { name: "Save changes" }),
     ).toBeInTheDocument();

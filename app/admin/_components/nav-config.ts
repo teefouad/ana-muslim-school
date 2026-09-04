@@ -1,12 +1,18 @@
 import { LayoutDashboard, UserCircle, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+/** Resolved, server-computed access used to decide nav item visibility. */
+export type NavAccess = {
+  isSuperAdmin: boolean;
+  canManageUsers: boolean;
+};
+
 export type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
-  /** Hidden from the sidebar for authenticated accounts that aren't the super admin. */
-  superAdminOnly?: boolean;
+  /** When set, the item is hidden from the sidebar unless this returns true for the signed-in user's resolved access. */
+  isVisible?: (access: NavAccess) => boolean;
 };
 
 export type NavGroup = {
@@ -29,7 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Manage Users",
         href: "/admin/manage-users",
         icon: Users,
-        superAdminOnly: true,
+        isVisible: (access) => access.isSuperAdmin || access.canManageUsers,
       },
     ],
   },

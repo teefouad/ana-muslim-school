@@ -47,11 +47,17 @@ export default async function AdminLayout(props: LayoutProps<"/admin">) {
     }
   }
 
+  const isSuperAdmin = access.status === "super-admin";
+  const navAccess = {
+    isSuperAdmin,
+    canManageUsers:
+      isSuperAdmin ||
+      (access.status === "active" &&
+        access.permission.permissions.users.manage),
+  };
+
   return (
-    <DashboardShell
-      userEmail={user.email}
-      isSuperAdmin={access.status === "super-admin"}
-    >
+    <DashboardShell userEmail={user.email} navAccess={navAccess}>
       {props.children}
     </DashboardShell>
   );
