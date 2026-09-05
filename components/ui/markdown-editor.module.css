@@ -1,0 +1,61 @@
+/* Themes MDXEditor's own CSS custom properties (see @mdxeditor/editor's
+   style.css) to match the Mantine dark theme this app uses, so the editor
+   reads as part of the surrounding form rather than a foreign embedded app. */
+.container :global(.mantine-markdown-editor) {
+  --accentSolid: var(--mantine-primary-color-filled);
+  --accentSolidHover: var(--mantine-primary-color-filled-hover);
+  --accentText: var(--mantine-primary-color-filled);
+  --accentBorder: var(--mantine-color-dark-4);
+  --basePageBg: var(--mantine-color-body);
+  --baseBase: var(--mantine-color-dark-6);
+  --baseBg: var(--mantine-color-dark-6);
+  --baseBgHover: var(--mantine-color-dark-5);
+  --baseBorder: var(--mantine-color-dark-4);
+  --baseText: var(--mantine-color-text);
+  --baseTextContrast: var(--mantine-color-white);
+
+  font-family: var(--mantine-font-family);
+  border: 1px solid var(--mantine-color-dark-4);
+  border-radius: var(--mantine-radius-sm);
+  overflow: hidden;
+}
+
+.container :global(.mdxeditor-toolbar) {
+  background-color: var(--mantine-color-dark-6);
+  border-bottom: 1px solid var(--mantine-color-dark-4);
+  gap: var(--mantine-spacing-xs);
+}
+
+.container :global(.mdxeditor-root-contenteditable) {
+  min-height: 8rem;
+  color: var(--mantine-color-text);
+}
+
+.container :global(.mantine-markdown-editor__content) {
+  padding: var(--mantine-spacing-sm);
+}
+
+/* Tailwind's preflight reset (app/globals.css) zeroes out `list-style` on
+   every <ul>/<ol>, including MDXEditor's -- restore real bullets/numbers so
+   list content still reads as a list. */
+.container :global(.mantine-markdown-editor__content) ul {
+  list-style: disc;
+  padding-inline-start: 1.5em;
+}
+
+.container :global(.mantine-markdown-editor__content) ol {
+  list-style: decimal;
+  padding-inline-start: 1.5em;
+}
+
+/* Every built-in toolbar button renders a Radix tooltip on hover, with no
+   prop to opt individual buttons out -- hide the tooltip content itself
+   (Radix always sets role="tooltip" on it, unlike its internal, hashed CSS
+   module class names) rather than reaching into MDXEditor internals.
+   MDXEditor renders tooltips/popups into a *separate* element carrying the
+   same `mantine-markdown-editor` class (not a descendant of `.container`,
+   the editor's own wrapper) -- see markdown-editor-core.tsx -- so this is
+   scoped off that class directly rather than `.container`. */
+:global(.mantine-markdown-editor) :global([role="tooltip"]) {
+  display: none;
+}
