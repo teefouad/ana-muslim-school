@@ -204,6 +204,57 @@ describe("updatePermission", () => {
       actorEmail: "admin@example.com",
     });
   });
+
+  it("passes permissions through without touching expiresAt when expiresAt is omitted", async () => {
+    updatePermissionByIdMock.mockResolvedValueOnce(true);
+
+    await updatePermission({
+      id: "doc-1",
+      permissions: permissionsInput,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(updatePermissionByIdMock).toHaveBeenCalledWith({
+      id: "doc-1",
+      permissions: permissionsInput,
+      expiresAt: undefined,
+      actorEmail: "admin@example.com",
+    });
+  });
+
+  it("parses expiresAt without touching permissions when permissions is omitted", async () => {
+    updatePermissionByIdMock.mockResolvedValueOnce(true);
+
+    await updatePermission({
+      id: "doc-1",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      actorEmail: "admin@example.com",
+    });
+
+    expect(updatePermissionByIdMock).toHaveBeenCalledWith({
+      id: "doc-1",
+      permissions: undefined,
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      actorEmail: "admin@example.com",
+    });
+  });
+
+  it("touches neither field when both are omitted, without failing", async () => {
+    updatePermissionByIdMock.mockResolvedValueOnce(true);
+
+    const result = await updatePermission({
+      id: "doc-1",
+      actorEmail: "admin@example.com",
+    });
+
+    expect(result).toEqual({ ok: true, value: undefined });
+    expect(updatePermissionByIdMock).toHaveBeenCalledWith({
+      id: "doc-1",
+      permissions: undefined,
+      expiresAt: undefined,
+      actorEmail: "admin@example.com",
+    });
+  });
 });
 
 describe("deletePermission", () => {

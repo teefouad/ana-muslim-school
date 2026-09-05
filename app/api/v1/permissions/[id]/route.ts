@@ -5,7 +5,11 @@ import {
   getPermissionById,
   updatePermission,
 } from "@/lib/permissions/permissions-service";
-import { permissionErrorResponse, requireSuperAdmin } from "../shared";
+import {
+  parseJsonObject,
+  permissionErrorResponse,
+  requireSuperAdmin,
+} from "../shared";
 
 /** Reads a single `permissions` record by its Firestore document ID. */
 export async function GET(
@@ -29,10 +33,16 @@ export async function GET(
 }
 
 /**
- * Updates an existing `permissions` record's permissions/expiration by its
- * Firestore document ID. Restricted to the super admin. Email is
- * intentionally not accepted here -- editing a record never changes which
- * account it belongs to (see ANA-51).
+ * Partially updates an existing `permissions` record's permissions/
+ * expiration by its Firestore document ID. Restricted to the super admin.
+ * Email is intentionally not accepted here -- editing a record never
+ * changes which account it belongs to (see ANA-51).
+ *
+ * A field the caller omits from the request body is left unchanged rather
+ * than reset to a default -- e.g. sending only `expiresAt` never touches
+ * `permissions`. A malformed or non-object body is rejected outright rather
+ * than treated as "no fields given", since silently no-op'ing a broken
+ * request would hide the caller's mistake (see ANA-54 PR review).
  */
 export async function PATCH(
   request: Request,
@@ -45,11 +55,19 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = await request.json().catch(() => null);
+  const body = await parseJsonObject(request);
+
+  if (!body.ok) {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
   const result = await updatePermission({
     id,
-    permissions: body?.permissions,
-    expiresAt: body?.expiresAt,
+    permissions: body.value.permissions,
+    expiresAt: body.value.expiresAt,
     actorEmail: auth.actorEmail,
   });
 

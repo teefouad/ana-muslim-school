@@ -34,6 +34,14 @@ function jsonRequest(body: unknown) {
   });
 }
 
+function rawRequest(body: string) {
+  return new Request("http://localhost/api/v1/permissions/doc-1", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+}
+
 function getRequest() {
   return new Request("http://localhost/api/v1/permissions/doc-1");
 }
@@ -186,6 +194,93 @@ describe("PATCH /api/v1/permissions/[id]", () => {
     expect(updatePermissionMock).toHaveBeenCalledWith({
       id: "doc-1",
       permissions: { books: { read: true } },
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      actorEmail: "admin@example.com",
+    });
+  });
+
+  it("rejects malformed JSON with a 400 instead of treating it as an empty/no-op body", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+
+    const response = await PATCH(
+      rawRequest("{not valid json"),
+      context("doc-1"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ error: "Invalid request body." });
+    expect(updatePermissionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-object JSON body (e.g. an array) with a 400", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+
+    const response = await PATCH(rawRequest("[1,2,3]"), context("doc-1"));
+
+    expect(response.status).toBe(400);
+    expect(updatePermissionMock).not.toHaveBeenCalled();
+  });
+
+  it("passes both fields as undefined for an empty PATCH body, touching neither", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+    updatePermissionMock.mockResolvedValueOnce({ ok: true, value: undefined });
+
+    const response = await PATCH(jsonRequest({}), context("doc-1"));
+
+    expect(response.status).toBe(200);
+    expect(updatePermissionMock).toHaveBeenCalledWith({
+      id: "doc-1",
+      permissions: undefined,
+      expiresAt: undefined,
+      actorEmail: "admin@example.com",
+    });
+  });
+
+  it("sends only permissions when the body omits expiresAt, leaving it untouched", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+    updatePermissionMock.mockResolvedValueOnce({ ok: true, value: undefined });
+
+    await PATCH(
+      jsonRequest({ permissions: { books: { read: true } } }),
+      context("doc-1"),
+    );
+
+    expect(updatePermissionMock).toHaveBeenCalledWith({
+      id: "doc-1",
+      permissions: { books: { read: true } },
+      expiresAt: undefined,
+      actorEmail: "admin@example.com",
+    });
+  });
+
+  it("sends only expiresAt when the body omits permissions, leaving it untouched", async () => {
+    getSessionUserMock.mockResolvedValueOnce({
+      uid: "1",
+      email: "admin@example.com",
+    });
+    updatePermissionMock.mockResolvedValueOnce({ ok: true, value: undefined });
+
+    await PATCH(
+      jsonRequest({ expiresAt: "2030-01-01T00:00:00.000Z" }),
+      context("doc-1"),
+    );
+
+    expect(updatePermissionMock).toHaveBeenCalledWith({
+      id: "doc-1",
+      permissions: undefined,
       expiresAt: "2030-01-01T00:00:00.000Z",
       actorEmail: "admin@example.com",
     });

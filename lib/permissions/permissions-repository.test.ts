@@ -467,6 +467,52 @@ describe("updatePermissionById", () => {
     expect(updated).toBe(false);
     expect(docUpdateMock).not.toHaveBeenCalled();
   });
+
+  it("omits expiresAt from the write when not given, leaving the stored value untouched", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    await updatePermissionById({
+      id: "doc-1",
+      permissions,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      permissions,
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
+  });
+
+  it("omits permissions from the write when not given, leaving the stored value untouched", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    await updatePermissionById({
+      id: "doc-1",
+      expiresAt: null,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      expiresAt: null,
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
+  });
+
+  it("writes only the updatedAt/updatedBy metadata when neither field is given", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    await updatePermissionById({
+      id: "doc-1",
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
+  });
 });
 
 describe("deletePermissionById", () => {

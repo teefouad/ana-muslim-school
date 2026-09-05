@@ -11,7 +11,7 @@ import {
   updatePermissionById,
   upsertPermission,
 } from "./permissions-repository";
-import type { PermissionRecord } from "./types";
+import type { PermissionRecord, PermissionsInput } from "./types";
 
 export type PermissionServiceError =
   | "missing-email"
@@ -119,19 +119,24 @@ export async function createPermission({
 
 type UpdatePermissionInput = {
   id: string;
-  permissions: unknown;
-  expiresAt: unknown;
+  /** Omit (`undefined`) to leave `permissions` unchanged -- this is a partial update, not a replacement. */
+  permissions?: unknown;
+  /** Omit (`undefined`) to leave `expiresAt` unchanged; `null`/empty clears it. */
+  expiresAt?: unknown;
   actorEmail: string;
 };
 
 /**
- * Updates an existing record's permissions/expiration by its Firestore
- * document ID (see ANA-51). Email is intentionally not accepted here --
- * editing a record never changes which account it belongs to.
+ * Partially updates an existing record's permissions/expiration by its
+ * Firestore document ID (see ANA-51/ANA-54). Email is intentionally not
+ * accepted here -- editing a record never changes which account it belongs
+ * to. `permissions`/`expiresAt` are only parsed and written when the caller
+ * actually supplies them (`undefined` means "leave as-is"), so a caller
+ * that only sends one field never wipes the other back to a default.
  */
 export async function updatePermission({
   id,
-  permissions,
+  permissions: rawPermissions,
   expiresAt: rawExpiresAt,
   actorEmail,
 }: UpdatePermissionInput): Promise<PermissionServiceResult> {
@@ -139,16 +144,28 @@ export async function updatePermission({
     return fail("invalid-id");
   }
 
-  const expiresAtResult = parseExpiresAt(rawExpiresAt);
+  let permissions: PermissionsInput | undefined;
 
-  if (!expiresAtResult.ok) {
-    return fail("invalid-expiration");
+  if (rawPermissions !== undefined) {
+    permissions = toBooleanFlags(rawPermissions);
+  }
+
+  let expiresAt: Date | null | undefined;
+
+  if (rawExpiresAt !== undefined) {
+    const expiresAtResult = parseExpiresAt(rawExpiresAt);
+
+    if (!expiresAtResult.ok) {
+      return fail("invalid-expiration");
+    }
+
+    expiresAt = expiresAtResult.value;
   }
 
   const updated = await updatePermissionById({
     id,
-    permissions: toBooleanFlags(permissions),
-    expiresAt: expiresAtResult.value,
+    permissions,
+    expiresAt,
     actorEmail,
   });
 
