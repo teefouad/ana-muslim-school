@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Group, Stack, Title } from "@mantine/core";
+import { Divider, Group, Stack, Title } from "@mantine/core";
 
 import { getSessionUser, isSuperAdminEmail } from "@/lib/auth/session";
 import { listPermissions } from "@/lib/permissions/permissions-service";
@@ -21,6 +21,7 @@ export default async function ManageUsersPage() {
         <Title order={2}>Users</Title>
         <AddAccessModal />
       </Group>
+      <Divider opacity={0.25} mx={-27} />
       <PermissionsTable records={records} />
     </Stack>
   );

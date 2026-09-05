@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { Stack, Text, Title } from "@mantine/core";
+import { Divider, Stack, Text, Title } from "@mantine/core";
 
 import {
   BookForm,
@@ -25,6 +25,7 @@ export default function EditBookPage() {
   return (
     <Stack gap="xl" p="xl">
       <Title order={2}>Edit Book</Title>
+      <Divider opacity={0.25} mx={-27} />
       {book ? (
         <BookForm
           initialValues={toBookFormValues(book)}

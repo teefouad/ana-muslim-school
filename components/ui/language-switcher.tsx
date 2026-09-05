@@ -36,7 +36,7 @@ export function LanguageSwitcher({
       data={languages.map((language) => ({
         value: language.slug,
         label: (
-          <Group gap={6} wrap="nowrap" justify="center">
+          <Group mx={5} my={2} gap={6} wrap="nowrap" justify="center">
             <span>{language.label}</span>
             {isFilled && (
               <Box

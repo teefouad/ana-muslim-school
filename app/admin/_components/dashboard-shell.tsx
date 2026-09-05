@@ -41,6 +41,7 @@ export function DashboardShell({
 
   return (
     <AppShell
+      id="dashboard-shell"
       header={{ height: 60 }}
       navbar={{
         width: 260,
@@ -49,7 +50,7 @@ export function DashboardShell({
       }}
       padding="md"
     >
-      <AppShell.Header>
+      <AppShell.Header withBorder={false}>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="sm">
             <Burger
@@ -76,7 +77,7 @@ export function DashboardShell({
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
+      <AppShell.Navbar p="md" withBorder={false}>
         {visibleGroups.map((group) => (
           <NavLink
             key={group.label}
@@ -102,7 +103,14 @@ export function DashboardShell({
         ))}
       </AppShell.Navbar>
 
-      <AppShell.Main className="flex flex-col">{children}</AppShell.Main>
+      <AppShell.Main
+        className="flex flex-col"
+        style={{
+          marginTop: -20,
+        }}
+      >
+        {children}
+      </AppShell.Main>
     </AppShell>
   );
 }
