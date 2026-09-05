@@ -1,23 +1,9 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import {
-  ActionIcon,
-  Badge,
-  Group,
-  Modal,
-  Table,
-  TableScrollContainer,
-  TableTbody,
-  TableTd,
-  TableTh,
-  TableThead,
-  TableTr,
-  Text,
-  Tooltip,
-} from "@mantine/core";
-import { Pencil, Trash2 } from "lucide-react";
+import { Badge, Modal } from "@mantine/core";
 
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import type { PermissionRecord } from "@/lib/permissions/types";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
 import { PermissionForm } from "./permission-form";
@@ -63,9 +49,55 @@ function isExpired(expiresAt: Date | null): boolean {
   return expiresAt !== null && expiresAt.getTime() <= Date.now();
 }
 
-// Imports the `Table` subcomponents by their named exports rather than as
-// `Table.Thead` etc. -- the compound-component properties resolve to
-// `undefined` under Next's Turbopack dev bundler for this Mantine version.
+function getBookLabels(record: PermissionRecord): string {
+  const { books } = record.permissions;
+  const labels = [
+    books.read && "Read",
+    books.create && "Add",
+    books.update && "Edit",
+    books.delete && "Delete",
+  ].filter(Boolean);
+
+  return labels.length > 0 ? labels.join(", ") : "None";
+}
+
+const columns: DataTableColumn<PermissionRecord>[] = [
+  { key: "email", header: "Email", render: (record) => record.email },
+  { key: "books", header: "Books", render: getBookLabels },
+  {
+    key: "manageUsers",
+    header: "Manage Users",
+    render: (record) => (record.permissions.users.manage ? "Yes" : "No"),
+  },
+  {
+    key: "expires",
+    header: "Expires",
+    render: (record) => <LocalDateTime date={record.expiresAt} />,
+  },
+  {
+    key: "created",
+    header: "Created",
+    render: (record) => <LocalDateTime date={record.createdAt} />,
+  },
+  {
+    key: "lastLogin",
+    header: "Last Login",
+    render: (record) => <LocalDateTime date={record.lastLoginAt} />,
+  },
+  {
+    key: "status",
+    header: "Status",
+    render: (record) => {
+      const expired = isExpired(record.expiresAt);
+      return (
+        <Badge color={expired ? "red" : "green"} variant="light">
+          {expired ? "Expired" : "Active"}
+        </Badge>
+      );
+    },
+  },
+];
+
 export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
   const [editingRecord, setEditingRecord] = useState<PermissionRecord | null>(
     null,
@@ -74,89 +106,19 @@ export function PermissionsTable({ records }: { records: PermissionRecord[] }) {
     null,
   );
 
-  if (records.length === 0) {
-    return <Text c="dimmed">No access records yet.</Text>;
-  }
-
   return (
     <>
-      <TableScrollContainer minWidth={800}>
-        <Table highlightOnHover verticalSpacing="sm">
-          <TableThead>
-            <TableTr>
-              <TableTh>Email</TableTh>
-              <TableTh>Books</TableTh>
-              <TableTh>Manage Users</TableTh>
-              <TableTh>Expires</TableTh>
-              <TableTh>Created</TableTh>
-              <TableTh>Last Login</TableTh>
-              <TableTh>Status</TableTh>
-              <TableTh />
-            </TableTr>
-          </TableThead>
-          <TableTbody>
-            {records.map((record) => {
-              const expired = isExpired(record.expiresAt);
-              const { books } = record.permissions;
-              const bookLabels = [
-                books.read && "Read",
-                books.create && "Add",
-                books.update && "Edit",
-                books.delete && "Delete",
-              ].filter(Boolean);
-
-              return (
-                <TableTr key={record.id}>
-                  <TableTd>{record.email}</TableTd>
-                  <TableTd>
-                    {bookLabels.length > 0 ? bookLabels.join(", ") : "None"}
-                  </TableTd>
-                  <TableTd>
-                    {record.permissions.users.manage ? "Yes" : "No"}
-                  </TableTd>
-                  <TableTd>
-                    <LocalDateTime date={record.expiresAt} />
-                  </TableTd>
-                  <TableTd>
-                    <LocalDateTime date={record.createdAt} />
-                  </TableTd>
-                  <TableTd>
-                    <LocalDateTime date={record.lastLoginAt} />
-                  </TableTd>
-                  <TableTd>
-                    <Badge color={expired ? "red" : "green"} variant="light">
-                      {expired ? "Expired" : "Active"}
-                    </Badge>
-                  </TableTd>
-                  <TableTd>
-                    <Group gap="xs" wrap="nowrap">
-                      <Tooltip label="Edit">
-                        <ActionIcon
-                          variant="subtle"
-                          aria-label="Edit"
-                          onClick={() => setEditingRecord(record)}
-                        >
-                          <Pencil size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Delete">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          aria-label="Delete"
-                          onClick={() => setDeletingRecord(record)}
-                        >
-                          <Trash2 size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </TableTd>
-                </TableTr>
-              );
-            })}
-          </TableTbody>
-        </Table>
-      </TableScrollContainer>
+      <DataTable
+        items={records}
+        getItemId={(record) => record.id}
+        columns={columns}
+        emptyState="No access records yet."
+        minWidth={800}
+        onEditItem={setEditingRecord}
+        getEditLabel={() => "Edit"}
+        onDeleteItem={setDeletingRecord}
+        getDeleteLabel={() => "Delete"}
+      />
 
       <Modal
         opened={editingRecord !== null}
