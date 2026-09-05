@@ -1,7 +1,7 @@
 import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
+import type { DocumentSnapshot } from "firebase-admin/firestore";
 
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import {
@@ -138,18 +138,37 @@ export async function deletePermissionById(id: string): Promise<boolean> {
 }
 
 /**
+ * Looks up a `permissions` record by its Firestore document ID. Returns
+ * `null` for a missing or malformed document, so callers can respond with a
+ * 404 rather than trusting a coerced/default record.
+ */
+export async function getPermissionById(
+  id: string,
+): Promise<PermissionRecord | null> {
+  const snapshot = await getAdminFirestore()
+    .collection(PERMISSIONS_COLLECTION)
+    .doc(id)
+    .get();
+
+  if (!snapshot.exists) {
+    return null;
+  }
+
+  return parsePermissionRecord(snapshot);
+}
+
+/**
  * Parses a `permissions` document into a `PermissionRecord`, or `null` if
  * the document doesn't match the expected shape. Used on the dashboard
  * access path (see `getPermissionForEmail`), where a malformed record must
  * fail closed rather than grant access with coerced/default values.
  */
-function parsePermissionRecord(
-  doc: QueryDocumentSnapshot,
-): PermissionRecord | null {
+function parsePermissionRecord(doc: DocumentSnapshot): PermissionRecord | null {
   try {
     const data = doc.data();
 
     if (
+      !data ||
       typeof data.email !== "string" ||
       !isValidPermissionsInput(data.permissions)
     ) {

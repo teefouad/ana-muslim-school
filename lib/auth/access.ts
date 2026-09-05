@@ -2,9 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 
-import { getPermissionForEmail } from "@/lib/permissions/permissions-repository";
+import { getPermissionForEmail } from "@/lib/permissions/permissions-service";
 import type { PermissionRecord } from "@/lib/permissions/types";
-import { normalizeEmail } from "@/lib/validation/email";
 import { isSuperAdminEmail } from "./is-super-admin-email";
 import { getSessionUser } from "./session";
 import type { SessionUser } from "./verify-session";
@@ -30,7 +29,7 @@ export async function resolveDashboardAccess(
     return { status: "super-admin" };
   }
 
-  const permission = await getPermissionForEmail(normalizeEmail(user.email));
+  const permission = await getPermissionForEmail(user.email);
 
   if (!permission) {
     return { status: "pending" };

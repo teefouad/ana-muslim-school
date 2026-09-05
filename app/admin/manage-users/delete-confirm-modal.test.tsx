@@ -96,7 +96,7 @@ describe("DeleteConfirmModal", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/permissions/doc-42",
+      "/api/v1/permissions/doc-42",
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(refreshMock).toHaveBeenCalledTimes(1);

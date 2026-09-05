@@ -72,6 +72,7 @@ const {
   upsertPermission,
   listPermissions,
   getPermissionForEmail,
+  getPermissionById,
   recordPermissionLogin,
   updatePermissionById,
   deletePermissionById,
@@ -323,6 +324,63 @@ describe("getPermissionForEmail", () => {
     });
 
     expect(await getPermissionForEmail("someone@example.com")).toEqual({
+      id: "doc-1",
+      email: "someone@example.com",
+      permissions,
+      expiresAt: null,
+      createdAt,
+      createdBy: "admin@example.com",
+      updatedAt: createdAt,
+      updatedBy: "admin@example.com",
+      lastLoginAt: null,
+    });
+  });
+});
+
+describe("getPermissionById", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setUpFirestoreMocks();
+  });
+
+  it("returns null when no document exists for the id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: false });
+
+    expect(await getPermissionById("missing-doc")).toBeNull();
+    expect(docMock).toHaveBeenCalledWith("missing-doc");
+  });
+
+  it("fails closed when the matched document has a malformed permissions shape", async () => {
+    docGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        email: "someone@example.com",
+        permissions: { books: { read: true } },
+      }),
+    });
+
+    expect(await getPermissionById("doc-1")).toBeNull();
+  });
+
+  it("returns the parsed record for an existing document", async () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+
+    docGetMock.mockResolvedValueOnce({
+      exists: true,
+      id: "doc-1",
+      data: () => ({
+        email: "someone@example.com",
+        permissions,
+        expiresAt: null,
+        createdAt: { toDate: () => createdAt },
+        createdBy: "admin@example.com",
+        updatedAt: { toDate: () => createdAt },
+        updatedBy: "admin@example.com",
+        lastLoginAt: null,
+      }),
+    });
+
+    expect(await getPermissionById("doc-1")).toEqual({
       id: "doc-1",
       email: "someone@example.com",
       permissions,

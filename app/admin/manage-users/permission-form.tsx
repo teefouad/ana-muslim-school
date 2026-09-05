@@ -74,7 +74,7 @@ export function PermissionForm({
 
     try {
       const response = await fetch(
-        isEditing ? `/api/permissions/${record.id}` : "/api/permissions",
+        isEditing ? `/api/v1/permissions/${record.id}` : "/api/v1/permissions",
         {
           method: isEditing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
