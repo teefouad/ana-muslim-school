@@ -29,6 +29,7 @@ export function LanguageSwitcher({
     <SegmentedControl
       aria-label="Language"
       size="xs"
+      radius="xl"
       value={value}
       onChange={onChange}
       disabled={disabled}

@@ -5,8 +5,8 @@ import { TranslatableTextArea } from "./translatable-text-area";
 import type { LanguageOption, TranslatedValue } from "./translatable-value";
 
 const LANGUAGES: LanguageOption[] = [
-  { slug: "en", label: "English" },
   { slug: "ar", label: "Arabic" },
+  { slug: "en", label: "English" },
 ];
 
 const meta = {
@@ -57,8 +57,8 @@ export const ArabicAndEnglishValues: Story = {
   render: () => (
     <ControlledField
       initialValue={{
-        en: "# The Sealed Nectar\n\nA **biography** of the Prophet Muhammad.",
         ar: "# الرحيق المختوم\n\n**سيرة** النبي محمد صلى الله عليه وسلم.",
+        en: "# The Sealed Nectar\n\nA **biography** of the Prophet Muhammad.",
       }}
     />
   ),

@@ -47,10 +47,12 @@ test("emits edits as a Markdown string", async () => {
   expect(onChange).toHaveBeenLastCalledWith("Hello!", false);
 });
 
-test("exposes only the intended toolbar controls", async () => {
+test("exposes only the intended toolbar controls, all as plain buttons", async () => {
   renderWithProvider(<MarkdownEditor markdown="Hello" onChange={vi.fn()} />);
 
   const toolbar = await screen.findByRole("toolbar");
+  expect(within(toolbar).queryAllByRole("combobox")).toHaveLength(0);
+
   const controls = within(toolbar)
     .getAllByRole("button")
     .map((button) => button.getAttribute("aria-label"))
@@ -58,11 +60,6 @@ test("exposes only the intended toolbar controls", async () => {
       within(toolbar)
         .getAllByRole("radio")
         .map((radio) => radio.getAttribute("aria-label")),
-    )
-    .concat(
-      within(toolbar)
-        .getAllByRole("combobox")
-        .map((combobox) => combobox.getAttribute("aria-label")),
     );
 
   expect(new Set(controls)).toEqual(
@@ -71,11 +68,43 @@ test("exposes only the intended toolbar controls", async () => {
       "Redo Ctrl+Y",
       "Bold",
       "Italic",
-      "Block type",
+      "Paragraph",
+      "Heading 1",
+      "Heading 2",
+      "Heading 3",
       "Bulleted list",
       "Numbered list",
       "Insert thematic break",
     ]),
+  );
+});
+
+test("has no tooltips on any toolbar control", async () => {
+  const user = userEvent.setup();
+  renderWithProvider(<MarkdownEditor markdown="Hello" onChange={vi.fn()} />);
+
+  const boldButton = await screen.findByRole("radio", { name: "Bold" });
+  await user.hover(boldButton);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+test("switches between block types via buttons instead of a dropdown", async () => {
+  const user = userEvent.setup();
+  renderWithProvider(<MarkdownEditor markdown="Hello" onChange={vi.fn()} />);
+
+  // Converting a block type acts on the current selection, so the editor
+  // needs focus/a cursor placed in it first.
+  await user.click(await screen.findByRole("textbox"));
+  await user.click(await screen.findByRole("button", { name: "Heading 1" }));
+
+  expect(
+    await screen.findByRole("heading", { level: 1, name: "Hello" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Heading 1" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
 });
 

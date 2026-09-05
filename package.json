@@ -18,10 +18,12 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@lexical/rich-text": "^0.48.0",
     "@mantine/core": "^9.6.0",
     "@mantine/dates": "^9.6.0",
     "@mantine/hooks": "^9.6.0",
     "@mdxeditor/editor": "^4.2.3",
+    "@mdxeditor/gurx": "^1.2.4",
     "dayjs": "^1.11.23",
     "firebase": "^12.18.0",
     "firebase-admin": "^14.3.0",

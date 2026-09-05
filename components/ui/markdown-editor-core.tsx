@@ -9,9 +9,11 @@ import {
 } from "react";
 import { useComputedColorScheme } from "@mantine/core";
 import {
-  BlockTypeSelect,
   BoldItalicUnderlineToggles,
+  Button,
+  convertSelectionToNode$,
   createRootEditorSubscription$,
+  currentBlockType$,
   headingsPlugin,
   InsertThematicBreak,
   listsPlugin,
@@ -23,7 +25,20 @@ import {
   toolbarPlugin,
   UndoRedo,
 } from "@mdxeditor/editor";
-import { $getSelection, $isRangeSelection } from "lexical";
+import { useCellValue, usePublisher } from "@mdxeditor/gurx";
+import { $createHeadingNode, type HeadingTagType } from "@lexical/rich-text";
+import {
+  Heading1,
+  Heading2,
+  Heading3,
+  type LucideIcon,
+  Pilcrow,
+} from "lucide-react";
+import {
+  $createParagraphNode,
+  $getSelection,
+  $isRangeSelection,
+} from "lexical";
 
 import "@mdxeditor/editor/style.css";
 
@@ -55,6 +70,53 @@ const selectionTrackerPlugin = realmPlugin<{
     );
   },
 });
+
+const BLOCK_TYPE_BUTTONS: ReadonlyArray<{
+  value: "paragraph" | HeadingTagType;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { value: "paragraph", label: "Paragraph", icon: Pilcrow },
+  { value: "h1", label: "Heading 1", icon: Heading1 },
+  { value: "h2", label: "Heading 2", icon: Heading2 },
+  { value: "h3", label: "Heading 3", icon: Heading3 },
+];
+
+// A button per block type instead of MDXEditor's built-in BlockTypeSelect
+// dropdown, so every formatting control in the toolbar is a plain, always-
+// visible button (see the module's toolbarContents). Mirrors
+// BlockTypeSelect's own conversion logic (convertSelectionToNode$ +
+// $createParagraphNode/$createHeadingNode) since that isn't exposed as a
+// reusable primitive.
+function BlockTypeButtons() {
+  const convertSelectionToNode = usePublisher(convertSelectionToNode$);
+  const currentBlockType = useCellValue(currentBlockType$);
+
+  return (
+    <>
+      {BLOCK_TYPE_BUTTONS.map(({ value, label, icon: Icon }) => {
+        const isActive = currentBlockType === value;
+        return (
+          <Button
+            key={value}
+            aria-label={label}
+            aria-pressed={isActive}
+            data-state={isActive ? "on" : "off"}
+            onClick={() =>
+              convertSelectionToNode(() =>
+                value === "paragraph"
+                  ? $createParagraphNode()
+                  : $createHeadingNode(value),
+              )
+            }
+          >
+            <Icon size={16} aria-hidden="true" />
+          </Button>
+        );
+      })}
+    </>
+  );
+}
 
 export interface MarkdownEditorCoreProps {
   markdown: string;
@@ -119,7 +181,7 @@ export default function MarkdownEditorCore({
               <>
                 <UndoRedo />
                 <BoldItalicUnderlineToggles options={["Bold", "Italic"]} />
-                <BlockTypeSelect />
+                <BlockTypeButtons />
                 <ListsToggle options={["bullet", "number"]} />
                 <InsertThematicBreak />
               </>

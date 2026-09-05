@@ -47,3 +47,15 @@
   list-style: decimal;
   padding-inline-start: 1.5em;
 }
+
+/* Every built-in toolbar button renders a Radix tooltip on hover, with no
+   prop to opt individual buttons out -- hide the tooltip content itself
+   (Radix always sets role="tooltip" on it, unlike its internal, hashed CSS
+   module class names) rather than reaching into MDXEditor internals.
+   MDXEditor renders tooltips/popups into a *separate* element carrying the
+   same `mantine-markdown-editor` class (not a descendant of `.container`,
+   the editor's own wrapper) -- see markdown-editor-core.tsx -- so this is
+   scoped off that class directly rather than `.container`. */
+:global(.mantine-markdown-editor) :global([role="tooltip"]) {
+  display: none;
+}

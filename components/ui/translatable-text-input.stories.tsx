@@ -6,8 +6,8 @@ import { TranslatableTextInput } from "./translatable-text-input";
 import type { LanguageOption, TranslatedValue } from "./translatable-value";
 
 const LANGUAGES: LanguageOption[] = [
-  { slug: "en", label: "English" },
   { slug: "ar", label: "Arabic" },
+  { slug: "en", label: "English" },
 ];
 
 const meta = {
