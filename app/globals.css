@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0a0a0a;
 }
 
 @theme inline {
@@ -17,4 +17,22 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+#dashboard-shell:before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  top: var(--app-shell-header-height);
+  left: var(--app-shell-navbar-width);
+  right: 20px;
+  bottom: 0;
+  border-top-right-radius: 20px;
+  border-top-left-radius: 20px;
+  border: 1px solid #202020;
+  background-color: #121212;
+}
+
+#dashboard-shell > main > div {
+  margin-left: -20px;
 }

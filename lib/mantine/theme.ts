@@ -34,9 +34,28 @@ export const theme = createTheme({
       },
     },
     Table: {
+      vars: () => ({
+        table: {
+          "--table-border-color": "#202020",
+        },
+        tr: {
+          "--tr-hover-bg": "#161616",
+        },
+      }),
       styles: {
         tr: {
           transition: "background-color 150ms ease",
+        },
+      },
+    },
+    TextInput: {
+      styles: {
+        label: {
+          marginBottom: 5,
+        },
+        input: {
+          borderColor: "#292929",
+          backgroundColor: "#1a1a1a",
         },
       },
     },
@@ -50,7 +69,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (t) => {
     ...base,
     dark: {
       ...base.dark,
-      "--mantine-color-body": "var(--mantine-color-dark-9)",
+
+      "--mantine-color-body": "var(--background)",
     },
   };
 };

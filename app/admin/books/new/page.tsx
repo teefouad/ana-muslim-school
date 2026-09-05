@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Stack, Title } from "@mantine/core";
+import { Divider, Stack, Title } from "@mantine/core";
 
 import { BookForm, type BookFormValues } from "../book-form";
 import { useBooks } from "../books-store";
@@ -18,6 +18,7 @@ export default function AddBookPage() {
   return (
     <Stack gap="xl" p="xl">
       <Title order={2}>Add Book</Title>
+      <Divider opacity={0.25} mx={-27} />
       <BookForm
         submitLabel="Add book"
         onSubmit={handleSubmit}

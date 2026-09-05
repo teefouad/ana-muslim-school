@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Group, Stack, Title } from "@mantine/core";
+import { Button, Divider, Group, Stack, Title } from "@mantine/core";
 
 import { BooksTable } from "./books-table";
 
@@ -14,6 +14,7 @@ export default function BooksPage() {
           Add Book
         </Button>
       </Group>
+      <Divider opacity={0.25} mx={-27} />
       <BooksTable />
     </Stack>
   );
