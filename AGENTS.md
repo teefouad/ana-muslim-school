@@ -14,7 +14,7 @@ These rules are durable — they apply to every task in this repository, for eve
 
 ## Git workflow — required for every feature/task
 
-1. Read this file (and `components/README.md` once it exists) before starting.
+1. Read this file (and `components/README.md`) before starting.
 2. Start from an up-to-date `main`.
 3. Create a dedicated feature/fix branch from `main` before changing any application code. **Never** implement feature work directly on `main`, and never work on whatever branch happens to already be checked out without first branching off `main` for the task at hand.
 4. Work only within the scope of the assigned Linear issue. Do not perform unrelated refactors, cleanup, dependency changes, architecture changes, or feature additions unless strictly necessary for the assigned task, and say so explicitly if you do.

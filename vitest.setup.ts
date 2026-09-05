@@ -24,3 +24,26 @@ if (typeof window !== "undefined" && !window.ResizeObserver) {
     disconnect() {}
   };
 }
+
+// jsdom doesn't implement layout, so it has no Range.getBoundingClientRect/
+// getClientRects at all -- but Lexical (the Markdown editor's underlying
+// engine, see components/ui/markdown-editor.tsx) calls them to sync the DOM
+// selection after selection-changing commands (e.g. select-all).
+if (typeof Range !== "undefined" && !Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () => ({
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    width: 0,
+    x: 0,
+    y: 0,
+    toJSON() {
+      return {};
+    },
+  });
+}
+if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+}
