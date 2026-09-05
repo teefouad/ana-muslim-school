@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import {
+  ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Code,
   Group,
@@ -14,9 +16,17 @@ import {
   Text,
   TextInput,
   Textarea,
+  Tooltip,
   useComputedColorScheme,
 } from "@mantine/core";
-import { JsonView, darkStyles, defaultStyles } from "react-json-view-lite";
+import { Check, ChevronsDownUp, ChevronsUpDown, Copy } from "lucide-react";
+import {
+  JsonView,
+  allExpanded,
+  collapseAllNested,
+  darkStyles,
+  defaultStyles,
+} from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
 
 import {
@@ -67,6 +77,8 @@ export function ApiPlayground() {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<PlaygroundResponse | null>(null);
+  const [treeExpanded, setTreeExpanded] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   const endpoint = findEndpoint(method, resourcePath);
   const resourceOptions = getResourcePaths();
@@ -100,6 +112,21 @@ export function ApiPlayground() {
 
   function handlePathParamChange(param: string, value: string) {
     setPathParamValues((prev) => ({ ...prev, [param]: value }));
+  }
+
+  async function handleCopy() {
+    if (!response) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(response.raw);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be denied by the browser -- there's nothing
+      // more the playground can do about it.
+    }
   }
 
   async function handleSend() {
@@ -162,6 +189,7 @@ export function ApiPlayground() {
         raw: text,
         json,
       });
+      setTreeExpanded(true);
     } catch (err) {
       setRequestError(
         err instanceof Error ? err.message : "The request failed to send.",
@@ -275,20 +303,60 @@ export function ApiPlayground() {
       {response && (
         <Paper withBorder p="md">
           <Stack gap="sm">
-            <Group gap="sm">
-              <Badge color={isSuccessStatus(response.status) ? "green" : "red"}>
-                {response.status}
-              </Badge>
-              <Text fw={500}>{response.statusText}</Text>
+            <Group justify="space-between">
+              <Group gap="sm">
+                <Badge
+                  color={isSuccessStatus(response.status) ? "green" : "red"}
+                >
+                  {response.status}
+                </Badge>
+                <Text fw={500}>{response.statusText}</Text>
+              </Group>
+              <Group gap={4}>
+                <Tooltip label="Expand all">
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label="Expand all"
+                    disabled={response.json === undefined}
+                    onClick={() => setTreeExpanded(true)}
+                  >
+                    <ChevronsUpDown size={16} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Collapse all">
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label="Collapse all"
+                    disabled={response.json === undefined}
+                    onClick={() => setTreeExpanded(false)}
+                  >
+                    <ChevronsDownUp size={16} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={copied ? "Copied!" : "Copy response"}>
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label="Copy response"
+                    onClick={handleCopy}
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
             </Group>
-            {response.json !== undefined ? (
-              <JsonView
-                data={response.json}
-                style={colorScheme === "dark" ? darkStyles : defaultStyles}
-              />
-            ) : (
-              <Code block>{response.raw}</Code>
-            )}
+            <Box style={{ maxHeight: 480, overflow: "auto" }}>
+              {response.json !== undefined ? (
+                <JsonView
+                  data={response.json}
+                  style={colorScheme === "dark" ? darkStyles : defaultStyles}
+                  shouldExpandNode={
+                    treeExpanded ? allExpanded : collapseAllNested
+                  }
+                />
+              ) : (
+                <Code block>{response.raw}</Code>
+              )}
+            </Box>
           </Stack>
         </Paper>
       )}

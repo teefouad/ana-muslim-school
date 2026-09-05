@@ -245,6 +245,71 @@ describe("ApiPlayground", () => {
       screen.getByText("Something went wrong upstream."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Collapse all" })).toBeDisabled();
+  });
+
+  it("collapses and re-expands the JSON tree via the toolbar", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { id: "doc-1" } }), {
+        status: 200,
+      }),
+    );
+
+    renderWithProvider(<ApiPlayground />);
+    fireEvent.click(screen.getByRole("button", { name: "Send request" }));
+
+    expect(await screen.findByText('"doc-1"')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(screen.queryByText('"doc-1"')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(screen.getByText('"doc-1"')).toBeInTheDocument();
+  });
+
+  it("starts each new response fully expanded even if the previous one was collapsed", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { id: "doc-1" } }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { id: "doc-2" } }), {
+          status: 200,
+        }),
+      );
+
+    renderWithProvider(<ApiPlayground />);
+    fireEvent.click(screen.getByRole("button", { name: "Send request" }));
+    await screen.findByText('"doc-1"');
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(screen.queryByText('"doc-1"')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send request" }));
+
+    expect(await screen.findByText('"doc-2"')).toBeInTheDocument();
+  });
+
+  it("copies the raw response body to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+
+    renderWithProvider(<ApiPlayground />);
+    fireEvent.click(screen.getByRole("button", { name: "Send request" }));
+    await screen.findByText("200");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy response" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(JSON.stringify({ data: [] })),
+    );
   });
 
   it("shows a loading state and disables the Send button while the request is in flight", async () => {
