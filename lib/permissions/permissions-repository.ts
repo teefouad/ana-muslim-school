@@ -1,7 +1,7 @@
 import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
+import type { DocumentSnapshot } from "firebase-admin/firestore";
 
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import {
@@ -75,18 +75,22 @@ export async function upsertPermission({
 
 type UpdatePermissionByIdInput = {
   id: string;
-  permissions: PermissionsInput;
-  expiresAt: Date | null;
+  /** Omit (`undefined`) to leave the record's `permissions` untouched. */
+  permissions?: PermissionsInput;
+  /** Omit (`undefined`) to leave `expiresAt` untouched; `null` clears it. */
+  expiresAt?: Date | null;
   actorEmail: string;
 };
 
 /**
- * Updates the `permissions`/`expiresAt` of an existing record by its
- * Firestore document ID (see ANA-51) -- unlike `upsertPermission`, this
- * never creates a record and never looks the record up by email, so it
- * can't be tricked into editing (or creating a duplicate for) a different
- * account. `createdAt`, `createdBy`, and `lastLoginAt` are left untouched
- * since `update()` only writes the fields given here.
+ * Partially updates an existing record by its Firestore document ID (see
+ * ANA-51/ANA-54) -- unlike `upsertPermission`, this never creates a record
+ * and never looks the record up by email, so it can't be tricked into
+ * editing (or creating a duplicate for) a different account. `createdAt`,
+ * `createdBy`, and `lastLoginAt` are always left untouched; `permissions`
+ * and `expiresAt` are only written when the caller actually supplies them
+ * (`undefined` means "leave as-is"), so a caller that only sends one field
+ * can't accidentally wipe the other.
  *
  * Returns `false` without writing if `id` doesn't match an existing
  * document, so the caller can respond with a 404 instead of silently
@@ -105,12 +109,20 @@ export async function updatePermissionById({
     return false;
   }
 
-  await ref.update({
-    permissions,
-    expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
+  const updates: Record<string, unknown> = {
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: actorEmail,
-  });
+  };
+
+  if (permissions !== undefined) {
+    updates.permissions = permissions;
+  }
+
+  if (expiresAt !== undefined) {
+    updates.expiresAt = expiresAt ? Timestamp.fromDate(expiresAt) : null;
+  }
+
+  await ref.update(updates);
 
   return true;
 }
@@ -138,18 +150,37 @@ export async function deletePermissionById(id: string): Promise<boolean> {
 }
 
 /**
+ * Looks up a `permissions` record by its Firestore document ID. Returns
+ * `null` for a missing or malformed document, so callers can respond with a
+ * 404 rather than trusting a coerced/default record.
+ */
+export async function getPermissionById(
+  id: string,
+): Promise<PermissionRecord | null> {
+  const snapshot = await getAdminFirestore()
+    .collection(PERMISSIONS_COLLECTION)
+    .doc(id)
+    .get();
+
+  if (!snapshot.exists) {
+    return null;
+  }
+
+  return parsePermissionRecord(snapshot);
+}
+
+/**
  * Parses a `permissions` document into a `PermissionRecord`, or `null` if
  * the document doesn't match the expected shape. Used on the dashboard
  * access path (see `getPermissionForEmail`), where a malformed record must
  * fail closed rather than grant access with coerced/default values.
  */
-function parsePermissionRecord(
-  doc: QueryDocumentSnapshot,
-): PermissionRecord | null {
+function parsePermissionRecord(doc: DocumentSnapshot): PermissionRecord | null {
   try {
     const data = doc.data();
 
     if (
+      !data ||
       typeof data.email !== "string" ||
       !isValidPermissionsInput(data.permissions)
     ) {

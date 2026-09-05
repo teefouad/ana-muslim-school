@@ -123,7 +123,7 @@ describe("PermissionForm", () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/permissions/doc-42",
+      "/api/v1/permissions/doc-42",
       expect.objectContaining({ method: "PATCH" }),
     );
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);

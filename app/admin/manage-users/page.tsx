@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Group, Stack, Title } from "@mantine/core";
 
 import { getSessionUser, isSuperAdminEmail } from "@/lib/auth/session";
-import { listPermissions } from "@/lib/permissions/permissions-repository";
+import { listPermissions } from "@/lib/permissions/permissions-service";
 import { AddAccessModal } from "./add-access-modal";
 import { PermissionsTable } from "./permissions-table";
 

@@ -4,7 +4,7 @@ const { getPermissionForEmailMock } = vi.hoisted(() => ({
   getPermissionForEmailMock: vi.fn(),
 }));
 
-vi.mock("@/lib/permissions/permissions-repository", () => ({
+vi.mock("@/lib/permissions/permissions-service", () => ({
   getPermissionForEmail: getPermissionForEmailMock,
 }));
 
@@ -52,7 +52,7 @@ describe("resolveDashboardAccess", () => {
     expect(getPermissionForEmailMock).not.toHaveBeenCalled();
   });
 
-  it("normalizes the email before looking up the permission record", async () => {
+  it("passes the session email straight through to the permissions service, which normalizes it", async () => {
     getPermissionForEmailMock.mockResolvedValueOnce(null);
 
     await resolveDashboardAccess({
@@ -61,7 +61,7 @@ describe("resolveDashboardAccess", () => {
     });
 
     expect(getPermissionForEmailMock).toHaveBeenCalledWith(
-      "someone@example.com",
+      "  Someone@Example.com  ",
     );
   });
 

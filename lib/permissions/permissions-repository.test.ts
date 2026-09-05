@@ -72,6 +72,7 @@ const {
   upsertPermission,
   listPermissions,
   getPermissionForEmail,
+  getPermissionById,
   recordPermissionLogin,
   updatePermissionById,
   deletePermissionById,
@@ -336,6 +337,63 @@ describe("getPermissionForEmail", () => {
   });
 });
 
+describe("getPermissionById", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setUpFirestoreMocks();
+  });
+
+  it("returns null when no document exists for the id", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: false });
+
+    expect(await getPermissionById("missing-doc")).toBeNull();
+    expect(docMock).toHaveBeenCalledWith("missing-doc");
+  });
+
+  it("fails closed when the matched document has a malformed permissions shape", async () => {
+    docGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        email: "someone@example.com",
+        permissions: { books: { read: true } },
+      }),
+    });
+
+    expect(await getPermissionById("doc-1")).toBeNull();
+  });
+
+  it("returns the parsed record for an existing document", async () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+
+    docGetMock.mockResolvedValueOnce({
+      exists: true,
+      id: "doc-1",
+      data: () => ({
+        email: "someone@example.com",
+        permissions,
+        expiresAt: null,
+        createdAt: { toDate: () => createdAt },
+        createdBy: "admin@example.com",
+        updatedAt: { toDate: () => createdAt },
+        updatedBy: "admin@example.com",
+        lastLoginAt: null,
+      }),
+    });
+
+    expect(await getPermissionById("doc-1")).toEqual({
+      id: "doc-1",
+      email: "someone@example.com",
+      permissions,
+      expiresAt: null,
+      createdAt,
+      createdBy: "admin@example.com",
+      updatedAt: createdAt,
+      updatedBy: "admin@example.com",
+      lastLoginAt: null,
+    });
+  });
+});
+
 describe("recordPermissionLogin", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -408,6 +466,52 @@ describe("updatePermissionById", () => {
 
     expect(updated).toBe(false);
     expect(docUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("omits expiresAt from the write when not given, leaving the stored value untouched", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    await updatePermissionById({
+      id: "doc-1",
+      permissions,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      permissions,
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
+  });
+
+  it("omits permissions from the write when not given, leaving the stored value untouched", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    await updatePermissionById({
+      id: "doc-1",
+      expiresAt: null,
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      expiresAt: null,
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
+  });
+
+  it("writes only the updatedAt/updatedBy metadata when neither field is given", async () => {
+    docGetMock.mockResolvedValueOnce({ exists: true });
+
+    await updatePermissionById({
+      id: "doc-1",
+      actorEmail: "admin@example.com",
+    });
+
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      updatedBy: "admin@example.com",
+    });
   });
 });
 

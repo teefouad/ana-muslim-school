@@ -3,7 +3,7 @@ import { Center, Stack, Text } from "@mantine/core";
 
 import { getDashboardAccess } from "@/lib/auth/access";
 import { getSessionUser } from "@/lib/auth/session";
-import { recordPermissionLogin } from "@/lib/permissions/permissions-repository";
+import { recordPermissionLogin } from "@/lib/permissions/permissions-service";
 import { DashboardShell } from "./_components/dashboard-shell";
 import { SignOutButton } from "./sign-out-button";
 

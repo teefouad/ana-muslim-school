@@ -32,7 +32,7 @@ export function DeleteConfirmModal({
     setLoading(true);
 
     try {
-      const response = await fetch(`/api/permissions/${record.id}`, {
+      const response = await fetch(`/api/v1/permissions/${record.id}`, {
         method: "DELETE",
       });
 
