@@ -17,7 +17,7 @@ function renderWithProvider(ui: React.ReactElement) {
 }
 
 describe("DashboardShell", () => {
-  it("shows Manage Users under the Dashboard group for the super admin", () => {
+  it("shows Users under the Dashboard group for the super admin", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="admin@example.com"
@@ -28,12 +28,10 @@ describe("DashboardShell", () => {
     );
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /Manage Users/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Users$/ })).toBeInTheDocument();
   });
 
-  it("shows Manage Users for a non-super-admin with users.manage permission", () => {
+  it("shows Users for a non-super-admin with users.manage permission", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="someone@example.com"
@@ -43,12 +41,10 @@ describe("DashboardShell", () => {
       </DashboardShell>,
     );
 
-    expect(
-      screen.getByRole("link", { name: /Manage Users/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Users$/ })).toBeInTheDocument();
   });
 
-  it("hides Manage Users for a non-super-admin without users.manage permission", () => {
+  it("hides Users for a non-super-admin without users.manage permission", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="someone@example.com"
@@ -59,11 +55,11 @@ describe("DashboardShell", () => {
     );
 
     expect(
-      screen.queryByRole("link", { name: /Manage Users/ }),
+      screen.queryByRole("link", { name: /^Users$/ }),
     ).not.toBeInTheDocument();
   });
 
-  it("does not render an empty Dashboard group when Manage Users is hidden", () => {
+  it("still shows the Dashboard group (via Books/Add Book) when Users is hidden", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="someone@example.com"
@@ -73,7 +69,44 @@ describe("DashboardShell", () => {
       </DashboardShell>,
     );
 
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /^Users$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Books and Add Book under the Dashboard group regardless of permissions", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="someone@example.com"
+        navAccess={{ isSuperAdmin: false, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(screen.getByRole("link", { name: "Books" })).toHaveAttribute(
+      "href",
+      "/admin/books",
+    );
+    expect(screen.getByRole("link", { name: "Add Book" })).toHaveAttribute(
+      "href",
+      "/admin/books/new",
+    );
+  });
+
+  it("never renders Manage Users or Manage Books wording", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="admin@example.com"
+        navAccess={{ isSuperAdmin: true, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(screen.queryByText(/Manage Users/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Manage Books/)).not.toBeInTheDocument();
   });
 
   it("shows the API Playground link regardless of permissions", () => {
