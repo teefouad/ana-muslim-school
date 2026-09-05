@@ -39,15 +39,11 @@ function isSuccessStatus(status: number): boolean {
 
 /**
  * Formats a response body for display: JSON is re-serialized with
- * indentation for readability, anything else (including an empty body) is
- * shown as-is so the playground never fails on a non-JSON response (see
- * ANA-55).
+ * indentation for readability, anything else -- including a genuinely empty
+ * body -- is shown exactly as received so the playground never rewrites
+ * what the endpoint actually returned (see ANA-55).
  */
 function formatResponseBody(text: string): string {
-  if (text === "") {
-    return "(empty response body)";
-  }
-
   try {
     return JSON.stringify(JSON.parse(text), null, 2);
   } catch {
@@ -154,6 +150,7 @@ export function ApiPlayground() {
             onChange={(event) =>
               handleEndpointChange(event.currentTarget.value)
             }
+            disabled={loading}
           />
 
           {endpoint && endpoint.pathParams.length > 0 && (

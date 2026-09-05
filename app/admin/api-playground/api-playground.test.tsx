@@ -217,4 +217,24 @@ describe("ApiPlayground", () => {
       ).not.toBeDisabled(),
     );
   });
+
+  it("locks the endpoint picker while a request is in flight, so switching endpoints can't mismatch an in-flight response", async () => {
+    let resolveFetch: (value: Response) => void = () => {};
+    vi.mocked(fetch).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    renderWithProvider(<ApiPlayground />);
+    fireEvent.click(screen.getByRole("button", { name: "Send request" }));
+
+    expect(screen.getByLabelText("Endpoint")).toBeDisabled();
+
+    resolveFetch(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Endpoint")).not.toBeDisabled(),
+    );
+  });
 });

@@ -45,6 +45,22 @@ describe("buildRequestPath", () => {
     );
   });
 
+  it("substitutes every occurrence of a placeholder without matching a differently-named one that shares its prefix", () => {
+    const multiParamEndpoint: ApiEndpoint = {
+      id: "example.multi",
+      method: "GET",
+      path: "/api/v1/example/:id/:id2/:id",
+      pathParams: ["id", "id2"],
+      acceptsBody: false,
+      authRequired: true,
+      description: "Example endpoint with repeated and prefix-sharing params.",
+    };
+
+    expect(buildRequestPath(multiParamEndpoint, { id: "a", id2: "b" })).toBe(
+      "/api/v1/example/a/b/a",
+    );
+  });
+
   it("leaves the path untouched when the endpoint has no path parameters", () => {
     const listEndpoint: ApiEndpoint = {
       id: "permissions.list",

@@ -71,16 +71,27 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
  * Substitutes each of `endpoint`'s `:param` placeholders with the matching
  * value from `paramValues`, URI-encoding each value so entered parameters
  * can't reshape the request path (e.g. a value containing `/` or `?`).
+ *
+ * Matches a placeholder only when it fills an entire path segment (e.g.
+ * `:id`) rather than via a plain string replace -- that would only touch
+ * the first occurrence and could also match `:id` inside an unrelated
+ * placeholder like `:id2`.
  */
 export function buildRequestPath(
   endpoint: ApiEndpoint,
   paramValues: Record<string, string>,
 ): string {
-  return endpoint.pathParams.reduce(
-    (path, param) =>
-      path.replace(`:${param}`, encodeURIComponent(paramValues[param] ?? "")),
-    endpoint.path,
-  );
+  return endpoint.path
+    .split("/")
+    .map((segment) => {
+      if (!segment.startsWith(":")) {
+        return segment;
+      }
+
+      const param = segment.slice(1);
+      return encodeURIComponent(paramValues[param] ?? "");
+    })
+    .join("/");
 }
 
 /** Human-readable "METHOD /path" label for an endpoint picker option. */
