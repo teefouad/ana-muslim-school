@@ -31,7 +31,7 @@ import "react-json-view-lite/dist/index.css";
 
 import {
   API_BASE_PATH,
-  buildRequestPath,
+  buildRequestUrl,
   findEndpoint,
   getMethodsForResource,
   getResourcePath,
@@ -71,6 +71,9 @@ export function ApiPlayground() {
   const [pathParamValues, setPathParamValues] = useState<
     Record<string, string>
   >({});
+  const [queryParamValues, setQueryParamValues] = useState<
+    Record<string, string>
+  >({});
   const [authEnabled, setAuthEnabled] = useState(true);
   const [bodyText, setBodyText] = useState("{}");
   const [bodyError, setBodyError] = useState<string | null>(null);
@@ -93,6 +96,7 @@ export function ApiPlayground() {
     setResourcePath(newResourcePath);
     setMethod(newMethod);
     setPathParamValues({});
+    setQueryParamValues({});
     setBodyText("{}");
     setBodyError(null);
     setRequestError(null);
@@ -112,6 +116,10 @@ export function ApiPlayground() {
 
   function handlePathParamChange(param: string, value: string) {
     setPathParamValues((prev) => ({ ...prev, [param]: value }));
+  }
+
+  function handleQueryParamChange(param: string, value: string) {
+    setQueryParamValues((prev) => ({ ...prev, [param]: value }));
   }
 
   async function handleCopy() {
@@ -159,18 +167,22 @@ export function ApiPlayground() {
     setResponse(null);
 
     try {
-      const res = await fetch(buildRequestPath(endpoint, pathParamValues), {
-        method: endpoint.method,
-        headers: endpoint.acceptsBody
-          ? { "Content-Type": "application/json" }
-          : undefined,
-        body: endpoint.acceptsBody ? bodyText : undefined,
-        // Authenticated mode relies on the browser sending the existing
-        // dashboard session cookie as it normally would; unauthenticated
-        // mode omits it so the endpoint's real unauthenticated behavior can
-        // be exercised, without ever reading or displaying the cookie value.
-        credentials: authEnabled ? "same-origin" : "omit",
-      });
+      const res = await fetch(
+        buildRequestUrl(endpoint, pathParamValues, queryParamValues),
+        {
+          method: endpoint.method,
+          headers: endpoint.acceptsBody
+            ? { "Content-Type": "application/json" }
+            : undefined,
+          body: endpoint.acceptsBody ? bodyText : undefined,
+          // Authenticated mode relies on the browser sending the existing
+          // dashboard session cookie as it normally would; unauthenticated
+          // mode omits it so the endpoint's real unauthenticated behavior
+          // can be exercised, without ever reading or displaying the
+          // cookie value.
+          credentials: authEnabled ? "same-origin" : "omit",
+        },
+      );
       const text = await res.text();
       let json: JsonValue | undefined;
 
@@ -234,6 +246,21 @@ export function ApiPlayground() {
             />
           </Group>
 
+          {endpoint && (
+            <Group gap={6}>
+              <Text size="sm" c="dimmed">
+                Authentication:
+              </Text>
+              <Badge
+                color={endpoint.authRequired ? "yellow" : "gray"}
+                variant="light"
+                size="sm"
+              >
+                {endpoint.authRequired ? "Required" : "Not required"}
+              </Badge>
+            </Group>
+          )}
+
           {endpoint && endpoint.pathParams.length > 0 && (
             <Group grow>
               {endpoint.pathParams.map((param) => (
@@ -250,11 +277,28 @@ export function ApiPlayground() {
             </Group>
           )}
 
+          {endpoint && endpoint.queryParams.length > 0 && (
+            <Group grow>
+              {endpoint.queryParams.map((param) => (
+                <TextInput
+                  key={param}
+                  label={`Query parameter: ${param}`}
+                  description="Optional"
+                  value={queryParamValues[param] ?? ""}
+                  onChange={(event) =>
+                    handleQueryParamChange(param, event.currentTarget.value)
+                  }
+                />
+              ))}
+            </Group>
+          )}
+
           {endpoint && (
             <Text size="sm" c="dimmed">
               Request URL:{" "}
               <Code>
-                {endpoint.method} {buildRequestPath(endpoint, pathParamValues)}
+                {endpoint.method}{" "}
+                {buildRequestUrl(endpoint, pathParamValues, queryParamValues)}
               </Code>
             </Text>
           )}

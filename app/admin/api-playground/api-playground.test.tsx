@@ -38,6 +38,18 @@ describe("ApiPlayground", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the endpoint's authentication requirement independently of the auth toggle", () => {
+    renderWithProvider(<ApiPlayground />);
+
+    expect(screen.getByText("Required")).toBeInTheDocument();
+  });
+
+  it("shows no query parameter inputs for an endpoint that declares none", () => {
+    renderWithProvider(<ApiPlayground />);
+
+    expect(screen.queryByText(/Query parameter:/)).not.toBeInTheDocument();
+  });
+
   it("switches resources and shows path parameter inputs when the resource has them", () => {
     renderWithProvider(<ApiPlayground />);
 

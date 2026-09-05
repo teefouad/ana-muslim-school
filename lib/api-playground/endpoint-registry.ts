@@ -16,6 +16,8 @@ export type ApiEndpoint = {
   /** Route path with `:param` placeholders for required path parameters. */
   path: string;
   pathParams: string[];
+  /** Optional query parameters the endpoint accepts, e.g. `["limit"]`. */
+  queryParams: string[];
   acceptsBody: boolean;
   authRequired: boolean;
   description: string;
@@ -28,6 +30,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     method: "GET",
     path: "/api/v1/permissions",
     pathParams: [],
+    queryParams: [],
     acceptsBody: false,
     authRequired: true,
     description: "List all permission records.",
@@ -37,6 +40,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     method: "POST",
     path: "/api/v1/permissions",
     pathParams: [],
+    queryParams: [],
     acceptsBody: true,
     authRequired: true,
     description: "Create a new permission record.",
@@ -46,6 +50,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     method: "GET",
     path: "/api/v1/permissions/:id",
     pathParams: ["id"],
+    queryParams: [],
     acceptsBody: false,
     authRequired: true,
     description: "Get a single permission record by id.",
@@ -55,6 +60,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     method: "PATCH",
     path: "/api/v1/permissions/:id",
     pathParams: ["id"],
+    queryParams: [],
     acceptsBody: true,
     authRequired: true,
     description: "Update the permissions/expiration on a record.",
@@ -64,6 +70,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     method: "DELETE",
     path: "/api/v1/permissions/:id",
     pathParams: ["id"],
+    queryParams: [],
     acceptsBody: false,
     authRequired: true,
     description: "Delete a permission record.",
@@ -95,6 +102,41 @@ export function buildRequestPath(
       return encodeURIComponent(paramValues[param] ?? "");
     })
     .join("/");
+}
+
+/**
+ * Builds a `?key=value&...` query string from `endpoint`'s declared query
+ * parameters, omitting any left blank. Returns `""` when there are none to
+ * include.
+ */
+export function buildQueryString(
+  endpoint: ApiEndpoint,
+  queryParamValues: Record<string, string>,
+): string {
+  const params = new URLSearchParams();
+
+  for (const param of endpoint.queryParams) {
+    const value = queryParamValues[param]?.trim();
+
+    if (value) {
+      params.set(param, value);
+    }
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/** The full request URL for `endpoint`: its path with parameters substituted, plus any query string. */
+export function buildRequestUrl(
+  endpoint: ApiEndpoint,
+  pathParamValues: Record<string, string>,
+  queryParamValues: Record<string, string>,
+): string {
+  return (
+    buildRequestPath(endpoint, pathParamValues) +
+    buildQueryString(endpoint, queryParamValues)
+  );
 }
 
 /** `endpoint.path` with the shared `API_BASE_PATH` prefix stripped, e.g. `/permissions/:id`. */

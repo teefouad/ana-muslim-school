@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   API_ENDPOINTS,
+  buildQueryString,
   buildRequestPath,
+  buildRequestUrl,
   findEndpoint,
   getMethodsForResource,
   getResourcePath,
@@ -31,6 +33,7 @@ describe("buildRequestPath", () => {
     method: "PATCH",
     path: "/api/v1/permissions/:id",
     pathParams: ["id"],
+    queryParams: [],
     acceptsBody: true,
     authRequired: true,
     description: "Update the permissions/expiration on a record.",
@@ -54,6 +57,7 @@ describe("buildRequestPath", () => {
       method: "GET",
       path: "/api/v1/example/:id/:id2/:id",
       pathParams: ["id", "id2"],
+      queryParams: [],
       acceptsBody: false,
       authRequired: true,
       description: "Example endpoint with repeated and prefix-sharing params.",
@@ -70,6 +74,7 @@ describe("buildRequestPath", () => {
       method: "GET",
       path: "/api/v1/permissions",
       pathParams: [],
+      queryParams: [],
       acceptsBody: false,
       authRequired: true,
       description: "List all permission records.",
@@ -87,6 +92,7 @@ describe("getResourcePath", () => {
         method: "GET",
         path: "/api/v1/permissions/:id",
         pathParams: ["id"],
+        queryParams: [],
         acceptsBody: false,
         authRequired: true,
         description: "Get a single permission record by id.",
@@ -113,6 +119,69 @@ describe("getMethodsForResource", () => {
 
   it("returns an empty list for a resource the registry doesn't have", () => {
     expect(getMethodsForResource("/nonexistent")).toEqual([]);
+  });
+});
+
+describe("buildQueryString", () => {
+  const endpoint: ApiEndpoint = {
+    id: "example.search",
+    method: "GET",
+    path: "/api/v1/example",
+    pathParams: [],
+    queryParams: ["limit", "cursor"],
+    acceptsBody: false,
+    authRequired: true,
+    description: "Example endpoint with query parameters.",
+  };
+
+  it("builds a query string from the given values", () => {
+    expect(buildQueryString(endpoint, { limit: "10", cursor: "abc" })).toBe(
+      "?limit=10&cursor=abc",
+    );
+  });
+
+  it("omits a query parameter left blank", () => {
+    expect(buildQueryString(endpoint, { limit: "10", cursor: "" })).toBe(
+      "?limit=10",
+    );
+  });
+
+  it("returns an empty string when every query parameter is blank", () => {
+    expect(buildQueryString(endpoint, {})).toBe("");
+  });
+
+  it("returns an empty string for an endpoint with no query parameters", () => {
+    const noQueryEndpoint: ApiEndpoint = {
+      id: "permissions.list",
+      method: "GET",
+      path: "/api/v1/permissions",
+      pathParams: [],
+      queryParams: [],
+      acceptsBody: false,
+      authRequired: true,
+      description: "List all permission records.",
+    };
+
+    expect(buildQueryString(noQueryEndpoint, { limit: "10" })).toBe("");
+  });
+});
+
+describe("buildRequestUrl", () => {
+  it("combines the substituted path and the query string", () => {
+    const endpoint: ApiEndpoint = {
+      id: "example.search",
+      method: "GET",
+      path: "/api/v1/example/:id",
+      pathParams: ["id"],
+      queryParams: ["limit"],
+      acceptsBody: false,
+      authRequired: true,
+      description: "Example endpoint with a path and a query parameter.",
+    };
+
+    expect(buildRequestUrl(endpoint, { id: "doc-1" }, { limit: "5" })).toBe(
+      "/api/v1/example/doc-1?limit=5",
+    );
   });
 });
 
