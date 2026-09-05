@@ -184,6 +184,7 @@ export function ApiPlayground() {
                 handleMethodChange(event.currentTarget.value as HttpMethod)
               }
               disabled={loading}
+              w={100}
             />
             <Text
               size="sm"
