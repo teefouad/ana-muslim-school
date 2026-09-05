@@ -17,7 +17,7 @@ function renderWithProvider(ui: React.ReactElement) {
 }
 
 describe("DashboardShell", () => {
-  it("shows Manage Users for the super admin", () => {
+  it("shows Manage Users under the Dashboard group for the super admin", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="admin@example.com"
@@ -27,6 +27,7 @@ describe("DashboardShell", () => {
       </DashboardShell>,
     );
 
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Manage Users/ }),
     ).toBeInTheDocument();
@@ -62,7 +63,7 @@ describe("DashboardShell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("always shows the Dashboard group items regardless of permissions", () => {
+  it("does not render an empty Dashboard group when Manage Users is hidden", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="someone@example.com"
@@ -72,8 +73,7 @@ describe("DashboardShell", () => {
       </DashboardShell>,
     );
 
-    expect(screen.getByRole("link", { name: /Overview/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Profile/ })).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
   it("shows the API Playground link regardless of permissions", () => {
@@ -88,6 +88,67 @@ describe("DashboardShell", () => {
 
     expect(
       screen.getByRole("link", { name: /Playground/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("no longer shows Overview or Profile as sidebar nav items", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="admin@example.com"
+        navAccess={{ isSuperAdmin: true, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(
+      screen.queryByRole("link", { name: /^Overview$/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /^Profile$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("no longer renders the Administration group", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="admin@example.com"
+        navAccess={{ isSuperAdmin: true, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(screen.queryByText("Administration")).not.toBeInTheDocument();
+  });
+
+  it("links the top-right user profile control to the Profile page", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="admin@example.com"
+        navAccess={{ isSuperAdmin: true, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /admin@example\.com/ }),
+    ).toHaveAttribute("href", "/admin/profile");
+  });
+
+  it("keeps the sign-out control available", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="admin@example.com"
+        navAccess={{ isSuperAdmin: true, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Sign out" }),
     ).toBeInTheDocument();
   });
 });

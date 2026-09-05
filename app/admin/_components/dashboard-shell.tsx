@@ -3,8 +3,17 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AppShell, Burger, Group, NavLink, Text, Title } from "@mantine/core";
+import {
+  AppShell,
+  Burger,
+  Group,
+  NavLink,
+  Text,
+  Title,
+  UnstyledButton,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { UserCircle } from "lucide-react";
 
 import { SignOutButton } from "../sign-out-button";
 import { NAV_GROUPS, type NavAccess } from "./nav-config";
@@ -52,9 +61,16 @@ export function DashboardShell({
             <Title order={4}>Ana Muslim School</Title>
           </Group>
           <Group gap="sm">
-            <Text size="sm" c="dimmed">
-              {userEmail}
-            </Text>
+            <UnstyledButton
+              component={Link}
+              href="/admin/profile"
+              className="flex items-center gap-2 rounded-[var(--mantine-radius-sm)] px-2 py-1 transition-colors hover:bg-[var(--mantine-color-default-hover)]"
+            >
+              <UserCircle size={18} />
+              <Text size="sm" c="dimmed">
+                {userEmail}
+              </Text>
+            </UnstyledButton>
             <SignOutButton />
           </Group>
         </Group>
