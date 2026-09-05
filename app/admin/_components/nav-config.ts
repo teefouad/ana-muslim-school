@@ -1,4 +1,4 @@
-import { FlaskConical, Users } from "lucide-react";
+import { BookOpen, BookPlus, FlaskConical, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 /** Resolved, server-computed access used to decide nav item visibility. */
@@ -25,10 +25,20 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Dashboard",
     items: [
       {
-        label: "Manage Users",
+        label: "Users",
         href: "/admin/manage-users",
         icon: Users,
         isVisible: (access) => access.isSuperAdmin || access.canManageUsers,
+      },
+      {
+        label: "Books",
+        href: "/admin/books",
+        icon: BookOpen,
+      },
+      {
+        label: "Add Book",
+        href: "/admin/books/new",
+        icon: BookPlus,
       },
     ],
   },

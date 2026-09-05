@@ -18,7 +18,7 @@ export default async function ManageUsersPage() {
   return (
     <Stack gap="xl" p="xl">
       <Group justify="space-between">
-        <Title order={2}>Manage Users</Title>
+        <Title order={2}>Users</Title>
         <AddAccessModal />
       </Group>
       <PermissionsTable records={records} />

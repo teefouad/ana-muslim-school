@@ -14,7 +14,10 @@ equivalent one.
   `components/**`.
 - **Every component needs a story.** This includes supporting components
   extracted for composition (e.g. a switcher or toolbar used by a larger
-  field), not only the top-level component a caller imports.
+  field), not only the top-level component a caller imports. This also
+  applies to feature-level components under `app/` (e.g.
+  `app/admin/books/`) -- `.storybook/main.ts` also picks up
+  `app/**/*.stories.tsx` for these, colocated the same way.
 - **Mantine first**: build the field shell, labels, buttons, and layout with
   Mantine components (`@mantine/core`) rather than raw HTML/Tailwind, so the
   design system stays consistent. Tailwind utility classes are fine for small
