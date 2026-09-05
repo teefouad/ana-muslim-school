@@ -1,8 +1,18 @@
 import type { Preview } from "@storybook/nextjs-vite";
+import "@mantine/core/styles.css";
+import "@mantine/dates/styles.css";
 
 import "../app/globals.css";
+import { Providers } from "../app/providers";
 
 const preview: Preview = {
+  decorators: [
+    (Story) => (
+      <Providers>
+        <Story />
+      </Providers>
+    ),
+  ],
   parameters: {
     controls: {
       matchers: {

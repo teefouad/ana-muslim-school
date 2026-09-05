@@ -34,3 +34,16 @@
 .container :global(.mantine-markdown-editor__content) {
   padding: var(--mantine-spacing-sm);
 }
+
+/* Tailwind's preflight reset (app/globals.css) zeroes out `list-style` on
+   every <ul>/<ol>, including MDXEditor's -- restore real bullets/numbers so
+   list content still reads as a list. */
+.container :global(.mantine-markdown-editor__content) ul {
+  list-style: disc;
+  padding-inline-start: 1.5em;
+}
+
+.container :global(.mantine-markdown-editor__content) ol {
+  list-style: decimal;
+  padding-inline-start: 1.5em;
+}
