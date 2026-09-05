@@ -171,6 +171,7 @@ export function PermissionForm({
           label="Access expires"
           description="Leave blank for no expiration"
           clearable
+          highlightToday
           value={expiresAt}
           onChange={(value) => setExpiresAt(value)}
         />
