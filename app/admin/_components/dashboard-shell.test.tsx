@@ -75,4 +75,19 @@ describe("DashboardShell", () => {
     expect(screen.getByRole("link", { name: /Overview/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Profile/ })).toBeInTheDocument();
   });
+
+  it("shows the API Playground link regardless of permissions", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="someone@example.com"
+        navAccess={{ isSuperAdmin: false, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /Playground/ }),
+    ).toBeInTheDocument();
+  });
 });

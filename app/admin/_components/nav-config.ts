@@ -1,4 +1,4 @@
-import { LayoutDashboard, UserCircle, Users } from "lucide-react";
+import { FlaskConical, LayoutDashboard, UserCircle, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 /** Resolved, server-computed access used to decide nav item visibility. */
@@ -36,6 +36,16 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/admin/manage-users",
         icon: Users,
         isVisible: (access) => access.isSuperAdmin || access.canManageUsers,
+      },
+    ],
+  },
+  {
+    label: "API",
+    items: [
+      {
+        label: "Playground",
+        href: "/admin/api-playground",
+        icon: FlaskConical,
       },
     ],
   },
