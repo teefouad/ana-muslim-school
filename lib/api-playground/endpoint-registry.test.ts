@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   API_ENDPOINTS,
   buildRequestPath,
-  formatEndpointLabel,
+  findEndpoint,
+  getMethodsForResource,
+  getResourcePath,
+  getResourcePaths,
   type ApiEndpoint,
 } from "./endpoint-registry";
 
@@ -76,18 +79,51 @@ describe("buildRequestPath", () => {
   });
 });
 
-describe("formatEndpointLabel", () => {
-  it("joins the method and path", () => {
+describe("getResourcePath", () => {
+  it("strips the shared /api/v1 prefix", () => {
     expect(
-      formatEndpointLabel({
-        id: "permissions.list",
+      getResourcePath({
+        id: "permissions.get",
         method: "GET",
-        path: "/api/v1/permissions",
-        pathParams: [],
+        path: "/api/v1/permissions/:id",
+        pathParams: ["id"],
         acceptsBody: false,
         authRequired: true,
-        description: "List all permission records.",
+        description: "Get a single permission record by id.",
       }),
-    ).toBe("GET /api/v1/permissions");
+    ).toBe("/permissions/:id");
+  });
+});
+
+describe("getResourcePaths", () => {
+  it("lists every distinct resource path in the registry exactly once", () => {
+    expect(getResourcePaths()).toEqual(["/permissions", "/permissions/:id"]);
+  });
+});
+
+describe("getMethodsForResource", () => {
+  it("lists only the methods the registry declares for that resource", () => {
+    expect(getMethodsForResource("/permissions")).toEqual(["GET", "POST"]);
+    expect(getMethodsForResource("/permissions/:id")).toEqual([
+      "GET",
+      "PATCH",
+      "DELETE",
+    ]);
+  });
+
+  it("returns an empty list for a resource the registry doesn't have", () => {
+    expect(getMethodsForResource("/nonexistent")).toEqual([]);
+  });
+});
+
+describe("findEndpoint", () => {
+  it("finds the registry entry matching a method and resource path", () => {
+    expect(findEndpoint("PATCH", "/permissions/:id")).toMatchObject({
+      id: "permissions.update",
+    });
+  });
+
+  it("returns undefined for a method/resource combination the registry doesn't have", () => {
+    expect(findEndpoint("DELETE", "/permissions")).toBeUndefined();
   });
 });

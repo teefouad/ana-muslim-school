@@ -8,9 +8,15 @@ function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
 }
 
-function selectEndpoint(endpointId: string) {
-  fireEvent.change(screen.getByLabelText("Endpoint"), {
-    target: { value: endpointId },
+function selectResource(resourcePath: string) {
+  fireEvent.change(screen.getByLabelText("Resource"), {
+    target: { value: resourcePath },
+  });
+}
+
+function selectMethod(method: string) {
+  fireEvent.change(screen.getByLabelText("Method"), {
+    target: { value: method },
   });
 }
 
@@ -22,7 +28,8 @@ describe("ApiPlayground", () => {
   it("defaults to the first registered endpoint with no request body editor", () => {
     renderWithProvider(<ApiPlayground />);
 
-    expect(screen.getByLabelText("Endpoint")).toHaveValue("permissions.list");
+    expect(screen.getByLabelText("Method")).toHaveValue("GET");
+    expect(screen.getByLabelText("Resource")).toHaveValue("/permissions");
     expect(
       screen.getByText("This endpoint does not accept a request body."),
     ).toBeInTheDocument();
@@ -31,21 +38,64 @@ describe("ApiPlayground", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("switches endpoints and shows path parameter inputs when the endpoint has them", () => {
+  it("switches resources and shows path parameter inputs when the resource has them", () => {
     renderWithProvider(<ApiPlayground />);
 
-    selectEndpoint("permissions.get");
+    selectResource("/permissions/:id");
 
+    expect(screen.getByLabelText("Method")).toHaveValue("GET");
     expect(screen.getByLabelText(/Path parameter: id/)).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Request body (JSON)"),
     ).not.toBeInTheDocument();
   });
 
+  it("only offers methods the registry declares for the selected resource", () => {
+    renderWithProvider(<ApiPlayground />);
+
+    const methodSelect = screen.getByLabelText("Method") as HTMLSelectElement;
+    const optionValues = Array.from(methodSelect.options).map(
+      (option) => option.value,
+    );
+
+    expect(optionValues).toEqual(["GET", "POST"]);
+
+    selectResource("/permissions/:id");
+
+    expect(
+      Array.from(methodSelect.options).map((option) => option.value),
+    ).toEqual(["GET", "PATCH", "DELETE"]);
+  });
+
+  it("auto-corrects the method when switching to a resource that doesn't support the current one", () => {
+    renderWithProvider(<ApiPlayground />);
+
+    selectMethod("POST");
+    expect(screen.getByLabelText("Method")).toHaveValue("POST");
+
+    selectResource("/permissions/:id");
+
+    expect(screen.getByLabelText("Method")).toHaveValue("GET");
+  });
+
+  it("preserves an entered path parameter when switching methods on the same resource", () => {
+    renderWithProvider(<ApiPlayground />);
+    selectResource("/permissions/:id");
+
+    fireEvent.change(screen.getByLabelText(/Path parameter: id/), {
+      target: { value: "doc-42" },
+    });
+
+    selectMethod("PATCH");
+
+    expect(screen.getByLabelText(/Path parameter: id/)).toHaveValue("doc-42");
+    expect(screen.getByLabelText("Request body (JSON)")).toBeInTheDocument();
+  });
+
   it("shows a JSON body editor for endpoints that accept a body", () => {
     renderWithProvider(<ApiPlayground />);
 
-    selectEndpoint("permissions.create");
+    selectMethod("POST");
 
     expect(screen.getByLabelText("Request body (JSON)")).toBeInTheDocument();
     expect(
@@ -59,7 +109,7 @@ describe("ApiPlayground", () => {
     );
 
     renderWithProvider(<ApiPlayground />);
-    selectEndpoint("permissions.get");
+    selectResource("/permissions/:id");
 
     fireEvent.change(screen.getByLabelText(/Path parameter: id/), {
       target: { value: "doc-42" },
@@ -80,7 +130,7 @@ describe("ApiPlayground", () => {
 
   it("does not send a request when a required path parameter is left blank", () => {
     renderWithProvider(<ApiPlayground />);
-    selectEndpoint("permissions.get");
+    selectResource("/permissions/:id");
 
     fireEvent.click(screen.getByRole("button", { name: "Send request" }));
 
@@ -129,7 +179,7 @@ describe("ApiPlayground", () => {
     );
 
     renderWithProvider(<ApiPlayground />);
-    selectEndpoint("permissions.create");
+    selectMethod("POST");
 
     fireEvent.change(screen.getByLabelText("Request body (JSON)"), {
       target: { value: '{"email":"someone@example.com"}' },
@@ -149,7 +199,7 @@ describe("ApiPlayground", () => {
 
   it("blocks submission and shows an error for invalid JSON, without sending a request", () => {
     renderWithProvider(<ApiPlayground />);
-    selectEndpoint("permissions.create");
+    selectMethod("POST");
 
     fireEvent.change(screen.getByLabelText("Request body (JSON)"), {
       target: { value: "{not valid json" },
@@ -160,7 +210,7 @@ describe("ApiPlayground", () => {
     expect(screen.getByText("Enter valid JSON.")).toBeInTheDocument();
   });
 
-  it("displays the response status code and a formatted JSON body", async () => {
+  it("displays the response status code and a colored, collapsible JSON tree", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { id: "doc-1" } }), {
         status: 201,
@@ -173,9 +223,9 @@ describe("ApiPlayground", () => {
 
     expect(await screen.findByText("201")).toBeInTheDocument();
     expect(screen.getByText("Created")).toBeInTheDocument();
-    expect(
-      screen.getByText(/"id": "doc-1"/, { exact: false }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("tree")).toBeInTheDocument();
+    expect(screen.getByText("id:")).toBeInTheDocument();
+    expect(screen.getByText('"doc-1"')).toBeInTheDocument();
   });
 
   it("displays a non-JSON response body as plain text instead of failing", async () => {
@@ -194,6 +244,7 @@ describe("ApiPlayground", () => {
     expect(
       screen.getByText("Something went wrong upstream."),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
   });
 
   it("shows a loading state and disables the Send button while the request is in flight", async () => {
@@ -218,7 +269,7 @@ describe("ApiPlayground", () => {
     );
   });
 
-  it("locks the endpoint picker while a request is in flight, so switching endpoints can't mismatch an in-flight response", async () => {
+  it("locks the method and resource pickers while a request is in flight, so switching them can't mismatch an in-flight response", async () => {
     let resolveFetch: (value: Response) => void = () => {};
     vi.mocked(fetch).mockReturnValueOnce(
       new Promise((resolve) => {
@@ -229,12 +280,14 @@ describe("ApiPlayground", () => {
     renderWithProvider(<ApiPlayground />);
     fireEvent.click(screen.getByRole("button", { name: "Send request" }));
 
-    expect(screen.getByLabelText("Endpoint")).toBeDisabled();
+    expect(screen.getByLabelText("Method")).toBeDisabled();
+    expect(screen.getByLabelText("Resource")).toBeDisabled();
 
     resolveFetch(new Response(JSON.stringify({ data: [] }), { status: 200 }));
 
     await waitFor(() =>
-      expect(screen.getByLabelText("Endpoint")).not.toBeDisabled(),
+      expect(screen.getByLabelText("Method")).not.toBeDisabled(),
     );
+    expect(screen.getByLabelText("Resource")).not.toBeDisabled();
   });
 });

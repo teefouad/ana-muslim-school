@@ -1,5 +1,8 @@
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
+/** The fixed prefix shared by every endpoint in the registry. */
+export const API_BASE_PATH = "/api/v1";
+
 /**
  * A selectable endpoint in the API Playground (see ANA-55). This registry
  * only describes the playground's UI needs (method, path, params, whether a
@@ -94,7 +97,30 @@ export function buildRequestPath(
     .join("/");
 }
 
-/** Human-readable "METHOD /path" label for an endpoint picker option. */
-export function formatEndpointLabel(endpoint: ApiEndpoint): string {
-  return `${endpoint.method} ${endpoint.path}`;
+/** `endpoint.path` with the shared `API_BASE_PATH` prefix stripped, e.g. `/permissions/:id`. */
+export function getResourcePath(endpoint: ApiEndpoint): string {
+  return endpoint.path.slice(API_BASE_PATH.length);
+}
+
+/** Every distinct resource path in the registry, in declaration order. */
+export function getResourcePaths(): string[] {
+  return Array.from(new Set(API_ENDPOINTS.map(getResourcePath)));
+}
+
+/** The HTTP methods the registry exposes for a given resource path, in declaration order. */
+export function getMethodsForResource(resourcePath: string): HttpMethod[] {
+  return API_ENDPOINTS.filter(
+    (endpoint) => getResourcePath(endpoint) === resourcePath,
+  ).map((endpoint) => endpoint.method);
+}
+
+/** Looks up the registry entry for a given method + resource path combination. */
+export function findEndpoint(
+  method: HttpMethod,
+  resourcePath: string,
+): ApiEndpoint | undefined {
+  return API_ENDPOINTS.find(
+    (endpoint) =>
+      endpoint.method === method && getResourcePath(endpoint) === resourcePath,
+  );
 }

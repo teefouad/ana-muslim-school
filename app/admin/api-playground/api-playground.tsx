@@ -14,45 +14,50 @@ import {
   Text,
   TextInput,
   Textarea,
+  useComputedColorScheme,
 } from "@mantine/core";
+import { JsonView, darkStyles, defaultStyles } from "react-json-view-lite";
+import "react-json-view-lite/dist/index.css";
 
 import {
-  API_ENDPOINTS,
+  API_BASE_PATH,
   buildRequestPath,
-  formatEndpointLabel,
+  findEndpoint,
+  getMethodsForResource,
+  getResourcePath,
+  getResourcePaths,
   type ApiEndpoint,
+  type HttpMethod,
 } from "@/lib/api-playground/endpoint-registry";
+
+type JsonValue = Record<string, unknown> | unknown[];
 
 type PlaygroundResponse = {
   status: number;
   statusText: string;
-  bodyText: string;
+  /** The response body exactly as the endpoint returned it, unmodified. */
+  raw: string;
+  /** Set only when `raw` parses as a JSON object/array, for the tree viewer. */
+  json: JsonValue | undefined;
 };
 
-function findEndpoint(id: string): ApiEndpoint | undefined {
-  return API_ENDPOINTS.find((endpoint) => endpoint.id === id);
-}
+const DEFAULT_ENDPOINT: ApiEndpoint | undefined = findEndpoint(
+  getMethodsForResource(getResourcePaths()[0] ?? "")[0] ?? "GET",
+  getResourcePaths()[0] ?? "",
+);
 
 function isSuccessStatus(status: number): boolean {
   return status >= 200 && status < 300;
 }
 
-/**
- * Formats a response body for display: JSON is re-serialized with
- * indentation for readability, anything else -- including a genuinely empty
- * body -- is shown exactly as received so the playground never rewrites
- * what the endpoint actually returned (see ANA-55).
- */
-function formatResponseBody(text: string): string {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
-  }
-}
-
 export function ApiPlayground() {
-  const [endpointId, setEndpointId] = useState(API_ENDPOINTS[0]?.id ?? "");
+  const colorScheme = useComputedColorScheme("dark");
+  const [resourcePath, setResourcePath] = useState(
+    DEFAULT_ENDPOINT ? getResourcePath(DEFAULT_ENDPOINT) : "",
+  );
+  const [method, setMethod] = useState<HttpMethod>(
+    DEFAULT_ENDPOINT?.method ?? "GET",
+  );
   const [pathParamValues, setPathParamValues] = useState<
     Record<string, string>
   >({});
@@ -63,12 +68,31 @@ export function ApiPlayground() {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<PlaygroundResponse | null>(null);
 
-  const endpoint = findEndpoint(endpointId);
+  const endpoint = findEndpoint(method, resourcePath);
+  const resourceOptions = getResourcePaths();
+  const methodOptions = getMethodsForResource(resourcePath);
 
-  function handleEndpointChange(id: string) {
-    setEndpointId(id);
+  function handleResourceChange(newResourcePath: string) {
+    const methodsForNewResource = getMethodsForResource(newResourcePath);
+    const newMethod = methodsForNewResource.includes(method)
+      ? method
+      : (methodsForNewResource[0] ?? method);
+
+    setResourcePath(newResourcePath);
+    setMethod(newMethod);
     setPathParamValues({});
     setBodyText("{}");
+    setBodyError(null);
+    setRequestError(null);
+    setResponse(null);
+  }
+
+  function handleMethodChange(newMethod: HttpMethod) {
+    // The resource (and therefore its path parameters) is unchanged, so
+    // path parameter values and the body draft are kept -- switching from
+    // GET to PATCH on the same resource shouldn't lose an already-entered
+    // id.
+    setMethod(newMethod);
     setBodyError(null);
     setRequestError(null);
     setResponse(null);
@@ -121,11 +145,22 @@ export function ApiPlayground() {
         credentials: authEnabled ? "same-origin" : "omit",
       });
       const text = await res.text();
+      let json: JsonValue | undefined;
+
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (parsed !== null && typeof parsed === "object") {
+          json = parsed as JsonValue;
+        }
+      } catch {
+        json = undefined;
+      }
 
       setResponse({
         status: res.status,
         statusText: res.statusText,
-        bodyText: formatResponseBody(text),
+        raw: text,
+        json,
       });
     } catch (err) {
       setRequestError(
@@ -140,18 +175,35 @@ export function ApiPlayground() {
     <Stack gap="lg">
       <Paper withBorder p="md">
         <Stack gap="md">
-          <NativeSelect
-            label="Endpoint"
-            data={API_ENDPOINTS.map((item) => ({
-              value: item.id,
-              label: formatEndpointLabel(item),
-            }))}
-            value={endpointId}
-            onChange={(event) =>
-              handleEndpointChange(event.currentTarget.value)
-            }
-            disabled={loading}
-          />
+          <Group align="flex-end" gap="xs">
+            <NativeSelect
+              label="Method"
+              data={methodOptions}
+              value={method}
+              onChange={(event) =>
+                handleMethodChange(event.currentTarget.value as HttpMethod)
+              }
+              disabled={loading}
+            />
+            <Text
+              size="sm"
+              c="dimmed"
+              pb={8}
+              style={{ fontFamily: "monospace" }}
+            >
+              {API_BASE_PATH}
+            </Text>
+            <NativeSelect
+              label="Resource"
+              data={resourceOptions}
+              value={resourcePath}
+              onChange={(event) =>
+                handleResourceChange(event.currentTarget.value)
+              }
+              disabled={loading}
+              flex={1}
+            />
+          </Group>
 
           {endpoint && endpoint.pathParams.length > 0 && (
             <Group grow>
@@ -228,7 +280,14 @@ export function ApiPlayground() {
               </Badge>
               <Text fw={500}>{response.statusText}</Text>
             </Group>
-            <Code block>{response.bodyText}</Code>
+            {response.json !== undefined ? (
+              <JsonView
+                data={response.json}
+                style={colorScheme === "dark" ? darkStyles : defaultStyles}
+              />
+            ) : (
+              <Code block>{response.raw}</Code>
+            )}
           </Stack>
         </Paper>
       )}
