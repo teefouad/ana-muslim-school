@@ -157,4 +157,28 @@ describe("DataTable", () => {
       screen.getByRole("button", { name: "Edit Alpha" }),
     ).toBeInTheDocument();
   });
+
+  test("omitting getEditLabel hides the edit action even if onEditItem is provided", () => {
+    renderTable({ onEditItem: () => {} });
+    expect(
+      screen.queryByRole("button", { name: /Edit/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("omitting getDeleteLabel hides the delete action even if onDeleteItem is provided", () => {
+    renderTable({ onDeleteItem: () => {} });
+    expect(
+      screen.queryByRole("button", { name: /Delete/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("gives the actions column header an accessible name", () => {
+    renderTable({
+      onEditItem: () => {},
+      getEditLabel: (item) => `Edit ${item.name}`,
+    });
+    expect(
+      screen.getByRole("columnheader", { name: "Actions" }),
+    ).toBeInTheDocument();
+  });
 });

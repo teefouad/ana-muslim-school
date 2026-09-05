@@ -13,6 +13,7 @@ import {
   TableTr,
   Text,
   Tooltip,
+  VisuallyHidden,
 } from "@mantine/core";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -39,21 +40,24 @@ export interface DataTableProps<T> {
   /** `min-width` the table scrolls horizontally below, passed through to
    * Mantine's `TableScrollContainer`. */
   minWidth?: number;
-  /** Fired when a row's edit action is clicked. Its presence is what
-   * decides whether the edit affordance -- and the actions column at all,
-   * absent `onDeleteItem` too -- renders. */
+  /** Fired when a row's edit action is clicked. Rendering the edit
+   * affordance requires both this and `getEditLabel` -- an action without
+   * an accessible label must not render, rather than falling back to an
+   * icon-only button with no name. */
   onEditItem?: (item: T, index: number) => void;
-  /** The accessible label for a row's edit action. Required whenever
-   * `onEditItem` is provided. */
+  /** The accessible label for a row's edit action. Required alongside
+   * `onEditItem` for the edit affordance to render -- see `onEditItem`. */
   getEditLabel?: (item: T, index: number) => string;
   /** Disables every edit action (e.g. while another request is in
    * flight). */
   editDisabled?: boolean;
-  /** Fired when a row's delete action is clicked. Its presence is what
-   * decides whether the delete affordance renders at all. */
+  /** Fired when a row's delete action is clicked. Rendering the delete
+   * affordance requires both this and `getDeleteLabel` -- see
+   * `onEditItem`. */
   onDeleteItem?: (item: T, index: number) => void;
-  /** The accessible label for a row's delete action. Required whenever
-   * `onDeleteItem` is provided. */
+  /** The accessible label for a row's delete action. Required alongside
+   * `onDeleteItem` for the delete affordance to render -- see
+   * `onEditItem`. */
   getDeleteLabel?: (item: T, index: number) => string;
   /** Disables every delete action, independent of which single row is
    * mid-delete (see `deletingItemId`). */
@@ -93,8 +97,10 @@ export function DataTable<T>({
   getRowTestId,
   className,
 }: DataTableProps<T>) {
-  const canEdit = Boolean(onEditItem);
-  const canDelete = Boolean(onDeleteItem);
+  // Requires the label getter alongside the callback -- an action without
+  // one would render an icon-only button with no accessible name.
+  const canEdit = Boolean(onEditItem) && Boolean(getEditLabel);
+  const canDelete = Boolean(onDeleteItem) && Boolean(getDeleteLabel);
   const hasActions = canEdit || canDelete;
 
   if (items.length === 0) {
@@ -113,7 +119,11 @@ export function DataTable<T>({
             {columns.map((column) => (
               <TableTh key={column.key}>{column.header}</TableTh>
             ))}
-            {hasActions && <TableTh />}
+            {hasActions && (
+              <TableTh>
+                <VisuallyHidden>Actions</VisuallyHidden>
+              </TableTh>
+            )}
           </TableTr>
         </TableThead>
         <TableTbody>

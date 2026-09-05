@@ -53,7 +53,11 @@ export function ToggleCard({
     if (event.key === " " || event.key === "Enter") {
       // Prevents the space key from also scrolling the page.
       event.preventDefault();
-      toggle();
+      // A held key repeats keydown events -- only the initial press should
+      // toggle, or a long press would flip the switch back and forth.
+      if (!event.repeat) {
+        toggle();
+      }
     }
   }
 

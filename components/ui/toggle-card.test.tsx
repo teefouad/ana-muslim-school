@@ -86,6 +86,19 @@ describe("ToggleCard", () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
+  test("holding a key down only toggles once per physical press", () => {
+    const onChange = vi.fn();
+    renderCard({ checked: false, onChange });
+
+    const card = screen.getByRole("switch");
+    card.focus();
+    fireEvent.keyDown(card, { key: " ", repeat: false });
+    fireEvent.keyDown(card, { key: " ", repeat: true });
+    fireEvent.keyDown(card, { key: " ", repeat: true });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   test("is focusable via tab order when enabled", () => {
     renderCard();
     expect(screen.getByRole("switch")).toHaveAttribute("tabIndex", "0");
