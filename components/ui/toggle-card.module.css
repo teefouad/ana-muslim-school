@@ -1,0 +1,52 @@
+.card {
+  display: block;
+  width: 100%;
+  padding: var(--mantine-spacing-md);
+  border: 1px solid var(--mantine-color-dark-4);
+  border-radius: var(--mantine-radius-md);
+  background-color: var(--mantine-color-dark-6);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.card:hover {
+  background-color: var(--mantine-color-dark-5);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+.checkedPrimary {
+  border-color: var(--mantine-primary-color-filled);
+  background-color: var(--mantine-primary-color-light);
+}
+
+.checkedPrimary:hover {
+  background-color: var(--mantine-primary-color-light-hover);
+}
+
+.checkedError {
+  border-color: var(--mantine-color-red-filled);
+  background-color: var(--mantine-color-red-light);
+}
+
+.checkedError:hover {
+  background-color: var(--mantine-color-red-light-hover);
+}
+
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.disabled:hover {
+  background-color: var(--mantine-color-dark-6);
+}
+
+.switch {
+  pointer-events: none;
+}
