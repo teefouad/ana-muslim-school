@@ -64,7 +64,7 @@ export function DashboardShell({
             <UnstyledButton
               component={Link}
               href="/admin/profile"
-              className="flex items-center gap-2 rounded-[var(--mantine-radius-sm)] px-2 py-1 transition-colors hover:bg-[var(--mantine-color-default-hover)]"
+              className="flex items-center gap-2 rounded-[var(--mantine-radius-sm)] px-2 py-1 transition-colors hover:bg-[var(--mantine-color-default-hover)] focus-visible:bg-[var(--mantine-color-default-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mantine-primary-color-filled)]"
             >
               <UserCircle size={18} />
               <Text size="sm" c="dimmed">

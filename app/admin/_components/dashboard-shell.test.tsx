@@ -137,6 +137,21 @@ describe("DashboardShell", () => {
     ).toHaveAttribute("href", "/admin/profile");
   });
 
+  it("gives the top-right user profile control a focus-visible affordance", () => {
+    renderWithProvider(
+      <DashboardShell
+        userEmail="admin@example.com"
+        navAccess={{ isSuperAdmin: true, canManageUsers: false }}
+      >
+        <div />
+      </DashboardShell>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /admin@example\.com/ }),
+    ).toHaveClass("focus-visible:outline");
+  });
+
   it("keeps the sign-out control available", () => {
     renderWithProvider(
       <DashboardShell
