@@ -110,7 +110,11 @@ function BlockTypeButtons() {
               )
             }
           >
-            <Icon size={16} aria-hidden="true" />
+            {/* Button has no fixed size of its own -- it sizes to fixed
+                padding plus its icon, and every built-in button's icon is
+                24px, so matching that keeps every toolbar button the same
+                28x28 footprint. */}
+            <Icon size={24} aria-hidden="true" />
           </Button>
         );
       })}
