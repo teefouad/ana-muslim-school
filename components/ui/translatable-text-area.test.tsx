@@ -1,4 +1,4 @@
-import { type RefObject, createRef } from "react";
+import { type RefObject, createRef, useState } from "react";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,7 +8,7 @@ import {
   TranslatableTextArea,
   type TranslatableTextAreaHandle,
 } from "./translatable-text-area";
-import type { LanguageOption } from "./translatable-value";
+import type { LanguageOption, TranslatedValue } from "./translatable-value";
 
 const AR_FIRST: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -183,6 +183,64 @@ test("disables the editor and language switcher when disabled", async () => {
   for (const radio of within(languageSwitcher).getAllByRole("radio")) {
     expect(radio).toBeDisabled();
   }
+});
+
+test("reflects a parent-driven value change while the same language stays active", async () => {
+  const { rerender } = renderWithProvider(
+    <TranslatableTextArea
+      label="Description"
+      languages={AR_FIRST}
+      value={{ ar: "Original" }}
+      onChange={vi.fn()}
+    />,
+  );
+
+  expect(await screen.findByText("Original")).toBeInTheDocument();
+
+  // Simulates a form reset / loading a different record / a future
+  // Translate action -- something other than the editor's own onChange
+  // replacing value.ar while Arabic remains the active language (no
+  // language switch, so no remount to pick up the new initial markdown).
+  rerender(
+    <MantineProvider>
+      <TranslatableTextArea
+        label="Description"
+        languages={AR_FIRST}
+        value={{ ar: "Replaced externally" }}
+        onChange={vi.fn()}
+      />
+    </MantineProvider>,
+  );
+
+  expect(await screen.findByText("Replaced externally")).toBeInTheDocument();
+  expect(screen.queryByText("Original")).not.toBeInTheDocument();
+});
+
+test("continues to reflect typing after the parent echoes an edit back as props", async () => {
+  const user = userEvent.setup();
+
+  function Harness() {
+    const [value, setValue] = useState<TranslatedValue>({ ar: "Hello" });
+    return (
+      <TranslatableTextArea
+        label="Description"
+        languages={AR_FIRST}
+        value={value}
+        onChange={setValue}
+      />
+    );
+  }
+
+  renderWithProvider(<Harness />);
+
+  const editable = await screen.findByRole("textbox");
+  await user.click(editable);
+  await user.type(editable, " world");
+
+  // If the parent-update sync effect fought the editor's own onChange
+  // round-tripping back through props, typing would keep getting reset
+  // instead of accumulating.
+  await vi.waitFor(() => expect(editable).toHaveTextContent("Hello world"));
 });
 
 test("renders caller-provided actions beside the language switcher", async () => {

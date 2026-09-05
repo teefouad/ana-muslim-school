@@ -159,6 +159,7 @@ export default function MarkdownEditorCore({
   useImperativeHandle(handleRef, () => ({
     getSelectedText: () => selectedTextBox.current,
     getSelectedMarkdown: () => editorRef.current?.getSelectionMarkdown() ?? "",
+    setMarkdown: (value) => editorRef.current?.setMarkdown(value),
   }));
 
   return (
