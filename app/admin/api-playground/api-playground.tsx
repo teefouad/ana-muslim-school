@@ -19,8 +19,8 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { Check, ChevronsDownUp, ChevronsUpDown, Copy } from "lucide-react";
-import ReactJson from "@microlink/react-json-view";
 
+import { JsonTreeView } from "./json-tree-view";
 import {
   API_BASE_PATH,
   buildRequestUrl,
@@ -393,7 +393,7 @@ export function ApiPlayground() {
             </Group>
             <Box style={{ maxHeight: 480, overflow: "auto" }}>
               {response.json !== undefined ? (
-                <ReactJson
+                <JsonTreeView
                   key={treeVersion}
                   src={response.json}
                   name={false}
