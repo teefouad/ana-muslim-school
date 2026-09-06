@@ -2,19 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Group, Stack, Text } from "@mantine/core";
+import useSWR from "swr";
+import { Alert, Badge, Group, Loader, Stack, Text } from "@mantine/core";
 
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import type { Book } from "@/lib/books/types";
 import { resolveApplicationColor } from "./application-colors";
-import { useBooks } from "./books-store";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
-import type { MockBook } from "./mock-books";
+import { fetchJson } from "./fetch-json";
 
-function getBookLabel(book: MockBook): string {
+function getBookLabel(book: Book): string {
   return book.title.ar || book.title.en || "Untitled book";
 }
 
-const columns: DataTableColumn<MockBook>[] = [
+const columns: DataTableColumn<Book>[] = [
   {
     key: "title",
     header: "Title",
@@ -45,8 +46,8 @@ const columns: DataTableColumn<MockBook>[] = [
     key: "locked",
     header: "Locked",
     render: (book) => (
-      <Badge color={book.locked ? "red" : "gray"} variant="light">
-        {book.locked ? "Locked" : "Unlocked"}
+      <Badge color={book.isLocked ? "red" : "gray"} variant="light">
+        {book.isLocked ? "Locked" : "Unlocked"}
       </Badge>
     ),
   },
@@ -54,8 +55,8 @@ const columns: DataTableColumn<MockBook>[] = [
     key: "published",
     header: "Published",
     render: (book) => (
-      <Badge color={book.published ? "green" : "gray"} variant="light">
-        {book.published ? "Published" : "Draft"}
+      <Badge color={book.isPublished ? "green" : "gray"} variant="light">
+        {book.isPublished ? "Published" : "Draft"}
       </Badge>
     ),
   },
@@ -81,16 +82,37 @@ const columns: DataTableColumn<MockBook>[] = [
   },
 ];
 
-// Presentation wrapper pairing the reusable DataTable (ANA-59) with the
-// Books mock store (books-store.tsx) -- no Firestore/API calls, and any
-// deletion only updates that in-memory state.
+// Presentation wrapper pairing the reusable DataTable (ANA-59) with the real
+// `/api/v1/books` REST boundary (ANA-65) -- no Firestore/repository access
+// from this Client Component. Uses SWR for the list read rather than a
+// hand-rolled `useEffect` + `fetch`, per this Next.js version's documented
+// client-side data-fetching guidance (see fetch-json.ts).
 export function BooksTable() {
   const router = useRouter();
-  const { books, removeBook } = useBooks();
-  const [deletingBook, setDeletingBook] = useState<MockBook | null>(null);
+  const { data, error, mutate } = useSWR<{ data: Book[] }>(
+    "/api/v1/books",
+    fetchJson,
+    { shouldRetryOnError: false },
+  );
+  const [deletingBook, setDeletingBook] = useState<Book | null>(null);
+
+  if (!data && !error) {
+    return (
+      <Group gap="sm">
+        <Loader size="sm" />
+        <Text size="sm" c="dimmed">
+          Loading books…
+        </Text>
+      </Group>
+    );
+  }
+
+  const books = data?.data ?? [];
 
   return (
-    <>
+    <Stack gap="md">
+      {error && <Alert color="red">{error.message}</Alert>}
+
       <DataTable
         items={books}
         getItemId={(book) => book.id}
@@ -107,12 +129,10 @@ export function BooksTable() {
         book={deletingBook}
         onClose={() => setDeletingBook(null)}
         onConfirm={() => {
-          if (deletingBook) {
-            removeBook(deletingBook.id);
-          }
           setDeletingBook(null);
+          mutate();
         }}
       />
-    </>
+    </Stack>
   );
 }

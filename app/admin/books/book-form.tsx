@@ -10,8 +10,11 @@ import type {
   LanguageOption,
   TranslatedValue,
 } from "@/components/ui/translatable-value";
-import { resolveApplicationColor } from "./application-colors";
-import type { MockBook } from "./mock-books";
+import type { Book, BookWritableFields } from "@/lib/books/types";
+import {
+  APPLICATION_COLOR_TOKENS,
+  resolveApplicationColor,
+} from "./application-colors";
 
 const LANGUAGES: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -23,9 +26,10 @@ const DEFAULT_COLOR = "#1c7ed6";
 export interface BookFormValues {
   title: TranslatedValue;
   description: TranslatedValue;
+  longDescription: TranslatedValue;
   imageId: string;
-  locked: boolean;
-  published: boolean;
+  isLocked: boolean;
+  isPublished: boolean;
   color: string;
 }
 
@@ -33,21 +37,52 @@ export function createEmptyBookFormValues(): BookFormValues {
   return {
     title: {},
     description: {},
+    longDescription: {},
     imageId: "",
-    locked: false,
-    published: false,
+    isLocked: false,
+    isPublished: false,
     color: DEFAULT_COLOR,
   };
 }
 
-export function toBookFormValues(book: MockBook): BookFormValues {
+/** Maps a `Book` returned by `GET /api/v1/books/{bookId}` to this form's controlled state. */
+export function toBookFormValues(book: Book): BookFormValues {
   return {
     title: book.title,
     description: book.description,
+    longDescription: book.longDescription,
     imageId: book.imageId,
-    locked: book.locked,
-    published: book.published,
+    isLocked: book.isLocked,
+    isPublished: book.isPublished,
     color: book.color,
+  };
+}
+
+function toTranslatableString(value: TranslatedValue): {
+  ar: string;
+  en: string;
+} {
+  return { ar: value.ar ?? "", en: value.en ?? "" };
+}
+
+/**
+ * Builds a `POST`/`PATCH` `/api/v1/books` request body from this form's
+ * values. Field-by-field on purpose -- `modules` and audit/timestamp fields,
+ * which this form never edits, can't accidentally leak into a request this
+ * way, and each translatable field is normalized to the `{ ar, en }` shape
+ * the API requires even before both languages have been filled in.
+ */
+export function toBookWritableFields(
+  values: BookFormValues,
+): BookWritableFields {
+  return {
+    title: toTranslatableString(values.title),
+    description: toTranslatableString(values.description),
+    longDescription: toTranslatableString(values.longDescription),
+    color: values.color,
+    imageId: values.imageId,
+    isLocked: values.isLocked,
+    isPublished: values.isPublished,
   };
 }
 
@@ -88,12 +123,21 @@ export function BookForm({
           onChange={(title) => setValues((prev) => ({ ...prev, title }))}
         />
 
-        <TranslatableTextArea
+        <TranslatableTextInput
           label="Description"
           languages={LANGUAGES}
           value={values.description}
           onChange={(description) =>
             setValues((prev) => ({ ...prev, description }))
+          }
+        />
+
+        <TranslatableTextArea
+          label="Long description"
+          languages={LANGUAGES}
+          value={values.longDescription}
+          onChange={(longDescription) =>
+            setValues((prev) => ({ ...prev, longDescription }))
           }
         />
 
@@ -112,6 +156,7 @@ export function BookForm({
           <SimpleGrid cols={2} style={{ alignItems: "flex-end" }}>
             <Autocomplete
               label="Color"
+              data={APPLICATION_COLOR_TOKENS}
               value={values.color}
               onChange={(color) => setValues((prev) => ({ ...prev, color }))}
             />
@@ -133,16 +178,18 @@ export function BookForm({
             label="Locked"
             description="App users can't open locked books."
             variant="error"
-            checked={values.locked}
-            onChange={(locked) => setValues((prev) => ({ ...prev, locked }))}
+            checked={values.isLocked}
+            onChange={(isLocked) =>
+              setValues((prev) => ({ ...prev, isLocked }))
+            }
           />
           <ToggleCard
             label="Published"
             description="Only published books are visible in the app."
             variant="primary"
-            checked={values.published}
-            onChange={(published) =>
-              setValues((prev) => ({ ...prev, published }))
+            checked={values.isPublished}
+            onChange={(isPublished) =>
+              setValues((prev) => ({ ...prev, isPublished }))
             }
           />
         </SimpleGrid>
