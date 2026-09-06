@@ -7,6 +7,8 @@ describe("serviceErrorResponse", () => {
     ["invalid-input", 400],
     ["not-found", 404],
     ["conflict", 409],
+    ["too-large", 413],
+    ["upstream-error", 502],
   ] as const)("maps %s to status %d", async (code, status) => {
     const response = serviceErrorResponse({ code, message: "boom" });
 

@@ -12,6 +12,17 @@ export class HttpError extends Error {
   }
 }
 
+/** Extracts the `{ error: string }` message this app's API routes return on
+ * failure, falling back to a generic message for a non-JSON/unexpected body
+ * -- shared by every hand-rolled fetch in the admin UI (SWR reads here, and
+ * POST/PUT/DELETE mutations elsewhere, e.g.
+ * app/admin/books/import-source/ocr-client.ts) so the same fallback wording
+ * and parsing only lives once. */
+export async function readErrorMessage(response: Response): Promise<string> {
+  const data = await response.json().catch(() => null);
+  return data?.error ?? "Something went wrong. Please try again.";
+}
+
 /**
  * The shared GET fetcher for `useSWR` reads of `/api/v1/books` (ANA-65).
  * Client-side data fetching in this Next.js version flags a plain
@@ -25,11 +36,7 @@ export async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
 
   if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    throw new HttpError(
-      response.status,
-      data?.error ?? "Something went wrong. Please try again.",
-    );
+    throw new HttpError(response.status, await readErrorMessage(response));
   }
 
   return response.json();

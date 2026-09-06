@@ -1,0 +1,52 @@
+.label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #a3a3a3;
+}
+
+.row {
+  display: flex;
+  align-items: stretch;
+}
+
+.previewColumn,
+.textColumn {
+  min-width: 0;
+}
+
+.previewCanvas {
+  width: 100%;
+}
+
+.handle {
+  flex-shrink: 0;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+}
+
+.handleBar {
+  width: 4px;
+  height: 100%;
+  min-height: 40px;
+  border-radius: 2px;
+  background-color: var(--mantine-color-default-border);
+  transition: background-color 120ms ease;
+}
+
+.handle:hover .handleBar {
+  background-color: color-mix(
+    in srgb,
+    var(--mantine-primary-color-filled) 50%,
+    transparent
+  );
+}
+
+.handle:active .handleBar,
+.handle:focus-visible .handleBar {
+  background-color: var(--mantine-primary-color-filled);
+}

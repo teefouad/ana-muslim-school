@@ -3,6 +3,7 @@ import "server-only";
 import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getStorage, type Storage } from "firebase-admin/storage";
 
 function getAdminApp() {
   if (getApps().length) {
@@ -21,6 +22,10 @@ function getAdminApp() {
 
   return initializeApp({
     credential: cert({ projectId, clientEmail, privateKey }),
+    // Only consumed by getAdminStorage()'s default bucket() lookup below --
+    // reusing the public client config instead of adding a second secret
+    // for the same bucket name.
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   });
 }
 
@@ -55,4 +60,29 @@ export function getAdminFirestore(): Firestore {
   }
 
   return cachedAdminFirestore;
+}
+
+let cachedAdminStorage: Storage | undefined;
+
+/**
+ * Lazily initializes Storage for the same reason as `getAdminAuth` above --
+ * avoids running at module load / `next build` time in environments without
+ * Admin credentials configured (e.g. CI). `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+ * is checked here rather than in `getAdminApp()` -- Auth/Firestore-only
+ * callers shouldn't fail just because the bucket isn't configured, but
+ * `.bucket()` needs it and otherwise fails later with an opaque
+ * "Bucket name not specified or invalid" error.
+ */
+export function getAdminStorage(): Storage {
+  if (!process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
+    throw new Error(
+      "Missing Firebase Storage bucket. Set NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET.",
+    );
+  }
+
+  if (!cachedAdminStorage) {
+    cachedAdminStorage = getStorage(getAdminApp());
+  }
+
+  return cachedAdminStorage;
 }

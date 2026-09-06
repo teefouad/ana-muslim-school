@@ -6,6 +6,8 @@ const STATUS_BY_CODE: Record<ServiceErrorCode, number> = {
   "invalid-input": 400,
   "not-found": 404,
   conflict: 409,
+  "too-large": 413,
+  "upstream-error": 502,
 };
 
 /** Maps a learning-content service failure to the equivalent HTTP response. */

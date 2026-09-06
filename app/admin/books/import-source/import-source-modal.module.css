@@ -1,0 +1,32 @@
+/* Large workspace-style modal (ANA-68) -- near-full desktop width with
+   normal dashboard margins still visible, ~85-90vh tall, and a flex-column
+   body with `min-height: 0` so each workflow view (picker/viewer/OCR
+   review/module builder) can fill the remaining height and scroll
+   internally instead of the modal growing a page-level scrollbar.
+   `!important` matches the existing defensive pattern in app/globals.css
+   for overriding Mantine's own Modal content styles. */
+.content {
+  width: min(1400px, 92vw) !important;
+  max-width: min(1400px, 92vw) !important;
+  height: 88vh !important;
+  max-height: 88vh !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .content {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+}
