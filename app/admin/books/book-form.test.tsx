@@ -1,11 +1,27 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
+import { Button, MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BookForm, createEmptyBookFormValues } from "./book-form";
 
+const FORM_ID = "test-book-form";
+
 function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
+}
+
+// The Add/Edit Book pages submit this form from a header button outside the
+// form itself, via the HTML `form` attribute (ANA-61) -- reproduce that here
+// rather than reaching into the component internals to submit it.
+function renderWithExternalSubmit(ui: React.ReactElement) {
+  return renderWithProvider(
+    <>
+      {ui}
+      <Button type="submit" form={FORM_ID}>
+        Submit
+      </Button>
+    </>,
+  );
 }
 
 describe("BookForm", () => {
@@ -16,6 +32,7 @@ describe("BookForm", () => {
   it("renders exactly the requested fields", async () => {
     renderWithProvider(
       <BookForm
+        id={FORM_ID}
         initialValues={createEmptyBookFormValues()}
         onSubmit={vi.fn()}
       />,
@@ -34,9 +51,22 @@ describe("BookForm", () => {
     expect(screen.queryByText("Short description")).not.toBeInTheDocument();
   });
 
+  it("renders no bottom submit or Cancel buttons of its own", () => {
+    renderWithProvider(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
   it("uses the reusable translatable components for Title and Description, offering Arabic and English", async () => {
     renderWithProvider(
       <BookForm
+        id={FORM_ID}
         initialValues={{
           ...createEmptyBookFormValues(),
           title: { ar: "عنوان", en: "Title" },
@@ -67,6 +97,7 @@ describe("BookForm", () => {
   it("uses ToggleCard for Locked (error variant) and Published (primary variant)", () => {
     renderWithProvider(
       <BookForm
+        id={FORM_ID}
         initialValues={createEmptyBookFormValues()}
         onSubmit={vi.fn()}
       />,
@@ -82,47 +113,24 @@ describe("BookForm", () => {
     expect(published).toHaveAttribute("aria-checked", "true");
   });
 
-  it("calls onSubmit with the current field values and makes no network request", () => {
+  it("calls onSubmit with the current field values when submitted via an external header button, and makes no network request", () => {
     const onSubmit = vi.fn();
-    renderWithProvider(
+    renderWithExternalSubmit(
       <BookForm
+        id={FORM_ID}
         initialValues={{
           ...createEmptyBookFormValues(),
           imageId: "story-1",
         }}
-        submitLabel="Add book"
         onSubmit={onSubmit}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ imageId: "story-1" }),
     );
     expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("renders a Cancel button only when onCancel is given", () => {
-    const { rerender } = renderWithProvider(
-      <BookForm
-        initialValues={createEmptyBookFormValues()}
-        onSubmit={vi.fn()}
-      />,
-    );
-    expect(
-      screen.queryByRole("button", { name: "Cancel" }),
-    ).not.toBeInTheDocument();
-
-    rerender(
-      <MantineProvider>
-        <BookForm
-          initialValues={createEmptyBookFormValues()}
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />
-      </MantineProvider>,
-    );
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 });

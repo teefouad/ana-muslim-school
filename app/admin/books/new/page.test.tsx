@@ -38,6 +38,14 @@ describe("AddBookPage", () => {
     localStorage.clear();
   });
 
+  it("has no Cancel button", () => {
+    renderHarness();
+
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("contains exactly the requested Book form fields", () => {
     renderHarness();
 
@@ -51,7 +59,30 @@ describe("AddBookPage", () => {
     expect(screen.getByText("Color")).toBeInTheDocument();
   });
 
-  it("adds the submitted book to local state, navigates back, and makes no network call", () => {
+  it("renders Add book as a page header action that submits the Book form", () => {
+    renderHarness();
+
+    const addButton = screen.getByRole("button", { name: "Add book" });
+    expect(addButton).toHaveAttribute("type", "submit");
+    expect(addButton).toHaveAttribute("form");
+  });
+
+  it("renders Import Source disabled before the first save", () => {
+    renderHarness();
+
+    expect(
+      screen.getByRole("button", { name: "Import Source" }),
+    ).toBeDisabled();
+  });
+
+  it("renders the Sections panel disabled before the first save", () => {
+    renderHarness();
+
+    expect(screen.getByText("Sections")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add section" })).toBeDisabled();
+  });
+
+  it("adds the submitted book to local state, stays on the same page, and makes no network call", () => {
     renderHarness();
 
     fireEvent.change(screen.getByLabelText("In-app image ID"), {
@@ -60,17 +91,30 @@ describe("AddBookPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add book" }));
 
     expect(screen.getByText("new-book-image")).toBeInTheDocument();
-    expect(pushMock).toHaveBeenCalledWith("/admin/books");
+    expect(pushMock).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
   });
 
-  it("navigates back without adding a book when Cancel is clicked", () => {
+  it("enables Import Source and the Sections panel after the Book is created in the current session", () => {
     renderHarness();
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add book" }));
 
-    expect(screen.getByText("No books yet.")).toBeInTheDocument();
-    expect(pushMock).toHaveBeenCalledWith("/admin/books");
+    expect(screen.getByRole("button", { name: "Import Source" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Add section" })).toBeEnabled();
+  });
+
+  it("switches the primary action to Save changes after the Book is created", () => {
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add book" }));
+
+    expect(
+      screen.getByRole("button", { name: "Save changes" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add book" }),
+    ).not.toBeInTheDocument();
   });
 });
