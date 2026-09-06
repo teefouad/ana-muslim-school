@@ -71,10 +71,55 @@ describe("SectionsPanel", () => {
     ]);
   });
 
-  it("disables Add section and reordering when disabled", () => {
+  it("exposes edit and delete icon actions on every row via ItemList", () => {
+    renderPanel();
+
+    expect(
+      screen.getByRole("button", { name: "Edit Introduction" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Introduction" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit Section 2" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Section 2" }),
+    ).toBeInTheDocument();
+  });
+
+  it("removes the section through onSectionsChange when its delete action is clicked", () => {
+    const onSectionsChange = vi.fn();
+    renderPanel({ onSectionsChange });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete Introduction" }),
+    );
+
+    expect(onSectionsChange).toHaveBeenCalledWith([SECTIONS[1]]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not call onSectionsChange or make a network/Module request when a section's edit action is clicked", () => {
+    const onSectionsChange = vi.fn();
+    renderPanel({ onSectionsChange });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Introduction" }));
+
+    expect(onSectionsChange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("disables Add section, reordering, and the edit/delete actions when disabled", () => {
     renderPanel({ disabled: true });
 
     expect(screen.getByRole("button", { name: "Add section" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Edit Introduction" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Delete Introduction" }),
+    ).toBeDisabled();
     const grip = document.querySelector(
       '[data-testid="list-item-section-1"] [aria-hidden="true"]',
     );
@@ -82,10 +127,13 @@ describe("SectionsPanel", () => {
     expect(grip).not.toHaveAttribute("tabindex");
   });
 
-  it("makes no network call or browser persistence when adding a section", () => {
+  it("makes no network call or browser persistence when adding or deleting a section", () => {
     renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "Add section" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete Introduction" }),
+    );
 
     expect(fetch).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);

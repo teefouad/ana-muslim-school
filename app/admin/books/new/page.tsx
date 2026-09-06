@@ -1,37 +1,70 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Divider, Flex, Group, Stack, Title } from "@mantine/core";
+import { useRouter } from "next/navigation";
+import {
+  Alert,
+  Box,
+  Button,
+  Divider,
+  Flex,
+  Group,
+  Stack,
+  Title,
+} from "@mantine/core";
 
-import { BookForm, type BookFormValues } from "../book-form";
-import { useBooks } from "../books-store";
+import {
+  BookForm,
+  createEmptyBookFormValues,
+  toBookWritableFields,
+  type BookFormValues,
+} from "../book-form";
 import { INITIAL_MOCK_SECTIONS, type MockSection } from "../mock-sections";
 import { SectionsPanel } from "../sections-panel";
+import type { Book } from "@/lib/books/types";
 
 const BOOK_FORM_ID = "add-book-form";
 
-// Add Book (ANA-61): header actions (Import Source, Add book/Save changes)
-// live on the page and submit the shared BookForm via `form={BOOK_FORM_ID}`.
-// The first successful save creates the mock Book in local state and keeps
-// rendering this same page -- now in the same saved-book state as Edit Book
-// -- rather than navigating away, so Import Source and the Sections panel
-// can be exercised in the current session.
+// Add Book (ANA-65): creates through `POST /api/v1/books` and hands off to
+// the normal Edit Book surface for the server-returned id -- Import Source
+// and the Sections panel stay disabled here since a Book must exist (and
+// have a real id) before either can do anything, and this page never keeps
+// rendering a "saved" state of its own after a successful create.
 export default function AddBookPage() {
-  const { addBook, updateBook } = useBooks();
-  const [bookId, setBookId] = useState<string | null>(null);
+  const router = useRouter();
   const [sections, setSections] = useState<MockSection[]>(
     INITIAL_MOCK_SECTIONS,
   );
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(values: BookFormValues) {
-    if (bookId) {
-      updateBook(bookId, values);
-      return;
+  async function handleSubmit(values: BookFormValues) {
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/v1/books", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toBookWritableFields(values)),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(
+          data?.error ?? "Something went wrong. Please try again.",
+        );
+      }
+
+      const { data: book } = (await response.json()) as { data: Book };
+      router.replace(`/admin/books/${book.id}/edit`);
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const id = crypto.randomUUID();
-    addBook({ id, ...values });
-    setBookId(id);
   }
 
   return (
@@ -39,24 +72,29 @@ export default function AddBookPage() {
       <Group justify="space-between" wrap="wrap" gap="sm">
         <Title order={2}>Add Book</Title>
         <Group gap="sm">
-          <Button variant="default" disabled={!bookId}>
+          <Button variant="default" disabled>
             Import Source
           </Button>
-          <Button type="submit" form={BOOK_FORM_ID}>
-            {bookId ? "Save changes" : "Add book"}
+          <Button type="submit" form={BOOK_FORM_ID} loading={isSubmitting}>
+            Add book
           </Button>
         </Group>
       </Group>
       <Divider opacity={0.25} mx={-27} />
+      {submitError && <Alert color="red">{submitError}</Alert>}
       <Flex gap="xl" direction={{ base: "column", md: "row" }} align="stretch">
         <Box style={{ flex: 1, minWidth: 0 }}>
-          <BookForm id={BOOK_FORM_ID} onSubmit={handleSubmit} />
+          <BookForm
+            id={BOOK_FORM_ID}
+            initialValues={createEmptyBookFormValues()}
+            onSubmit={handleSubmit}
+          />
         </Box>
         <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
           <SectionsPanel
             sections={sections}
             onSectionsChange={setSections}
-            disabled={!bookId}
+            disabled
           />
         </Box>
       </Flex>

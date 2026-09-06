@@ -2,24 +2,18 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { buildBookFixture } from "./book-fixtures";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
-import type { MockBook } from "./mock-books";
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
-}
-
-function buildBook(overrides: Partial<MockBook> = {}): MockBook {
-  return {
-    id: "book-1",
-    title: { ar: "الرحيق المختوم", en: "The Sealed Nectar" },
-    description: { ar: "", en: "" },
-    imageId: "sealed-nectar",
-    locked: false,
-    published: true,
-    color: "#1c7ed6",
-    ...overrides,
-  };
 }
 
 describe("DeleteConfirmModal", () => {
@@ -37,7 +31,7 @@ describe("DeleteConfirmModal", () => {
   it("shows a confirmation naming the book", async () => {
     renderWithProvider(
       <DeleteConfirmModal
-        book={buildBook()}
+        book={buildBookFixture()}
         onClose={vi.fn()}
         onConfirm={vi.fn()}
       />,
@@ -54,7 +48,7 @@ describe("DeleteConfirmModal", () => {
     const onConfirm = vi.fn();
     renderWithProvider(
       <DeleteConfirmModal
-        book={buildBook()}
+        book={buildBookFixture()}
         onClose={onClose}
         onConfirm={onConfirm}
       />,
@@ -67,11 +61,16 @@ describe("DeleteConfirmModal", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("calls onConfirm without making a request when Delete is clicked", () => {
+  it("calls DELETE /api/v1/books/{bookId} and onConfirm when Delete succeeds", async () => {
+    const book = buildBookFixture({ id: "book-42" });
     const onConfirm = vi.fn();
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ ok: true }),
+    );
+
     renderWithProvider(
       <DeleteConfirmModal
-        book={buildBook()}
+        book={book}
         onClose={vi.fn()}
         onConfirm={onConfirm}
       />,
@@ -79,7 +78,31 @@ describe("DeleteConfirmModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/books/book-42", {
+      method: "DELETE",
+    });
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows an error and does not call onConfirm when the delete request fails", async () => {
+    const onConfirm = vi.fn();
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: "Cannot delete this book." }, 409),
+    );
+
+    renderWithProvider(
+      <DeleteConfirmModal
+        book={buildBookFixture()}
+        onClose={vi.fn()}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(
+      await screen.findByText("Cannot delete this book."),
+    ).toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

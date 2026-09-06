@@ -10,12 +10,16 @@ import {
 const SEALED_NECTAR_VALUES: BookFormValues = {
   title: { ar: "الرحيق المختوم", en: "The Sealed Nectar" },
   description: {
-    ar: "**سيرة** النبي محمد صلى الله عليه وسلم.",
-    en: "A **biography** of the Prophet Muhammad.",
+    ar: "سيرة النبي محمد صلى الله عليه وسلم.",
+    en: "A biography of the Prophet Muhammad.",
+  },
+  longDescription: {
+    ar: "**سيرة** كاملة للنبي محمد صلى الله عليه وسلم.",
+    en: "A **full biography** of the Prophet Muhammad.",
   },
   imageId: "sealed-nectar",
-  locked: false,
-  published: true,
+  isLocked: false,
+  isPublished: true,
   color: "#1c7ed6",
 };
 
@@ -63,8 +67,8 @@ export const LockedAndUnpublished: Story = {
   args: {
     initialValues: {
       ...SEALED_NECTAR_VALUES,
-      locked: true,
-      published: false,
+      isLocked: true,
+      isPublished: false,
       color: "#e8590c",
     },
   },
@@ -77,15 +81,14 @@ export const LockedAndPublished: Story = {
   args: {
     initialValues: {
       ...SEALED_NECTAR_VALUES,
-      locked: true,
-      published: true,
+      isLocked: true,
+      isPublished: true,
     },
   },
 };
 
-// Same BookForm the Add Book page uses, but with an existing mock book's
-// values prefilled -- what the Edit Book page renders (see
-// [id]/edit/page.tsx).
+// Same BookForm the Add Book page uses, but with an existing book's values
+// prefilled -- what the Edit Book page renders (see [id]/edit/page.tsx).
 export const EditPrefilled: Story = {
   args: {
     initialValues: {
@@ -94,9 +97,10 @@ export const EditPrefilled: Story = {
         ar: "مجموعة من الأحاديث النبوية الصحيحة.",
         en: "A collection of authentic prophetic hadiths.",
       },
+      longDescription: { ar: "", en: "" },
       imageId: "riyad-as-salihin",
-      locked: true,
-      published: false,
+      isLocked: true,
+      isPublished: false,
       color: "#2f9e44",
     },
   },

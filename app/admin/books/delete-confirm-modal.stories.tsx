@@ -1,17 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
+import { buildBookFixture } from "./book-fixtures";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
-import type { MockBook } from "./mock-books";
 
-const BOOK: MockBook = {
-  id: "book-1",
-  title: { ar: "الرحيق المختوم", en: "The Sealed Nectar" },
-  description: { ar: "", en: "" },
-  imageId: "sealed-nectar",
-  locked: false,
-  published: true,
-  color: "#1c7ed6",
-};
+const BOOK = buildBookFixture();
 
 const meta = {
   title: "Books/DeleteConfirmModal",

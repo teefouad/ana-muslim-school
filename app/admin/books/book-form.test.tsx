@@ -2,7 +2,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { Button, MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BookForm, createEmptyBookFormValues } from "./book-form";
+import {
+  BookForm,
+  createEmptyBookFormValues,
+  toBookWritableFields,
+} from "./book-form";
 
 const FORM_ID = "test-book-form";
 
@@ -29,7 +33,7 @@ describe("BookForm", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("renders exactly the requested fields", async () => {
+  it("renders exactly the requested fields, in order", async () => {
     renderWithProvider(
       <BookForm
         id={FORM_ID}
@@ -40,6 +44,7 @@ describe("BookForm", () => {
 
     expect(screen.getByText("Title")).toBeInTheDocument();
     expect(screen.getByText("Description")).toBeInTheDocument();
+    expect(screen.getByText("Long description")).toBeInTheDocument();
     expect(screen.getByLabelText("In-app image ID")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Locked" })).toBeInTheDocument();
     expect(
@@ -47,8 +52,24 @@ describe("BookForm", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Color")).toBeInTheDocument();
 
-    // Explicitly out of scope per ANA-60.
-    expect(screen.queryByText("Short description")).not.toBeInTheDocument();
+    // Title, Description, Long description, In-app image ID, Locked,
+    // Published, Color -- in that order.
+    const labelOrder = [
+      "Title",
+      "Description",
+      "Long description",
+      "In-app image ID",
+      "Locked",
+      "Published",
+      "Color",
+    ];
+    const elements = labelOrder.map(
+      (label) => screen.queryByText(label) ?? screen.getByLabelText(label),
+    );
+    for (let i = 0; i < elements.length - 1; i += 1) {
+      const position = elements[i].compareDocumentPosition(elements[i + 1]);
+      expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 
   it("renders no bottom submit or Cancel buttons of its own", () => {
@@ -63,35 +84,77 @@ describe("BookForm", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("uses the reusable translatable components for Title and Description, offering Arabic and English", async () => {
+  it("uses the reusable translatable text input for both Title and Description, offering Arabic and English", async () => {
     renderWithProvider(
       <BookForm
         id={FORM_ID}
         initialValues={{
           ...createEmptyBookFormValues(),
           title: { ar: "عنوان", en: "Title" },
-          description: { ar: "# نص", en: "# Text" },
+          description: { ar: "وصف", en: "Description" },
         }}
         onSubmit={vi.fn()}
       />,
     );
 
-    // TranslatableTextInput defaults to Arabic.
+    // Both default to Arabic and render as plain text inputs, not Markdown.
     expect(screen.getByDisplayValue("عنوان")).toBeInTheDocument();
-    // TranslatableTextArea (Markdown) renders "# نص" as a live heading.
-    expect(
-      await screen.findByRole("heading", { name: "نص" }),
-    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("وصف")).toBeInTheDocument();
 
     const languageSwitchers = screen.getAllByRole("radiogroup", {
       name: "Language",
     });
-    expect(languageSwitchers).toHaveLength(2);
+    // Title, Description, and Long description each get their own switcher.
+    expect(languageSwitchers).toHaveLength(3);
     for (const switcher of languageSwitchers) {
       expect(
         within(switcher).getByRole("radio", { name: "English" }),
       ).toBeInTheDocument();
     }
+  });
+
+  it("keeps Description and Long description as independent values", () => {
+    const onSubmit = vi.fn();
+    renderWithExternalSubmit(
+      <BookForm
+        id={FORM_ID}
+        initialValues={{
+          ...createEmptyBookFormValues(),
+          description: { ar: "وصف قصير", en: "" },
+          longDescription: { ar: "وصف طويل", en: "" },
+        }}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    expect(screen.getByDisplayValue("وصف قصير")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: { ar: "وصف قصير", en: "" },
+        longDescription: { ar: "وصف طويل", en: "" },
+      }),
+    );
+  });
+
+  it("renders Long description as the translatable Markdown-backed editor", async () => {
+    renderWithProvider(
+      <BookForm
+        id={FORM_ID}
+        initialValues={{
+          ...createEmptyBookFormValues(),
+          longDescription: { ar: "# نص", en: "# Text" },
+        }}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    // TranslatableTextArea (Markdown) renders "# نص" as a live heading.
+    expect(
+      await screen.findByRole("heading", { name: "نص" }),
+    ).toBeInTheDocument();
   });
 
   it("uses ToggleCard for Locked and Published, both with the same (error) visual variant", () => {
@@ -116,6 +179,24 @@ describe("BookForm", () => {
     // (ANA-63): compare their class lists rather than a specific class
     // name, since that name is a `ToggleCard` implementation detail.
     expect(published.className).toBe(locked.className);
+  });
+
+  it("submits the canonical isLocked/isPublished fields", () => {
+    const onSubmit = vi.fn();
+    renderWithExternalSubmit(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Locked" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ isLocked: true, isPublished: false }),
+    );
   });
 
   it("renders Color as an editable Autocomplete field rather than a graphical ColorInput", () => {
@@ -217,5 +298,39 @@ describe("BookForm", () => {
       expect.objectContaining({ imageId: "story-1" }),
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("toBookWritableFields", () => {
+  it("normalizes translatable fields to explicit { ar, en } pairs and passes the rest through", () => {
+    expect(
+      toBookWritableFields({
+        title: { ar: "عنوان" },
+        description: {},
+        longDescription: { en: "Long" },
+        imageId: "book-1",
+        isLocked: true,
+        isPublished: false,
+        color: "#1c7ed6",
+      }),
+    ).toEqual({
+      title: { ar: "عنوان", en: "" },
+      description: { ar: "", en: "" },
+      longDescription: { ar: "", en: "Long" },
+      imageId: "book-1",
+      isLocked: true,
+      isPublished: false,
+      color: "#1c7ed6",
+    });
+  });
+
+  it("never includes modules or audit/timestamp fields", () => {
+    const fields = toBookWritableFields(createEmptyBookFormValues());
+
+    expect(fields).not.toHaveProperty("modules");
+    expect(fields).not.toHaveProperty("createdAt");
+    expect(fields).not.toHaveProperty("updatedAt");
+    expect(fields).not.toHaveProperty("createdBy");
+    expect(fields).not.toHaveProperty("updatedBy");
   });
 });

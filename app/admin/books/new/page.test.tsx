@@ -2,30 +2,32 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { useRouterMock, pushMock } = vi.hoisted(() => {
-  const pushMock = vi.fn();
-  return { useRouterMock: vi.fn(() => ({ push: pushMock })), pushMock };
+const { useRouterMock, replaceMock } = vi.hoisted(() => {
+  const replaceMock = vi.fn();
+  return {
+    useRouterMock: vi.fn(() => ({ replace: replaceMock })),
+    replaceMock,
+  };
 });
 
 vi.mock("next/navigation", () => ({
   useRouter: useRouterMock,
 }));
 
-import { BooksProvider } from "../books-store";
-import { BooksTable } from "../books-table";
+import { buildBookFixture } from "../book-fixtures";
 import AddBookPage from "./page";
 
-// Renders the real AddBookPage alongside BooksTable, sharing one
-// BooksProvider -- the same wiring app/admin/books/layout.tsx gives the real
-// routes -- so a submitted book showing up in the table proves the page is
-// actually driving the shared mock store, not just calling a stub.
-function renderHarness() {
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function renderPage() {
   return render(
     <MantineProvider>
-      <BooksProvider initialBooks={[]}>
-        <AddBookPage />
-        <BooksTable />
-      </BooksProvider>
+      <AddBookPage />
     </MantineProvider>,
   );
 }
@@ -33,13 +35,12 @@ function renderHarness() {
 describe("AddBookPage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    useRouterMock.mockReturnValue({ push: pushMock });
+    useRouterMock.mockReturnValue({ replace: replaceMock });
     vi.stubGlobal("fetch", vi.fn());
-    localStorage.clear();
   });
 
   it("has no Cancel button", () => {
-    renderHarness();
+    renderPage();
 
     expect(
       screen.queryByRole("button", { name: "Cancel" }),
@@ -47,10 +48,11 @@ describe("AddBookPage", () => {
   });
 
   it("contains exactly the requested Book form fields", () => {
-    renderHarness();
+    renderPage();
 
     expect(screen.getByText("Title")).toBeInTheDocument();
     expect(screen.getByText("Description")).toBeInTheDocument();
+    expect(screen.getByText("Long description")).toBeInTheDocument();
     expect(screen.getByLabelText("In-app image ID")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Locked" })).toBeInTheDocument();
     expect(
@@ -60,61 +62,90 @@ describe("AddBookPage", () => {
   });
 
   it("renders Add book as a page header action that submits the Book form", () => {
-    renderHarness();
+    renderPage();
 
     const addButton = screen.getByRole("button", { name: "Add book" });
     expect(addButton).toHaveAttribute("type", "submit");
     expect(addButton).toHaveAttribute("form");
   });
 
-  it("renders Import Source disabled before the first save", () => {
-    renderHarness();
+  it("renders Import Source and the Sections panel disabled", () => {
+    renderPage();
 
     expect(
       screen.getByRole("button", { name: "Import Source" }),
     ).toBeDisabled();
-  });
-
-  it("renders the Sections panel disabled before the first save", () => {
-    renderHarness();
-
     expect(screen.getByText("Sections")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add section" })).toBeDisabled();
   });
 
-  it("adds the submitted book to local state, stays on the same page, and makes no network call", () => {
-    renderHarness();
+  it("submits POST /api/v1/books with the canonical writable fields and no modules/audit fields", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: buildBookFixture({ id: "new-book-id" }) }, 201),
+    );
+    renderPage();
 
     fireEvent.change(screen.getByLabelText("In-app image ID"), {
       target: { value: "new-book-image" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add book" }));
 
-    expect(screen.getByText("new-book-image")).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
-    expect(localStorage.length).toBe(0);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/api/v1/books");
+    expect(init.method).toBe("POST");
+
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({
+      title: { ar: "", en: "" },
+      description: { ar: "", en: "" },
+      longDescription: { ar: "", en: "" },
+      imageId: "new-book-image",
+      color: "#1c7ed6",
+      isLocked: false,
+      isPublished: false,
+    });
+    expect(body).not.toHaveProperty("modules");
+    expect(body).not.toHaveProperty("id");
+    expect(body).not.toHaveProperty("createdAt");
+    expect(body).not.toHaveProperty("updatedAt");
+    expect(body).not.toHaveProperty("createdBy");
+    expect(body).not.toHaveProperty("updatedBy");
   });
 
-  it("enables Import Source and the Sections panel after the Book is created in the current session", () => {
-    renderHarness();
+  it("transitions to the returned Book's edit route on success, without a client-generated id", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(
+        { data: buildBookFixture({ id: "server-generated-id" }) },
+        201,
+      ),
+    );
+    renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Add book" }));
 
-    expect(screen.getByRole("button", { name: "Import Source" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Add section" })).toBeEnabled();
+    await vi.waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith(
+        "/admin/books/server-generated-id/edit",
+      ),
+    );
   });
 
-  it("switches the primary action to Save changes after the Book is created", () => {
-    renderHarness();
+  it("stays on the form and surfaces the failure when creation fails", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: "Something went wrong." }, 400),
+    );
+    renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Add book" }));
 
     expect(
-      screen.getByRole("button", { name: "Save changes" }),
+      await screen.findByText("Something went wrong."),
     ).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
     expect(
-      screen.queryByRole("button", { name: "Add book" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Add book" }),
+    ).toBeInTheDocument();
   });
 });

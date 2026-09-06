@@ -56,3 +56,11 @@ Shared UI primitives live in `components/ui/`. Before introducing a new componen
 ## Inspect before introducing
 
 Before adding a new dependency, abstraction, or architectural pattern, check whether the codebase already has something that solves the problem. Prefer extending existing structure over introducing a new one.
+
+## Client-side REST reads: use SWR, not `useEffect` + `fetch`
+
+A Client Component that reads a `/api/v1/*` REST endpoint on mount (a list page, a by-id load) must fetch with `useSWR` (see `app/admin/books/fetch-json.ts`, `books-table.tsx`, `[id]/edit/page.tsx`), not a hand-rolled `useEffect` that calls `fetch` and then `setState`.
+
+**Why:** this project's ESLint config (via `eslint-config-next/core-web-vitals`) enables `react-hooks/set-state-in-effect` as an error. It traces _any_ state update reachable from a function invoked inside `useEffect`/`useLayoutEffect`/`useInsertionEffect` — including through `useCallback`-memoized helpers, and regardless of whether the update happens before or after an `await` — so the usual "fetch in an effect, then setState" pattern always fails lint here, not just when the setState is literally synchronous. `node_modules/next/dist/docs/01-app/02-guides/client-side-data-fetching` documents the two sanctioned alternatives for this Next.js version: `use()` on a Promise from a Server Component for a one-time read, or a data-fetching library (SWR/TanStack Query) for a Client Component that needs its own inline loading/error state. SWR is the smaller of the two and matches the loading/error/empty shape most admin CRUD screens already need.
+
+**How to apply:** mutations (POST/PATCH/DELETE from a form submit or button click) are event-driven, not effect-driven, so they're unaffected by this rule — keep writing them as plain `async function handleX() { ... }` calls with local `isSubmitting`/error state, same as before. Only initial-load-on-mount reads need `useSWR`. Wire a `DELETE`/mutation success handler to `mutate()` (SWR's revalidate) instead of manually filtering local list state, so the UI stays in sync with the server. Use a fresh `<SWRConfig value={{ provider: () => new Map() }}>` per test render — SWR's cache is otherwise shared (keyed by URL) across test cases in the same file.
