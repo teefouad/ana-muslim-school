@@ -11,8 +11,8 @@ import {
 function parseReward(value: unknown): { coins: number } | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
-  if (typeof v.coins !== "number" || Object.keys(v).length !== 1) return null;
-  return { coins: v.coins };
+  if (!Number.isFinite(v.coins) || Object.keys(v).length !== 1) return null;
+  return { coins: v.coins as number };
 }
 
 function parseAzkar(value: unknown): LessonAzkarEntry[] | null {
@@ -26,9 +26,9 @@ function parseAzkar(value: unknown): LessonAzkarEntry[] | null {
     if (Object.keys(v).length !== 2) return null;
 
     const text = parseTranslatableString(v.text);
-    if (!text || typeof v.repeat !== "number") return null;
+    if (!text || !Number.isFinite(v.repeat)) return null;
 
-    entries.push({ text, repeat: v.repeat });
+    entries.push({ text, repeat: v.repeat as number });
   }
 
   return entries;
@@ -92,15 +92,15 @@ export function parseLessonCreateInput(
     return fail(`\`type\` must be one of: ${LESSON_TYPES.join(", ")}.`);
   }
 
-  if (typeof body.position !== "number") {
-    return fail("`position` must be a number.");
+  if (!Number.isFinite(body.position)) {
+    return fail("`position` must be a finite number.");
   }
 
   const reward = parseReward(body.reward);
   if (!reward) return fail("`reward` must be a { coins: number } object.");
 
-  if (typeof body.duration !== "number") {
-    return fail("`duration` must be a number.");
+  if (!Number.isFinite(body.duration)) {
+    return fail("`duration` must be a finite number.");
   }
 
   if (typeof body.videoURL !== "string") {
@@ -128,9 +128,9 @@ export function parseLessonCreateInput(
     title,
     description,
     type: body.type as LessonWritableFields["type"],
-    position: body.position,
+    position: body.position as number,
     reward,
-    duration: body.duration,
+    duration: body.duration as number,
     videoURL: body.videoURL,
     azkar,
     questions,
@@ -180,10 +180,10 @@ export function parseLessonPatchInput(
   }
 
   if ("position" in body) {
-    if (typeof body.position !== "number") {
-      return fail("`position` must be a number.");
+    if (!Number.isFinite(body.position)) {
+      return fail("`position` must be a finite number.");
     }
-    result.position = body.position;
+    result.position = body.position as number;
   }
 
   if ("reward" in body) {
@@ -193,10 +193,10 @@ export function parseLessonPatchInput(
   }
 
   if ("duration" in body) {
-    if (typeof body.duration !== "number") {
-      return fail("`duration` must be a number.");
+    if (!Number.isFinite(body.duration)) {
+      return fail("`duration` must be a finite number.");
     }
-    result.duration = body.duration;
+    result.duration = body.duration as number;
   }
 
   if ("videoURL" in body) {

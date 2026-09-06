@@ -92,6 +92,8 @@ export async function createLesson(
     });
     transaction.update(parentRef, {
       lessons: FieldValue.arrayUnion(lessonRef.id),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actorEmail,
     });
 
     return true;
@@ -176,14 +178,17 @@ export async function updateLessonById({
 
 /**
  * Deletes a Lesson document and removes its id from the parent Module's
- * `lessons` array, atomically. Referenced Question documents are untouched.
- * Returns `false` without writing if `lessonId` doesn't match an existing
- * document.
+ * `lessons` array, atomically -- refreshing the Module's `updatedAt`/
+ * `updatedBy` in the same transaction, since removing the id is itself a
+ * mutation of the Module document. Referenced Question documents are
+ * untouched. Returns `false` without writing if `lessonId` doesn't match an
+ * existing document.
  */
 export async function deleteLessonById(
   bookId: string,
   moduleId: string,
   lessonId: string,
+  actorEmail: string,
 ): Promise<boolean> {
   const firestore = getAdminFirestore();
   const parentRef = moduleRef(bookId, moduleId);
@@ -199,6 +204,8 @@ export async function deleteLessonById(
     transaction.delete(lessonRef);
     transaction.update(parentRef, {
       lessons: FieldValue.arrayRemove(lessonId),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actorEmail,
     });
 
     return true;

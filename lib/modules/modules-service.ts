@@ -147,6 +147,7 @@ export async function updateModuleService(
 export async function deleteModuleService(
   bookId: string,
   moduleId: string,
+  actorEmail: string,
 ): Promise<ServiceResult<void>> {
   if (!isValidDocId(bookId) || !isValidDocId(moduleId)) {
     return fail("invalid-input", "Invalid book or module id.");
@@ -176,7 +177,7 @@ export async function deleteModuleService(
     return fail("conflict", "Module still has Materials referencing it.");
   }
 
-  const deleted = await deleteModuleById(bookId, moduleId);
+  const deleted = await deleteModuleById(bookId, moduleId, actorEmail);
 
   return deleted ? ok(undefined) : fail("not-found", "Module not found.");
 }

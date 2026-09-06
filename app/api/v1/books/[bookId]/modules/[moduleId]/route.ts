@@ -86,7 +86,7 @@ export async function DELETE(
   }
 
   const { bookId, moduleId } = await params;
-  const result = await deleteModuleService(bookId, moduleId);
+  const result = await deleteModuleService(bookId, moduleId, auth.actorEmail);
 
   if (!result.ok) {
     return serviceErrorResponse(result.error);

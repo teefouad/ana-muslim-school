@@ -257,8 +257,19 @@ describe("deleteLessonService", () => {
     validateModulePathMock.mockResolvedValueOnce(validPath);
     deleteLessonByIdMock.mockResolvedValueOnce(true);
 
-    const result = await deleteLessonService("book-1", "module-1", "lesson-1");
+    const result = await deleteLessonService(
+      "book-1",
+      "module-1",
+      "lesson-1",
+      "a@example.com",
+    );
 
+    expect(deleteLessonByIdMock).toHaveBeenCalledWith(
+      "book-1",
+      "module-1",
+      "lesson-1",
+      "a@example.com",
+    );
     expect(result).toEqual({ ok: true, value: undefined });
   });
 
@@ -266,7 +277,12 @@ describe("deleteLessonService", () => {
     validateModulePathMock.mockResolvedValueOnce(validPath);
     deleteLessonByIdMock.mockResolvedValueOnce(false);
 
-    const result = await deleteLessonService("book-1", "module-1", "lesson-1");
+    const result = await deleteLessonService(
+      "book-1",
+      "module-1",
+      "lesson-1",
+      "a@example.com",
+    );
 
     expect(result).toEqual({
       ok: false,

@@ -77,7 +77,12 @@ export async function DELETE(_request: Request, { params }: Context) {
   }
 
   const { bookId, moduleId, lessonId } = await params;
-  const result = await deleteLessonService(bookId, moduleId, lessonId);
+  const result = await deleteLessonService(
+    bookId,
+    moduleId,
+    lessonId,
+    auth.actorEmail,
+  );
 
   if (!result.ok) {
     return serviceErrorResponse(result.error);

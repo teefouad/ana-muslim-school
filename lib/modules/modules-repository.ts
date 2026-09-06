@@ -85,6 +85,8 @@ export async function createModule(
     });
     transaction.update(bookRef, {
       modules: FieldValue.arrayUnion(moduleRef.id),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actorEmail,
     });
 
     return true;
@@ -219,7 +221,9 @@ export async function updateModuleById({
 
 /**
  * Deletes a Module document and removes its id from the parent's
- * `Book.modules` array, atomically. Callers must already have verified the
+ * `Book.modules` array, atomically -- refreshing the Book's `updatedAt`/
+ * `updatedBy` in the same transaction, since removing the id is itself a
+ * mutation of the Book document. Callers must already have verified the
  * Module has no Lessons/Questions/Materials referencing it -- see
  * `deleteModuleService` in lib/modules/modules-service.ts.
  *
@@ -229,6 +233,7 @@ export async function updateModuleById({
 export async function deleteModuleById(
   bookId: string,
   moduleId: string,
+  actorEmail: string,
 ): Promise<boolean> {
   const firestore = getAdminFirestore();
   const bookRef = firestore.collection(BOOKS_COLLECTION).doc(bookId);
@@ -244,6 +249,8 @@ export async function deleteModuleById(
     transaction.delete(moduleRef);
     transaction.update(bookRef, {
       modules: FieldValue.arrayRemove(moduleId),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actorEmail,
     });
 
     return true;

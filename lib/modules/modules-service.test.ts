@@ -267,7 +267,11 @@ describe("deleteModuleService", () => {
       lessons: ["lesson-1"],
     });
 
-    const result = await deleteModuleService("book-1", "module-1");
+    const result = await deleteModuleService(
+      "book-1",
+      "module-1",
+      "a@example.com",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -287,7 +291,11 @@ describe("deleteModuleService", () => {
     });
     anyQuestionExistsMock.mockResolvedValueOnce(true);
 
-    const result = await deleteModuleService("book-1", "module-1");
+    const result = await deleteModuleService(
+      "book-1",
+      "module-1",
+      "a@example.com",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -308,7 +316,11 @@ describe("deleteModuleService", () => {
     anyQuestionExistsMock.mockResolvedValueOnce(false);
     anyMaterialReferencesModuleMock.mockResolvedValueOnce(true);
 
-    const result = await deleteModuleService("book-1", "module-1");
+    const result = await deleteModuleService(
+      "book-1",
+      "module-1",
+      "a@example.com",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -330,9 +342,17 @@ describe("deleteModuleService", () => {
     anyMaterialReferencesModuleMock.mockResolvedValueOnce(false);
     deleteModuleByIdMock.mockResolvedValueOnce(true);
 
-    const result = await deleteModuleService("book-1", "module-1");
+    const result = await deleteModuleService(
+      "book-1",
+      "module-1",
+      "a@example.com",
+    );
 
-    expect(deleteModuleByIdMock).toHaveBeenCalledWith("book-1", "module-1");
+    expect(deleteModuleByIdMock).toHaveBeenCalledWith(
+      "book-1",
+      "module-1",
+      "a@example.com",
+    );
     expect(result).toEqual({ ok: true, value: undefined });
   });
 });

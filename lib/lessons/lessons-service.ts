@@ -152,6 +152,7 @@ export async function deleteLessonService(
   bookId: string,
   moduleId: string,
   lessonId: string,
+  actorEmail: string,
 ): Promise<ServiceResult<void>> {
   if (
     !isValidDocId(bookId) ||
@@ -167,7 +168,12 @@ export async function deleteLessonService(
     return pathResult;
   }
 
-  const deleted = await deleteLessonById(bookId, moduleId, lessonId);
+  const deleted = await deleteLessonById(
+    bookId,
+    moduleId,
+    lessonId,
+    actorEmail,
+  );
 
   return deleted ? ok(undefined) : fail("not-found", "Lesson not found.");
 }

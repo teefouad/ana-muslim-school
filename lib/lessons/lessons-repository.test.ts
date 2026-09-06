@@ -187,7 +187,11 @@ describe("createLesson", () => {
     );
     expect(transactionUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: "module-1" }),
-      { lessons: { __arrayUnion: ["lesson-1"] } },
+      {
+        lessons: { __arrayUnion: ["lesson-1"] },
+        updatedAt: "SERVER_TIMESTAMP",
+        updatedBy: "admin@example.com",
+      },
     );
   });
 });
@@ -258,16 +262,26 @@ describe("deleteLessonById", () => {
   it("returns false without writing when the lesson doesn't exist", async () => {
     transactionGetMock.mockResolvedValueOnce({ exists: false });
 
-    const result = await deleteLessonById("book-1", "module-1", "lesson-1");
+    const result = await deleteLessonById(
+      "book-1",
+      "module-1",
+      "lesson-1",
+      "admin@example.com",
+    );
 
     expect(result).toBe(false);
     expect(transactionDeleteMock).not.toHaveBeenCalled();
   });
 
-  it("deletes the lesson doc and removes its id from Module.lessons in the same transaction", async () => {
+  it("deletes the lesson doc and removes its id from Module.lessons in the same transaction, refreshing the Module's audit fields", async () => {
     transactionGetMock.mockResolvedValueOnce({ exists: true });
 
-    const result = await deleteLessonById("book-1", "module-1", "lesson-1");
+    const result = await deleteLessonById(
+      "book-1",
+      "module-1",
+      "lesson-1",
+      "admin@example.com",
+    );
 
     expect(result).toBe(true);
     expect(transactionDeleteMock).toHaveBeenCalledWith(
@@ -275,7 +289,11 @@ describe("deleteLessonById", () => {
     );
     expect(transactionUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: "module-1" }),
-      { lessons: { __arrayRemove: ["lesson-1"] } },
+      {
+        lessons: { __arrayRemove: ["lesson-1"] },
+        updatedAt: "SERVER_TIMESTAMP",
+        updatedBy: "admin@example.com",
+      },
     );
   });
 });
