@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Group, Stack, Text } from "@mantine/core";
 
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { resolveApplicationColor } from "./application-colors";
 import { useBooks } from "./books-store";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
 import type { MockBook } from "./mock-books";
@@ -70,7 +71,7 @@ const columns: DataTableColumn<MockBook>[] = [
             width: 14,
             height: 14,
             borderRadius: 4,
-            backgroundColor: book.color,
+            backgroundColor: resolveApplicationColor(book.color),
             border: "1px solid var(--mantine-color-default-border)",
           }}
         />

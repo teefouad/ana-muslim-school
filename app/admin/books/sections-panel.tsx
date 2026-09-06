@@ -1,8 +1,7 @@
 "use client";
 
-import { Box } from "@mantine/core";
-
 import { ItemList } from "@/components/ui/item-list";
+import styles from "./sections-panel.module.css";
 import type { MockSection } from "./mock-sections";
 
 export interface SectionsPanelProps {
@@ -34,24 +33,22 @@ export function SectionsPanel({
   }
 
   return (
-    <Box
-      className={className}
-      style={{ height: "100%", opacity: disabled ? 0.6 : 1 }}
-    >
-      <ItemList<MockSection>
-        title="Sections"
-        subtitle={`${sections.length} ${sections.length === 1 ? "section" : "sections"}`}
-        items={sections}
-        getItemId={(section) => section.id}
-        renderItem={(section, index) => section.title || `Section ${index + 1}`}
-        emptyState="This book has no sections yet."
-        sortable
-        onReorder={onSectionsChange}
-        reorderDisabled={disabled}
-        addLabel="Add section"
-        onAdd={handleAdd}
-        addDisabled={disabled}
-      />
-    </Box>
+    <ItemList<MockSection>
+      className={[className, disabled && styles.disabled]
+        .filter(Boolean)
+        .join(" ")}
+      title="Sections"
+      subtitle={`${sections.length} ${sections.length === 1 ? "section" : "sections"}`}
+      items={sections}
+      getItemId={(section) => section.id}
+      renderItem={(section, index) => section.title || `Section ${index + 1}`}
+      emptyState="This book has no sections yet."
+      sortable
+      onReorder={onSectionsChange}
+      reorderDisabled={disabled}
+      addLabel="Add section"
+      onAdd={handleAdd}
+      addDisabled={disabled}
+    />
   );
 }

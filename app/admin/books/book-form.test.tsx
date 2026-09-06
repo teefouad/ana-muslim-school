@@ -94,7 +94,7 @@ describe("BookForm", () => {
     }
   });
 
-  it("uses ToggleCard for Locked (error variant) and Published (primary variant)", () => {
+  it("uses ToggleCard for Locked and Published, both with the same (error) visual variant", () => {
     renderWithProvider(
       <BookForm
         id={FORM_ID}
@@ -111,6 +111,91 @@ describe("BookForm", () => {
 
     expect(locked).toHaveAttribute("aria-checked", "true");
     expect(published).toHaveAttribute("aria-checked", "true");
+
+    // Both toggles must resolve to the same checked visual treatment
+    // (ANA-63): compare their class lists rather than a specific class
+    // name, since that name is a `ToggleCard` implementation detail.
+    expect(published.className).toBe(locked.className);
+  });
+
+  it("renders Color as an editable Autocomplete field rather than a graphical ColorInput", () => {
+    renderWithProvider(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    // ColorInput exposes a swatch preview/picker button; Autocomplete is a
+    // plain combobox textbox with no such button (ANA-63).
+    const colorField = screen.getByRole("combobox", { name: "Color" });
+    expect(colorField).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /color/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers named application-color suggestions and selects the exact token string", async () => {
+    const onSubmit = vi.fn();
+    renderWithExternalSubmit(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const colorField = screen.getByRole("combobox", { name: "Color" });
+    fireEvent.change(colorField, { target: { value: "cyan.6" } });
+    fireEvent.click(await screen.findByRole("option", { name: "cyan.6" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(colorField).toHaveValue("cyan.6");
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ color: "cyan.6" }),
+    );
+  });
+
+  it("shows a live preview swatch resolved from the typed color", () => {
+    renderWithProvider(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const colorField = screen.getByRole("combobox", { name: "Color" });
+    const swatch = screen.getByTestId("color-preview");
+
+    // A named token resolves to its canonical hex for the preview...
+    fireEvent.change(colorField, { target: { value: "cyan.6" } });
+    expect(swatch).toHaveStyle({ backgroundColor: "#15aabf" });
+
+    // ...while a free-form value the admin typed is shown as-is, since it's
+    // presumably already a valid CSS color.
+    fireEvent.change(colorField, { target: { value: "#1c7ed6" } });
+    expect(swatch).toHaveStyle({ backgroundColor: "#1c7ed6" });
+  });
+
+  it("keeps a manually-typed, free-form color value and submits it unchanged", () => {
+    const onSubmit = vi.fn();
+    renderWithExternalSubmit(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const colorField = screen.getByRole("combobox", { name: "Color" });
+    fireEvent.change(colorField, { target: { value: "#1c7ed6ff" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ color: "#1c7ed6ff" }),
+    );
   });
 
   it("calls onSubmit with the current field values when submitted via an external header button, and makes no network request", () => {

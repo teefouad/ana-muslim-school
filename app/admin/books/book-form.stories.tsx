@@ -70,6 +70,19 @@ export const LockedAndUnpublished: Story = {
   },
 };
 
+// Locked and Published both checked at once (ANA-63): both use the same
+// `error`-variant ToggleCard treatment, so their checked appearance should
+// be identical.
+export const LockedAndPublished: Story = {
+  args: {
+    initialValues: {
+      ...SEALED_NECTAR_VALUES,
+      locked: true,
+      published: true,
+    },
+  },
+};
+
 // Same BookForm the Add Book page uses, but with an existing mock book's
 // values prefilled -- what the Edit Book page renders (see
 // [id]/edit/page.tsx).
@@ -85,6 +98,19 @@ export const EditPrefilled: Story = {
       locked: true,
       published: false,
       color: "#2f9e44",
+    },
+  },
+};
+
+// Color holds a named application palette token rather than a hex string
+// (ANA-63) -- focus the field to see the full suggestion list drawn from
+// `APPLICATION_COLOR_TOKENS`, or type to filter it. Free-form values (a raw
+// hex string, say) remain accepted alongside these suggestions.
+export const NamedColorToken: Story = {
+  args: {
+    initialValues: {
+      ...SEALED_NECTAR_VALUES,
+      color: "blue.7",
     },
   },
 };
