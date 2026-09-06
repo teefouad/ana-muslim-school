@@ -141,16 +141,37 @@ export function BookForm({
           }
         />
 
-        <TextInput
-          label="In-app image ID"
-          value={values.imageId}
-          onChange={(event) =>
-            setValues((prev) => ({
-              ...prev,
-              imageId: event.currentTarget.value,
-            }))
-          }
-        />
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+          <TextInput
+            label="In-app image ID"
+            value={values.imageId}
+            onChange={(event) =>
+              setValues((prev) => ({
+                ...prev,
+                imageId: event.currentTarget.value,
+              }))
+            }
+          />
+
+          <SimpleGrid cols={2} style={{ alignItems: "flex-end" }}>
+            <Autocomplete
+              label="Color"
+              data={APPLICATION_COLOR_TOKENS}
+              value={values.color}
+              onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+            />
+            <Box
+              aria-hidden="true"
+              data-testid="color-preview"
+              style={{
+                marginTop: 6,
+                height: 36,
+                borderRadius: 8,
+                backgroundColor: resolveApplicationColor(values.color),
+              }}
+            />
+          </SimpleGrid>
+        </SimpleGrid>
 
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
           <ToggleCard
@@ -165,30 +186,11 @@ export function BookForm({
           <ToggleCard
             label="Published"
             description="Only published books are visible in the app."
-            variant="error"
+            variant="primary"
             checked={values.isPublished}
             onChange={(isPublished) =>
               setValues((prev) => ({ ...prev, isPublished }))
             }
-          />
-        </SimpleGrid>
-
-        <SimpleGrid cols={2} style={{ alignItems: "flex-end" }}>
-          <Autocomplete
-            label="Color"
-            data={APPLICATION_COLOR_TOKENS}
-            value={values.color}
-            onChange={(color) => setValues((prev) => ({ ...prev, color }))}
-          />
-          <Box
-            aria-hidden="true"
-            data-testid="color-preview"
-            style={{
-              marginTop: 6,
-              height: 36,
-              borderRadius: 8,
-              backgroundColor: resolveApplicationColor(values.color),
-            }}
           />
         </SimpleGrid>
       </Stack>

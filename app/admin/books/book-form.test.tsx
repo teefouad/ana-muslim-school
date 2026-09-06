@@ -52,16 +52,18 @@ describe("BookForm", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Color")).toBeInTheDocument();
 
-    // Title, Description, Long description, In-app image ID, Locked,
-    // Published, Color -- in that order.
+    // Title, Description, Long description, In-app image ID, Color,
+    // Locked, Published -- in that order. Color stays paired with In-app
+    // image ID (its pre-ANA-65 position) rather than the order the ANA-65
+    // ticket text listed, at the project owner's explicit request.
     const labelOrder = [
       "Title",
       "Description",
       "Long description",
       "In-app image ID",
+      "Color",
       "Locked",
       "Published",
-      "Color",
     ];
     const elements = labelOrder.map(
       (label) => screen.queryByText(label) ?? screen.getByLabelText(label),

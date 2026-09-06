@@ -124,7 +124,7 @@ export default function EditBookPage() {
         <Flex
           gap="xl"
           direction={{ base: "column", md: "row" }}
-          align="flex-start"
+          align="stretch"
         >
           <Box style={{ flex: 1, minWidth: 0 }}>
             <BookForm
