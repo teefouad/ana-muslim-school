@@ -114,6 +114,25 @@ describe("runOcrService", () => {
     },
   );
 
+  it("maps a Storage misconfiguration (getAdminStorage throwing) to a structured failure instead of an unhandled exception", async () => {
+    getAdminStorageMock.mockImplementation(() => {
+      throw new Error(
+        "Missing Firebase Storage bucket. Set NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET.",
+      );
+    });
+
+    const result = await runOcrService({
+      uid: "user-1",
+      objectPath,
+      pages: [1],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: "upstream-error", message: expect.any(String) },
+    });
+  });
+
   it("rejects more than 1000 deduplicated pages", async () => {
     const file = makeFile();
     mockStorage(file);

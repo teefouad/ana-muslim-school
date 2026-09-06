@@ -54,8 +54,14 @@ export function PdfPageCanvas({
       return;
     }
 
+    // Degrade to eager rendering rather than throwing if IntersectionObserver
+    // isn't available in this runtime (older browsers, non-browser test
+    // environments without the vitest.setup.ts polyfill, etc.).
+    const supportsLazyRendering =
+      lazy && typeof IntersectionObserver !== "undefined";
+
     let cancelled = false;
-    let hasBeenVisible = !lazy;
+    let hasBeenVisible = !supportsLazyRendering;
     let currentWidth = targetWidth ?? container?.clientWidth ?? 0;
     let activeRenderTask: RenderTask | null = null;
 
@@ -88,7 +94,7 @@ export function PdfPageCanvas({
     let resizeObserver: ResizeObserver | undefined;
 
     if (container) {
-      if (lazy) {
+      if (supportsLazyRendering) {
         intersectionObserver = new IntersectionObserver(
           (entries) => {
             if (entries.some((entry) => entry.isIntersecting)) {
@@ -114,7 +120,7 @@ export function PdfPageCanvas({
       }
     }
 
-    if (!lazy) {
+    if (!supportsLazyRendering) {
       renderNow();
     }
 

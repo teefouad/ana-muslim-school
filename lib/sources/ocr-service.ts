@@ -19,6 +19,10 @@ function tempObjectPrefix(uid: string): string {
   return `tmp/ocr-uploads/${uid}/`;
 }
 
+function getTempFile(objectPath: string) {
+  return getAdminStorage().bucket().file(objectPath);
+}
+
 /**
  * Creates a user-scoped random temporary object path and a short-lived
  * signed PUT URL the browser uploads the chosen PDF directly to, bypassing
@@ -108,7 +112,19 @@ export async function runOcrService({
     return fail("invalid-input", parsedPages.message);
   }
 
-  const file = getAdminStorage().bucket().file(objectPath);
+  let file: ReturnType<typeof getTempFile>;
+
+  try {
+    file = getTempFile(objectPath);
+  } catch {
+    // getAdminStorage() throws on a Storage misconfiguration (e.g. missing
+    // NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) -- caught here rather than
+    // letting it crash the route with an unhandled exception.
+    return fail(
+      "upstream-error",
+      "Could not access temporary storage. Please try again.",
+    );
+  }
 
   try {
     let sizeBytes: number;
