@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Autocomplete, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import { Autocomplete, Box, SimpleGrid, Stack, TextInput } from "@mantine/core";
 
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { TranslatableTextArea } from "@/components/ui/translatable-text-area";
@@ -10,7 +10,10 @@ import type {
   LanguageOption,
   TranslatedValue,
 } from "@/components/ui/translatable-value";
-import { APPLICATION_COLOR_TOKENS } from "./application-colors";
+import {
+  APPLICATION_COLOR_TOKENS,
+  resolveApplicationColor,
+} from "./application-colors";
 import type { MockBook } from "./mock-books";
 
 const LANGUAGES: LanguageOption[] = [
@@ -125,12 +128,26 @@ export function BookForm({
               setValues((prev) => ({ ...prev, published }))
             }
           />
-          <Autocomplete
-            label="Color"
-            data={APPLICATION_COLOR_TOKENS}
-            value={values.color}
-            onChange={(color) => setValues((prev) => ({ ...prev, color }))}
-          />
+          <Stack gap={4}>
+            <Autocomplete
+              label="Color"
+              data={APPLICATION_COLOR_TOKENS}
+              value={values.color}
+              onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+            />
+            {/* Live preview of the resolved color -- the field itself keeps
+                whatever token/free-form string the admin typed (ANA-63). */}
+            <Box
+              aria-hidden="true"
+              data-testid="color-preview"
+              style={{
+                height: 24,
+                borderRadius: 6,
+                backgroundColor: resolveApplicationColor(values.color),
+                border: "1px solid var(--mantine-color-default-border)",
+              }}
+            />
+          </Stack>
         </SimpleGrid>
       </Stack>
     </form>

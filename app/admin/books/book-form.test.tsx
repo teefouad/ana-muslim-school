@@ -157,6 +157,28 @@ describe("BookForm", () => {
     );
   });
 
+  it("shows a live preview swatch resolved from the typed color", () => {
+    renderWithProvider(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const colorField = screen.getByRole("combobox", { name: "Color" });
+    const swatch = screen.getByTestId("color-preview");
+
+    // A named token resolves to its canonical hex for the preview...
+    fireEvent.change(colorField, { target: { value: "cyan.6" } });
+    expect(swatch).toHaveStyle({ backgroundColor: "#15aabf" });
+
+    // ...while a free-form value the admin typed is shown as-is, since it's
+    // presumably already a valid CSS color.
+    fireEvent.change(colorField, { target: { value: "#1c7ed6" } });
+    expect(swatch).toHaveStyle({ backgroundColor: "#1c7ed6" });
+  });
+
   it("keeps a manually-typed, free-form color value and submits it unchanged", () => {
     const onSubmit = vi.fn();
     renderWithExternalSubmit(
