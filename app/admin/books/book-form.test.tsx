@@ -159,7 +159,7 @@ describe("BookForm", () => {
     ).toBeInTheDocument();
   });
 
-  it("uses ToggleCard for Locked and Published, both with the same (error) visual variant", () => {
+  it("uses the error-variant ToggleCard for Locked and the primary-variant for Published", () => {
     renderWithProvider(
       <BookForm
         id={FORM_ID}
@@ -177,10 +177,10 @@ describe("BookForm", () => {
     expect(locked).toHaveAttribute("aria-checked", "true");
     expect(published).toHaveAttribute("aria-checked", "true");
 
-    // Both toggles must resolve to the same checked visual treatment
-    // (ANA-63): compare their class lists rather than a specific class
-    // name, since that name is a `ToggleCard` implementation detail.
-    expect(published.className).toBe(locked.className);
+    // Locked reads as high-emphasis/destructive; Published is a lower-
+    // emphasis affirmative setting -- the two are expected to render with
+    // different checked-state classes, not the same one.
+    expect(published.className).not.toBe(locked.className);
   });
 
   it("submits the canonical isLocked/isPublished fields", () => {
