@@ -10,19 +10,22 @@
   --baseBase: var(--mantine-color-dark-6);
   --baseBg: var(--mantine-color-dark-6);
   --baseBgHover: var(--mantine-color-dark-5);
+  --baseBgActive: rgba(255, 255, 255, 0.1);
   --baseBorder: var(--mantine-color-dark-4);
   --baseText: var(--mantine-color-text);
   --baseTextContrast: var(--mantine-color-white);
 
   font-family: var(--mantine-font-family);
-  border: 1px solid var(--mantine-color-dark-4);
-  border-radius: var(--mantine-radius-sm);
+  border: 1px solid #292929;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .container :global(.mdxeditor-toolbar) {
+  margin: 5px;
+  border-radius: 8px;
+  border: none;
   background-color: var(--mantine-color-dark-6);
-  border-bottom: 1px solid var(--mantine-color-dark-4);
   gap: var(--mantine-spacing-xs);
 }
 
