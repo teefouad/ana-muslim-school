@@ -10,10 +10,7 @@ import type {
   LanguageOption,
   TranslatedValue,
 } from "@/components/ui/translatable-value";
-import {
-  APPLICATION_COLOR_TOKENS,
-  resolveApplicationColor,
-} from "./application-colors";
+import { resolveApplicationColor } from "./application-colors";
 import type { MockBook } from "./mock-books";
 
 const LANGUAGES: LanguageOption[] = [
@@ -100,21 +97,41 @@ export function BookForm({
           }
         />
 
-        <TextInput
-          label="In-app image ID"
-          value={values.imageId}
-          onChange={(event) =>
-            setValues((prev) => ({
-              ...prev,
-              imageId: event.currentTarget.value,
-            }))
-          }
-        />
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+          <TextInput
+            label="In-app image ID"
+            value={values.imageId}
+            onChange={(event) =>
+              setValues((prev) => ({
+                ...prev,
+                imageId: event.currentTarget.value,
+              }))
+            }
+          />
 
-        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+          <SimpleGrid cols={2} style={{ alignItems: "flex-end" }}>
+            <Autocomplete
+              label="Color"
+              value={values.color}
+              onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+            />
+            <Box
+              aria-hidden="true"
+              data-testid="color-preview"
+              style={{
+                marginTop: 6,
+                height: 36,
+                borderRadius: 8,
+                backgroundColor: resolveApplicationColor(values.color),
+              }}
+            />
+          </SimpleGrid>
+        </SimpleGrid>
+
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
           <ToggleCard
             label="Locked"
-            description="Locked books can't be opened by users until unlocked."
+            description="App users can't open locked books."
             variant="error"
             checked={values.locked}
             onChange={(locked) => setValues((prev) => ({ ...prev, locked }))}
@@ -122,32 +139,12 @@ export function BookForm({
           <ToggleCard
             label="Published"
             description="Only published books are visible in the app."
-            variant="error"
+            variant="primary"
             checked={values.published}
             onChange={(published) =>
               setValues((prev) => ({ ...prev, published }))
             }
           />
-          <Stack gap={4}>
-            <Autocomplete
-              label="Color"
-              data={APPLICATION_COLOR_TOKENS}
-              value={values.color}
-              onChange={(color) => setValues((prev) => ({ ...prev, color }))}
-            />
-            {/* Live preview of the resolved color -- the field itself keeps
-                whatever token/free-form string the admin typed (ANA-63). */}
-            <Box
-              aria-hidden="true"
-              data-testid="color-preview"
-              style={{
-                height: 24,
-                borderRadius: 6,
-                backgroundColor: resolveApplicationColor(values.color),
-                border: "1px solid var(--mantine-color-default-border)",
-              }}
-            />
-          </Stack>
         </SimpleGrid>
       </Stack>
     </form>
