@@ -30,7 +30,24 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        <ColorSchemeScript defaultColorScheme="dark" />
+        {/* React warns in dev whenever a rendered <script> has an
+            executable type. Since the browser already runs this script
+            during initial HTML parsing (before React loads), swapping its
+            type to the inert "text/plain" once hydrating on the client
+            avoids that warning without changing behavior -- the resulting
+            server/client type mismatch is exactly what
+            suppressHydrationWarning is for. This only works because
+            `ColorSchemeScript` is a Client Component, so this ternary
+            actually re-evaluates in the browser; the same trick is a no-op
+            inside a Server Component like this layout, whose JSX is fixed
+            once on the server and never re-executed on the client. */}
+        <ColorSchemeScript
+          defaultColorScheme="dark"
+          type={
+            typeof window === "undefined" ? "text/javascript" : "text/plain"
+          }
+          suppressHydrationWarning
+        />
       </head>
       <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>

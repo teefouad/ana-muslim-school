@@ -235,8 +235,12 @@ describe("ApiPlayground", () => {
 
     expect(await screen.findByText("201")).toBeInTheDocument();
     expect(screen.getByText("Created")).toBeInTheDocument();
-    expect(screen.getByRole("tree")).toBeInTheDocument();
-    expect(screen.getByText("id:")).toBeInTheDocument();
+    // ReactJsonView (@microlink/react-json-view) has no ARIA tree role of
+    // its own -- its root container always carries this class name.
+    expect(document.querySelector(".react-json-view")).toBeInTheDocument();
+    // The key/quote/colon each render as their own nested span, so "id" is
+    // the key's own direct text rather than a single "id": text node.
+    expect(screen.getByText("id")).toBeInTheDocument();
     expect(screen.getByText('"doc-1"')).toBeInTheDocument();
   });
 
@@ -256,7 +260,7 @@ describe("ApiPlayground", () => {
     expect(
       screen.getByText("Something went wrong upstream."),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(document.querySelector(".react-json-view")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Expand all" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Collapse all" })).toBeDisabled();
   });

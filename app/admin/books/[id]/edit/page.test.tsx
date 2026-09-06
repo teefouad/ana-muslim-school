@@ -56,6 +56,42 @@ describe("EditBookPage", () => {
     localStorage.clear();
   });
 
+  it("has no Cancel button", () => {
+    renderHarness([buildBook()]);
+
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders Save changes as a page header action that submits the Book form", () => {
+    renderHarness([buildBook()]);
+
+    const saveButton = screen.getByRole("button", { name: "Save changes" });
+    expect(saveButton).toHaveAttribute("type", "submit");
+    expect(saveButton).toHaveAttribute("form");
+  });
+
+  it("renders Import Source immediately next to Save changes in the header, both enabled", () => {
+    renderHarness([buildBook()]);
+
+    const importSource = screen.getByRole("button", { name: "Import Source" });
+    const saveChanges = screen.getByRole("button", { name: "Save changes" });
+    expect(importSource).toBeEnabled();
+    expect(saveChanges).toBeEnabled();
+
+    // "Immediately next to" -- adjacent header buttons in the same action
+    // group, not separated by unrelated content.
+    expect(importSource.nextElementSibling).toBe(saveChanges);
+  });
+
+  it("renders the Sections panel on the right, enabled", () => {
+    renderHarness([buildBook()]);
+
+    expect(screen.getByText("Sections")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add section" })).toBeEnabled();
+  });
+
   it("prefills the form with the selected mock book's values, using the same Book form as Add Book", () => {
     renderHarness([buildBook()]);
 

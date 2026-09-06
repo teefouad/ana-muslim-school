@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { Button, Group } from "@mantine/core";
 
 import {
   BookForm,
@@ -18,16 +19,27 @@ const SEALED_NECTAR_VALUES: BookFormValues = {
   color: "#1c7ed6",
 };
 
+const STORY_FORM_ID = "book-form-story";
+
 const meta = {
   title: "Books/BookForm",
   component: BookForm,
   tags: ["autodocs"],
   args: {
+    id: STORY_FORM_ID,
     onSubmit: () => {},
   },
   render: (args) => (
     <div style={{ width: 560 }}>
       <BookForm {...args} />
+      {/* Mirrors how the Add/Edit Book pages submit this form from a
+          page-header button (ANA-61) -- via the HTML `form` attribute,
+          not a duplicated bottom button inside the form itself. */}
+      <Group justify="flex-end" mt="lg">
+        <Button type="submit" form={args.id}>
+          Submit
+        </Button>
+      </Group>
     </div>
   ),
 } satisfies Meta<typeof BookForm>;
@@ -38,14 +50,12 @@ type Story = StoryObj<typeof meta>;
 export const Empty: Story = {
   args: {
     initialValues: createEmptyBookFormValues(),
-    submitLabel: "Add book",
   },
 };
 
 export const ArabicAndEnglishValues: Story = {
   args: {
     initialValues: SEALED_NECTAR_VALUES,
-    submitLabel: "Add book",
   },
 };
 
@@ -57,13 +67,12 @@ export const LockedAndUnpublished: Story = {
       published: false,
       color: "#e8590c",
     },
-    submitLabel: "Add book",
   },
 };
 
 // Same BookForm the Add Book page uses, but with an existing mock book's
-// values prefilled and a "Save changes" label -- what the Edit Book page
-// renders (see [id]/edit/page.tsx).
+// values prefilled -- what the Edit Book page renders (see
+// [id]/edit/page.tsx).
 export const EditPrefilled: Story = {
   args: {
     initialValues: {
@@ -77,7 +86,5 @@ export const EditPrefilled: Story = {
       published: false,
       color: "#2f9e44",
     },
-    submitLabel: "Save changes",
-    onCancel: () => {},
   },
 };

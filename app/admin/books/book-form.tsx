@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import {
-  Button,
-  ColorInput,
-  Group,
-  SimpleGrid,
-  Stack,
-  TextInput,
-} from "@mantine/core";
+import { ColorInput, SimpleGrid, Stack, TextInput } from "@mantine/core";
 
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { TranslatableTextArea } from "@/components/ui/translatable-text-area";
@@ -58,19 +51,22 @@ export function toBookFormValues(book: MockBook): BookFormValues {
 }
 
 // Shared Add/Edit form for the Books CRUD UI (ANA-60). Purely a controlled
-// field group -- it carries no Firestore/API/router logic of its own, so
-// callers (the Add Book and Edit Book pages) own what onSubmit does with the
-// values and Storybook can render it with no surrounding provider.
+// field group -- it carries no Firestore/API/router logic, page-level
+// navigation, or submit button of its own (ANA-61): callers render their own
+// header action(s) and submit this form via the HTML `form` attribute
+// pointing at `id`, so there is exactly one submit path instead of a
+// duplicated one at the bottom of the form.
 export function BookForm({
+  id,
   initialValues,
-  submitLabel = "Add book",
   onSubmit,
-  onCancel,
 }: {
+  /** Form element id. Callers wire a header submit button to this form via
+   * `<button type="submit" form={id}>` -- normal HTML form semantics, no
+   * ref/imperative submit call needed. */
+  id: string;
   initialValues?: BookFormValues;
-  submitLabel?: string;
   onSubmit: (values: BookFormValues) => void;
-  onCancel?: () => void;
 }) {
   const [values, setValues] = useState<BookFormValues>(
     initialValues ?? createEmptyBookFormValues(),
@@ -82,7 +78,7 @@ export function BookForm({
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form id={id} onSubmit={handleSubmit}>
       <Stack gap="lg">
         <TranslatableTextInput
           label="Title"
@@ -134,15 +130,6 @@ export function BookForm({
             onChange={(color) => setValues((prev) => ({ ...prev, color }))}
           />
         </SimpleGrid>
-
-        <Group justify="flex-end">
-          {onCancel && (
-            <Button variant="default" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-          <Button type="submit">{submitLabel}</Button>
-        </Group>
       </Stack>
     </form>
   );

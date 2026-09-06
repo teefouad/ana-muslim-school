@@ -17,18 +17,10 @@ import {
   TextInput,
   Textarea,
   Tooltip,
-  useComputedColorScheme,
 } from "@mantine/core";
 import { Check, ChevronsDownUp, ChevronsUpDown, Copy } from "lucide-react";
-import {
-  JsonView,
-  allExpanded,
-  collapseAllNested,
-  darkStyles,
-  defaultStyles,
-} from "react-json-view-lite";
-import "react-json-view-lite/dist/index.css";
 
+import { JsonTreeView } from "./json-tree-view";
 import {
   API_BASE_PATH,
   buildRequestUrl,
@@ -61,7 +53,6 @@ function isSuccessStatus(status: number): boolean {
 }
 
 export function ApiPlayground() {
-  const colorScheme = useComputedColorScheme("dark");
   const [resourcePath, setResourcePath] = useState(
     DEFAULT_ENDPOINT ? getResourcePath(DEFAULT_ENDPOINT) : "",
   );
@@ -81,6 +72,11 @@ export function ApiPlayground() {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<PlaygroundResponse | null>(null);
   const [treeExpanded, setTreeExpanded] = useState(true);
+  // ReactJsonView only applies its `collapsed` prop when it (re)mounts, not
+  // on every prop update -- bumped whenever the desired expand/collapse
+  // state should be re-applied (Expand/Collapse all, or a new response) so
+  // changing `key` below forces that remount.
+  const [treeVersion, setTreeVersion] = useState(0);
   const [copied, setCopied] = useState(false);
 
   const endpoint = findEndpoint(method, resourcePath);
@@ -202,6 +198,7 @@ export function ApiPlayground() {
         json,
       });
       setTreeExpanded(true);
+      setTreeVersion((version) => version + 1);
     } catch (err) {
       setRequestError(
         err instanceof Error ? err.message : "The request failed to send.",
@@ -362,7 +359,10 @@ export function ApiPlayground() {
                     variant="subtle"
                     aria-label="Expand all"
                     disabled={response.json === undefined}
-                    onClick={() => setTreeExpanded(true)}
+                    onClick={() => {
+                      setTreeExpanded(true);
+                      setTreeVersion((version) => version + 1);
+                    }}
                   >
                     <ChevronsUpDown size={16} />
                   </ActionIcon>
@@ -372,7 +372,10 @@ export function ApiPlayground() {
                     variant="subtle"
                     aria-label="Collapse all"
                     disabled={response.json === undefined}
-                    onClick={() => setTreeExpanded(false)}
+                    onClick={() => {
+                      setTreeExpanded(false);
+                      setTreeVersion((version) => version + 1);
+                    }}
                   >
                     <ChevronsDownUp size={16} />
                   </ActionIcon>
@@ -390,12 +393,13 @@ export function ApiPlayground() {
             </Group>
             <Box style={{ maxHeight: 480, overflow: "auto" }}>
               {response.json !== undefined ? (
-                <JsonView
-                  data={response.json}
-                  style={colorScheme === "dark" ? darkStyles : defaultStyles}
-                  shouldExpandNode={
-                    treeExpanded ? allExpanded : collapseAllNested
-                  }
+                <JsonTreeView
+                  key={treeVersion}
+                  src={response.json}
+                  name={false}
+                  theme="monokai"
+                  displayDataTypes={false}
+                  collapsed={!treeExpanded}
                 />
               ) : (
                 <Code block>{response.raw}</Code>
