@@ -36,3 +36,26 @@
 #dashboard-shell > main > div {
   margin-left: -20px;
 }
+
+.mantine-Input-input {
+  --input-bd: #292929;
+  --input-bg: #1a1a1a;
+}
+
+.mantine-Input-input:focus-within {
+  --input-bd: var(--mantine-primary-color-filled);
+}
+
+.mantine-Modal-header,
+.mantine-Modal-content {
+  background-color: #121212 !important;
+}
+
+.mantine-Fieldset-root {
+  border-color: #292929 !important;
+  background-color: transparent !important;
+}
+
+.mantine-Fieldset-legend {
+  padding-inline: 5px;
+}

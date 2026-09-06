@@ -49,7 +49,7 @@ export function LanguageSwitcher({
                   borderRadius: "50%",
                   backgroundColor: isFilled(language.slug)
                     ? "var(--mantine-primary-color-filled)"
-                    : "var(--mantine-color-default-border)",
+                    : "#666",
                 }}
               />
             )}

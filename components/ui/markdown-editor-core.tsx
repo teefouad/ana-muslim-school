@@ -102,6 +102,13 @@ function BlockTypeButtons() {
             aria-label={label}
             aria-pressed={isActive}
             data-state={isActive ? "on" : "off"}
+            style={{
+              width: 28,
+              height: 28,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
             onClick={() =>
               convertSelectionToNode(() =>
                 value === "paragraph"
@@ -114,7 +121,7 @@ function BlockTypeButtons() {
                 padding plus its icon, and every built-in button's icon is
                 24px, so matching that keeps every toolbar button the same
                 28x28 footprint. */}
-            <Icon size={24} aria-hidden="true" />
+            <Icon size={18} aria-hidden="true" />
           </Button>
         );
       })}

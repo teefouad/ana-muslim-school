@@ -2,9 +2,9 @@
   display: block;
   width: 100%;
   padding: var(--mantine-spacing-md);
-  border: 1px solid var(--mantine-color-dark-4);
-  border-radius: var(--mantine-radius-md);
-  background-color: var(--mantine-color-dark-6);
+  border: 1px solid #292929;
+  border-radius: 12px;
+  background-color: transparent;
   cursor: pointer;
   transition:
     background-color 120ms ease,
@@ -12,7 +12,7 @@
 }
 
 .card:hover {
-  background-color: var(--mantine-color-dark-5);
+  background-color: rgba(255, 255, 255, 0.025);
 }
 
 .card:focus-visible {
@@ -30,12 +30,12 @@
 }
 
 .checkedError {
-  border-color: var(--mantine-color-red-filled);
-  background-color: var(--mantine-color-red-light);
+  border-color: #f871714d;
+  background-color: #f871711a;
 }
 
 .checkedError:hover {
-  background-color: var(--mantine-color-red-light-hover);
+  background-color: #f8717126;
 }
 
 .disabled {

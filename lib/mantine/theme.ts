@@ -53,10 +53,6 @@ export const theme = createTheme({
         label: {
           marginBottom: 5,
         },
-        input: {
-          borderColor: "#292929",
-          backgroundColor: "#1a1a1a",
-        },
       },
     },
   },
