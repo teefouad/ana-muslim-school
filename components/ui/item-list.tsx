@@ -10,11 +10,8 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ActionIcon,
   Box,
-  Button,
   Group,
   Paper,
-  Stack,
-  Text,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
@@ -140,73 +137,68 @@ function RowChrome({
   const canDelete = Boolean(onDelete);
 
   return (
-    <Paper
+    <Box
       component="li"
       ref={liRef}
       data-testid={testId}
       style={style}
-      withBorder
-      radius="sm"
-      p="xs"
       className={`${styles.row} ${isDragging ? styles.rowDragging : ""}`}
     >
-      <Group gap="xs" wrap="nowrap">
-        {showGrip && (
-          <span
-            className={styles.grip}
-            aria-hidden="true"
-            {...dragAttributes}
-            {...dragListeners}
-          >
-            <GripVertical size={16} />
-          </span>
-        )}
+      {showGrip && (
+        <span
+          className={styles.grip}
+          aria-hidden="true"
+          {...dragAttributes}
+          {...dragListeners}
+        >
+          <GripVertical size={16} />
+        </span>
+      )}
 
-        {onClick ? (
-          <UnstyledButton
-            type="button"
-            onClick={onClick}
-            className={styles.content}
-            style={{ textAlign: "start" }}
-          >
-            {children}
-          </UnstyledButton>
-        ) : (
-          <Box className={styles.content}>{children}</Box>
-        )}
+      {onClick ? (
+        <UnstyledButton
+          type="button"
+          onClick={onClick}
+          className={styles.content}
+          style={{ textAlign: "start" }}
+        >
+          {children}
+        </UnstyledButton>
+      ) : (
+        <Box className={styles.content}>{children}</Box>
+      )}
 
-        {(canEdit || canDelete) && (
-          <Group gap={4} wrap="nowrap" className={styles.actions}>
-            {canEdit && (
-              <Tooltip label={editLabel} disabled={!editLabel}>
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  aria-label={editLabel}
-                  disabled={editDisabled}
-                  onClick={onEdit}
-                >
-                  <Pencil size={14} aria-hidden="true" />
-                </ActionIcon>
-              </Tooltip>
-            )}
-            {canDelete && (
-              <Tooltip label={deleteLabel} disabled={!deleteLabel}>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  aria-label={deleteLabel}
-                  disabled={deleting || deleteDisabled}
-                  onClick={onDelete}
-                >
-                  <Trash2 size={14} aria-hidden="true" />
-                </ActionIcon>
-              </Tooltip>
-            )}
-          </Group>
-        )}
-      </Group>
-    </Paper>
+      {(canEdit || canDelete) && (
+        <Group gap={4} wrap="nowrap" className={styles.actions}>
+          {canEdit && (
+            <Tooltip label={editLabel} disabled={!editLabel}>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                aria-label={editLabel}
+                disabled={editDisabled}
+                onClick={onEdit}
+              >
+                <Pencil size={14} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          {canDelete && (
+            <Tooltip label={deleteLabel} disabled={!deleteLabel}>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                aria-label={deleteLabel}
+                disabled={deleting || deleteDisabled}
+                onClick={onDelete}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      )}
+    </Box>
   );
 }
 
@@ -271,42 +263,21 @@ export function ItemList<T>({
   }
 
   return (
-    <Paper
-      withBorder
-      radius="md"
-      p={0}
-      className={className}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        // Resolves to the caller's own bounding box when it sets an
-        // explicit height (or is itself a sized flex child) -- e.g. to
-        // scroll a long list within a fixed-height panel -- and simply
-        // matches its natural content height otherwise, since a
-        // percentage height falls back to `auto` behavior against an
-        // `auto`-height parent.
-        height: "100%",
-        overflow: "hidden",
-      }}
+    <Box
+      className={[styles.card, className].filter(Boolean).join(" ")}
+      // Resolves to the caller's own bounding box when it sets an explicit
+      // height (or is itself a sized flex child) -- e.g. to scroll a long
+      // list within a fixed-height panel -- and simply matches its natural
+      // content height otherwise, since a percentage height falls back to
+      // `auto` behavior against an `auto`-height parent.
     >
-      <Box
-        p="md"
-        style={{ borderBottom: "1px solid var(--mantine-color-dark-4)" }}
-      >
-        <Text size="sm" fw={600}>
-          {title}
-        </Text>
-        {subtitle && (
-          <Text size="xs" c="dimmed" mt={2}>
-            {subtitle}
-          </Text>
-        )}
+      <Box className={styles.header}>
+        <Box className={styles.title}>{title}</Box>
+        {subtitle && <Box className={styles.subtitle}>{subtitle}</Box>}
       </Box>
 
       {items.length === 0 ? (
-        <Text c="dimmed" size="sm" p="md">
-          {emptyState}
-        </Text>
+        <Box className={styles.emptyState}>{emptyState}</Box>
       ) : sortable ? (
         <SortableList
           items={items}
@@ -336,7 +307,7 @@ export function ItemList<T>({
           renderOverlay={(item, index) => overlayFor(item, index)}
         />
       ) : (
-        <Stack component="ul" className={styles.body}>
+        <Box component="ul" className={styles.body}>
           {items.map((item, index) => (
             <RowChrome
               key={getItemId(item)}
@@ -357,29 +328,27 @@ export function ItemList<T>({
               {renderItem(item, index)}
             </RowChrome>
           ))}
-        </Stack>
+        </Box>
       )}
 
       {error && (
-        <Text role="alert" c="red" size="xs" px="md" py="xs">
+        <Box role="alert" c="red" fz="xs" px="md" py="xs">
           {error}
-        </Text>
+        </Box>
       )}
 
-      <Box p="xs">
-        <Button
+      <Box className={styles.footer}>
+        <UnstyledButton
           type="button"
-          fullWidth
-          variant="default"
           disabled={addDisabled}
           onClick={onAdd}
-          leftSection={<Plus size={16} aria-hidden="true" />}
           className={styles.addButton}
         >
+          <Plus size={16} aria-hidden="true" />
           {addLabel}
-        </Button>
+        </UnstyledButton>
       </Box>
-    </Paper>
+    </Box>
   );
 }
 

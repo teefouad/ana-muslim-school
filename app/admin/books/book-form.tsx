@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ColorInput, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import { Autocomplete, SimpleGrid, Stack, TextInput } from "@mantine/core";
 
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { TranslatableTextArea } from "@/components/ui/translatable-text-area";
@@ -10,6 +10,7 @@ import type {
   LanguageOption,
   TranslatedValue,
 } from "@/components/ui/translatable-value";
+import { APPLICATION_COLOR_TOKENS } from "./application-colors";
 import type { MockBook } from "./mock-books";
 
 const LANGUAGES: LanguageOption[] = [
@@ -118,14 +119,15 @@ export function BookForm({
           <ToggleCard
             label="Published"
             description="Only published books are visible in the app."
-            variant="primary"
+            variant="error"
             checked={values.published}
             onChange={(published) =>
               setValues((prev) => ({ ...prev, published }))
             }
           />
-          <ColorInput
+          <Autocomplete
             label="Color"
+            data={APPLICATION_COLOR_TOKENS}
             value={values.color}
             onChange={(color) => setValues((prev) => ({ ...prev, color }))}
           />

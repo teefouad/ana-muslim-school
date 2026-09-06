@@ -13,8 +13,10 @@ export interface ToggleCardProps {
   description?: ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
-  /** `primary` for an affirmative setting (e.g. Published); `error` for a
-   * destructive one (e.g. Locked). @default 'primary' */
+  /** `primary` for a low-emphasis affirmative setting; `error` for one
+   * that should read as high-emphasis/destructive (e.g. Locked, and also
+   * Published in the Book form -- both carry equally significant
+   * consequences there). @default 'primary' */
   variant?: ToggleCardVariant;
   disabled?: boolean;
   className?: string;

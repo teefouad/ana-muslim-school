@@ -120,4 +120,13 @@ describe("BooksTable", () => {
 
     expect(screen.getByText("الرحيق المختوم")).toBeInTheDocument();
   });
+
+  it("resolves a named application-color token to its hex value for the color swatch, but shows the token text as-is", () => {
+    renderWithProvider([buildBook({ color: "cyan.6" })]);
+
+    expect(screen.getByText("cyan.6")).toBeInTheDocument();
+    // The swatch is a decorative aria-hidden span with no accessible role.
+    const swatch = document.querySelector('span[aria-hidden="true"]');
+    expect(swatch).toHaveStyle({ backgroundColor: "#15aabf" });
+  });
 });
