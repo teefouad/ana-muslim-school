@@ -64,8 +64,7 @@
 }
 
 .rowDragging {
-  opacity: 0.5;
-  box-shadow: var(--mantine-shadow-md);
+  opacity: 0;
 }
 
 .grip {

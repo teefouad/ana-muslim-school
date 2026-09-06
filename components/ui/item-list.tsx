@@ -7,14 +7,7 @@ import type {
 } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  ActionIcon,
-  Box,
-  Group,
-  Paper,
-  Tooltip,
-  UnstyledButton,
-} from "@mantine/core";
+import { ActionIcon, Box, Group, Tooltip, UnstyledButton } from "@mantine/core";
 import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 
 import styles from "./item-list.module.css";
@@ -202,16 +195,18 @@ function RowChrome({
   );
 }
 
+// Renders with the exact same classes as a resting `RowChrome` row (see
+// `.row`/`.grip`/`.content` in item-list.module.css) so the floating preview
+// under the cursor looks identical to the item's normal appearance instead
+// of a generically-styled Mantine surface.
 function DefaultOverlay({ children }: { children: ReactNode }) {
   return (
-    <Paper withBorder radius="sm" p="xs" shadow="md">
-      <Group gap="xs" wrap="nowrap">
-        <span className={styles.grip} aria-hidden="true">
-          <GripVertical size={16} />
-        </span>
-        <Box className={styles.content}>{children}</Box>
-      </Group>
-    </Paper>
+    <Box className={styles.row}>
+      <span className={styles.grip} aria-hidden="true">
+        <GripVertical size={16} />
+      </span>
+      <Box className={styles.content}>{children}</Box>
+    </Box>
   );
 }
 

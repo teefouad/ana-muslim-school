@@ -48,11 +48,7 @@ export default function AddBookPage() {
         </Group>
       </Group>
       <Divider opacity={0.25} mx={-27} />
-      <Flex
-        gap="xl"
-        direction={{ base: "column", md: "row" }}
-        align="flex-start"
-      >
+      <Flex gap="xl" direction={{ base: "column", md: "row" }} align="stretch">
         <Box style={{ flex: 1, minWidth: 0 }}>
           <BookForm id={BOOK_FORM_ID} onSubmit={handleSubmit} />
         </Box>
