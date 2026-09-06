@@ -103,7 +103,22 @@ describe("getResourcePath", () => {
 
 describe("getResourcePaths", () => {
   it("lists every distinct resource path in the registry exactly once", () => {
-    expect(getResourcePaths()).toEqual(["/permissions", "/permissions/:id"]);
+    expect(getResourcePaths()).toEqual([
+      "/permissions",
+      "/permissions/:id",
+      "/sources",
+      "/sources/:id",
+      "/materials",
+      "/materials/:id",
+      "/books",
+      "/books/:bookId",
+      "/books/:bookId/modules",
+      "/books/:bookId/modules/:moduleId",
+      "/books/:bookId/modules/:moduleId/lessons",
+      "/books/:bookId/modules/:moduleId/lessons/:lessonId",
+      "/books/:bookId/modules/:moduleId/questions",
+      "/books/:bookId/modules/:moduleId/questions/:questionId",
+    ]);
   });
 });
 
