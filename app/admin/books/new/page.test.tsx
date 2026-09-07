@@ -69,14 +69,14 @@ describe("AddBookPage", () => {
     expect(addButton).toHaveAttribute("form");
   });
 
-  it("renders Import Source and the Sections panel disabled", () => {
+  it("renders Import Source and the Modules panel disabled", () => {
     renderPage();
 
     expect(
       screen.getByRole("button", { name: "Import Source" }),
     ).toBeDisabled();
-    expect(screen.getByText("Sections")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add section" })).toBeDisabled();
+    expect(screen.getByText("Modules")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add module" })).toBeDisabled();
   });
 
   it("submits POST /api/v1/books with the canonical writable fields and no modules/audit fields", async () => {

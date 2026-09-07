@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -126,11 +127,35 @@ export function SortableList<T>({
           {items.map((item, index) => renderItem(item, index))}
         </ul>
       </SortableContext>
-      <DragOverlay>
-        {activeIndex !== -1
-          ? renderOverlay(items[activeIndex], activeIndex)
-          : null}
-      </DragOverlay>
+      {
+        // `@dnd-kit/core`'s DragOverlay positions itself with plain
+        // `position: fixed` -- it does not portal to `document.body` on its
+        // own. `position: fixed` resolves against the nearest ancestor with
+        // a `transform` (or `filter`/`perspective`/`will-change: transform`)
+        // instead of the viewport, per the CSS containing-block spec. A
+        // Mantine `Modal`'s content element carries exactly that (a
+        // permanent `transform: translateY(0px)`, even once the open
+        // animation settles), so a SortableList used inside a Modal (e.g.
+        // the Import Source workflow's Module builder, ANA-68) rendered a
+        // dragged item offset from the cursor by however far the modal
+        // itself sits from the viewport's top-left corner -- confirmed by
+        // reproducing the exact CSS locally with Playwright. Portaling
+        // DragOverlay to `document.body` sidesteps any such ancestor
+        // entirely; React context (DndContext here) still crosses portal
+        // boundaries normally, so this doesn't change anything else about
+        // how DragOverlay behaves. Guarded for SSR, where `document` isn't
+        // defined yet -- harmless, since a drag can only ever start after
+        // client-side hydration anyway.
+        typeof document !== "undefined" &&
+          createPortal(
+            <DragOverlay>
+              {activeIndex !== -1
+                ? renderOverlay(items[activeIndex], activeIndex)
+                : null}
+            </DragOverlay>,
+            document.body,
+          )
+      }
     </DndContext>
   );
 }

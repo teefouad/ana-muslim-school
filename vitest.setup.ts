@@ -25,6 +25,36 @@ if (typeof window !== "undefined" && !window.ResizeObserver) {
   };
 }
 
+// jsdom doesn't implement document.fonts, but Mantine's autosize Textarea
+// (used by module-card.tsx's Module text, ANA-68) listens for font-load
+// events on it as soon as it mounts.
+if (typeof document !== "undefined" && !document.fonts) {
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: {
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    },
+  });
+}
+
+// jsdom doesn't implement IntersectionObserver, but the Import Source
+// modal's PdfPageCanvas (ANA-68) observes visibility to lazily render PDF
+// pages/thumbnails as soon as it mounts.
+if (typeof window !== "undefined" && !window.IntersectionObserver) {
+  window.IntersectionObserver = class IntersectionObserver {
+    root = null;
+    rootMargin = "";
+    thresholds: ReadonlyArray<number> = [];
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  } as unknown as typeof window.IntersectionObserver;
+}
+
 // jsdom doesn't implement layout, so it has no Range.getBoundingClientRect/
 // getClientRects at all -- but Lexical (the Markdown editor's underlying
 // engine, see components/ui/markdown-editor.tsx) calls them to sync the DOM

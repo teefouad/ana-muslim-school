@@ -1,0 +1,20 @@
+/* Shared "compact bordered control" chrome for FontSizeControl and
+   TextDirectionControl (ANA-68) -- both are a 40px-tall bordered group
+   built from Mantine ActionIcon buttons, so the group wrapper/label look
+   lives in one place instead of two copies. */
+.group {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 4px;
+  gap: 4px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 6px;
+}
+
+.label {
+  width: 40px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--mantine-color-text);
+}

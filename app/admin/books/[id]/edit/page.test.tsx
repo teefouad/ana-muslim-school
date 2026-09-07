@@ -111,15 +111,39 @@ describe("EditBookPage", () => {
     expect(importSource.nextElementSibling).toBe(saveChanges);
   });
 
-  it("renders the Sections panel on the right, enabled", async () => {
+  it("renders the Modules panel on the right, enabled", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: buildBookFixture() }),
     );
     renderPage();
 
     await screen.findByRole("button", { name: "Save changes" });
-    expect(screen.getByText("Sections")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add section" })).toBeEnabled();
+    expect(screen.getByText("Modules")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add module" })).toBeEnabled();
+  });
+
+  it("opens the Import Source modal, starting at the PDF picker", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: buildBookFixture() }),
+    );
+    renderPage();
+
+    const importSource = await screen.findByRole("button", {
+      name: "Import Source",
+    });
+
+    expect(
+      screen.queryByRole("dialog", { name: "Import Source" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(importSource);
+
+    expect(
+      await screen.findByRole("dialog", { name: "Import Source" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Choose a PDF to import" }),
+    ).toBeInTheDocument();
   });
 
   it("sends PATCH /api/v1/books/{bookId} with the edited fields on save, without modules or audit fields", async () => {

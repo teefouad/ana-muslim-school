@@ -1,0 +1,54 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.card {
+  list-style: none;
+  background-color: #171717;
+  border: 1px solid #262626;
+  border-radius: 12px;
+  color: #ededed;
+}
+
+.dragging {
+  opacity: 0;
+}
+
+/* The floating drag overlay (see module-list.tsx's ModuleCardOverlay) --
+   an elevated shadow so it always reads as floating above the list even
+   during the brief moment it visually coincides with a resettling
+   sibling, rather than blending into the same flat surface. */
+.overlayCard {
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.grip {
+  display: flex;
+  align-items: center;
+  color: #a3a3a3;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.body {
+  padding: 0 12px 12px;
+}

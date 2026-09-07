@@ -19,22 +19,20 @@ import {
   toBookWritableFields,
   type BookFormValues,
 } from "../book-form";
-import { INITIAL_MOCK_SECTIONS, type MockSection } from "../mock-sections";
-import { SectionsPanel } from "../sections-panel";
+import { INITIAL_MOCK_MODULES, type MockModule } from "../mock-modules";
+import { ModulesPanel } from "../modules-panel";
 import type { Book } from "@/lib/books/types";
 
 const BOOK_FORM_ID = "add-book-form";
 
 // Add Book (ANA-65): creates through `POST /api/v1/books` and hands off to
 // the normal Edit Book surface for the server-returned id -- Import Source
-// and the Sections panel stay disabled here since a Book must exist (and
+// and the Modules panel stay disabled here since a Book must exist (and
 // have a real id) before either can do anything, and this page never keeps
 // rendering a "saved" state of its own after a successful create.
 export default function AddBookPage() {
   const router = useRouter();
-  const [sections, setSections] = useState<MockSection[]>(
-    INITIAL_MOCK_SECTIONS,
-  );
+  const [modules, setModules] = useState<MockModule[]>(INITIAL_MOCK_MODULES);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -91,9 +89,9 @@ export default function AddBookPage() {
           />
         </Box>
         <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
-          <SectionsPanel
-            sections={sections}
-            onSectionsChange={setSections}
+          <ModulesPanel
+            modules={modules}
+            onModulesChange={setModules}
             disabled
           />
         </Box>

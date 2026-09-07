@@ -23,8 +23,9 @@ import {
   type BookFormValues,
 } from "../../book-form";
 import { fetchJson, HttpError } from "../../fetch-json";
-import { INITIAL_MOCK_SECTIONS, type MockSection } from "../../mock-sections";
-import { SectionsPanel } from "../../sections-panel";
+import { ImportSourceModal } from "../../import-source/import-source-modal";
+import { INITIAL_MOCK_MODULES, type MockModule } from "../../mock-modules";
+import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 
 const BOOK_FORM_ID = "edit-book-form";
@@ -45,11 +46,10 @@ export default function EditBookPage() {
     (url) => fetchJson<{ data: Book }>(url).then((response) => response.data),
     { shouldRetryOnError: false },
   );
-  const [sections, setSections] = useState<MockSection[]>(
-    INITIAL_MOCK_SECTIONS,
-  );
+  const [modules, setModules] = useState<MockModule[]>(INITIAL_MOCK_MODULES);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [importSourceOpened, setImportSourceOpened] = useState(false);
 
   const notFound = error instanceof HttpError && error.status === 404;
 
@@ -86,7 +86,11 @@ export default function EditBookPage() {
       <Group justify="space-between" wrap="wrap" gap="sm">
         <Title order={2}>Edit Book</Title>
         <Group gap="sm">
-          <Button variant="default" disabled={!book}>
+          <Button
+            variant="default"
+            disabled={!book}
+            onClick={() => setImportSourceOpened(true)}
+          >
             Import Source
           </Button>
           <Button
@@ -134,9 +138,17 @@ export default function EditBookPage() {
             />
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
-            <SectionsPanel sections={sections} onSectionsChange={setSections} />
+            <ModulesPanel modules={modules} onModulesChange={setModules} />
           </Box>
         </Flex>
+      )}
+
+      {book && (
+        <ImportSourceModal
+          opened={importSourceOpened}
+          onClose={() => setImportSourceOpened(false)}
+          bookId={book.id}
+        />
       )}
     </Stack>
   );
