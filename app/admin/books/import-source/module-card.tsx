@@ -55,6 +55,7 @@ export function ModuleCard({ module, index, onTextChange }: ModuleCardProps) {
   return (
     <li
       ref={setNodeRef}
+      data-testid={`module-card-${module.id}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={[styles.card, isDragging && styles.dragging]
         .filter(Boolean)

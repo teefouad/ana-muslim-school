@@ -1,6 +1,7 @@
 "use client";
 
 import { GripVertical } from "lucide-react";
+import { Textarea } from "@mantine/core";
 
 import { SortableList } from "@/components/ui/sortable-list";
 import type { TempModule } from "./import-source-types";
@@ -13,11 +14,23 @@ export interface ModuleListProps {
 }
 
 // The floating preview shown under the pointer while dragging (ANA-64/
-// ANA-68): reuses the exact same resting-card classes as ModuleCard's
-// header, rather than a different-looking default overlay -- see
+// ANA-68): reuses the exact same resting-card classes as ModuleCard,
+// rather than a different-looking default overlay -- see
 // components/ui/item-list.tsx's DefaultOverlay for the same fix applied to
-// the shared ItemList.
-function ModuleCardOverlay({ index }: { index: number }) {
+// the shared ItemList. Unlike ItemList's single-line rows, a Module card's
+// expanded body (its editable text) is a large, visually dominant part of
+// the card -- an overlay that only showed the header would visibly "shrink"
+// the dragged card down to a thin bar while its siblings stay full height,
+// which reads as broken rather than as a drag preview. This mirrors the
+// full expanded card (header + a static, read-only copy of its text)
+// instead, matching what the card actually looks like at rest.
+function ModuleCardOverlay({
+  module,
+  index,
+}: {
+  module: TempModule;
+  index: number;
+}) {
   return (
     <div className={styles.card}>
       <div className={styles.header}>
@@ -25,6 +38,17 @@ function ModuleCardOverlay({ index }: { index: number }) {
           <GripVertical size={16} />
         </span>
         <span className={styles.title}>Module {index + 1}</span>
+      </div>
+      <div className={styles.body}>
+        <Textarea
+          value={module.text}
+          readOnly
+          autosize
+          minRows={3}
+          aria-hidden="true"
+          tabIndex={-1}
+          styles={{ input: { fontFamily: "var(--font-mono, monospace)" } }}
+        />
       </div>
     </div>
   );
@@ -51,7 +75,9 @@ export function ModuleList({ modules, onModulesChange }: ModuleListProps) {
           }
         />
       )}
-      renderOverlay={(_module, index) => <ModuleCardOverlay index={index} />}
+      renderOverlay={(module, index) => (
+        <ModuleCardOverlay module={module} index={index} />
+      )}
     />
   );
 }
