@@ -194,11 +194,19 @@ export function ImportSourceModal({
     step === "pick" && existingSource
       ? `/api/v1/books/${bookId}/modules`
       : null;
+  // Unwraps to a plain `Module[]`, matching EditBookPage's own fetcher for
+  // this exact key -- SWR shares one cache entry per key regardless of
+  // which hook's fetcher runs, so a mismatched shape here (e.g. reading
+  // `{ data: Module[] }` while the other hook caches the unwrapped array)
+  // crashes whichever hook reads a value written by the other's fetcher
+  // (PR review, ANA-72).
   const {
-    data: workspaceModulesData,
+    data: workspaceModules,
     error: workspaceModulesError,
     mutate: mutateWorkspaceModules,
-  } = useSWR<{ data: Module[] }>(modulesUrl, fetchJson);
+  } = useSWR(modulesUrl, (url) =>
+    fetchJson<{ data: Module[] }>(url).then((response) => response.data),
+  );
 
   const materialsUrl =
     step === "pick" && existingSource
@@ -221,7 +229,7 @@ export function ImportSourceModal({
   // already reflect the seeded values below.
   if (
     existingSource &&
-    workspaceModulesData &&
+    workspaceModules &&
     workspaceMaterialsData &&
     seededSourceId !== existingSource.id
   ) {
@@ -242,7 +250,7 @@ export function ImportSourceModal({
     setSeededSourceId(existingSource.id);
     setWorkspaceContent(existingSource.content);
     setWorkspaceEntries(
-      workspaceModulesData.data.map((module) => ({
+      workspaceModules.map((module) => ({
         key: module.id,
         moduleId: module.id,
         material: materialByModuleId.get(module.id)?.content ?? "",
@@ -637,7 +645,7 @@ export function ImportSourceModal({
         !sourceLookupLoading &&
         !sourceLookupError &&
         existingSource &&
-        !(workspaceModulesData && workspaceMaterialsData) &&
+        !(workspaceModules && workspaceMaterialsData) &&
         !(workspaceModulesError || workspaceMaterialsError) && (
           <div className={styles.centered}>
             <Group gap="sm">
@@ -658,7 +666,7 @@ export function ImportSourceModal({
         // previous data on such a failure) -- that keeps showing the
         // workspace below instead of also stacking an error banner above
         // it.
-        !(workspaceModulesData && workspaceMaterialsData) &&
+        !(workspaceModules && workspaceMaterialsData) &&
         (workspaceModulesError || workspaceMaterialsError) && (
           <div className={styles.centered}>
             <Alert color="red" title="Could not load the Book's Modules">
@@ -671,7 +679,7 @@ export function ImportSourceModal({
         !sourceLookupLoading &&
         !sourceLookupError &&
         existingSource &&
-        workspaceModulesData &&
+        workspaceModules &&
         workspaceMaterialsData && (
           <SavedSourceView
             content={workspaceContent}

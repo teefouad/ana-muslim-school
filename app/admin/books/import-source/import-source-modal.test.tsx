@@ -3,7 +3,9 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Button, MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SWRConfig, useSWRConfig } from "swr";
+import useSWR, { SWRConfig, useSWRConfig } from "swr";
+
+import { fetchJson } from "../fetch-json";
 
 const {
   usePdfDocumentMock,
@@ -324,6 +326,55 @@ describe("ImportSourceModal", () => {
     expect(
       screen.queryByRole("button", { name: "Choose a PDF to import" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not crash when the Book Modules SWR cache key was already populated by another consumer using EditBookPage's own unwrapping fetcher (regression, PR review)", async () => {
+    // Bug report: clicking "View source text" after adding Modules via the
+    // PDF import Finish flow crashed with "Cannot read properties of
+    // undefined (reading 'map')". Root cause: this modal's own Modules SWR
+    // hook shares its cache key (`/api/v1/books/{bookId}/modules`) with
+    // EditBookPage's own Modules read (app/admin/books/[id]/edit/page.tsx)
+    // -- SWR caches one value per key regardless of which hook's fetcher
+    // produced it, and EditBookPage's fetcher unwraps the response to a
+    // plain `Module[]`, not the raw `{ data: Module[] }` envelope. Whoever
+    // populates the cache last determines the shape every other subscriber
+    // of that key sees. This reproduces that coexistence directly: a
+    // sibling hook using EditBookPage's exact fetcher populates the shared
+    // cache first, then the modal mounts and must still render correctly
+    // (not assume its own envelope shape).
+    mockExistingSource({ modules: [{ id: "module-1" }], materials: [] });
+
+    function Harness() {
+      const [modalReady, setModalReady] = useState(false);
+      const { data } = useSWR("/api/v1/books/book-1/modules", (url) =>
+        fetchJson<{ data: unknown[] }>(url).then((response) => response.data),
+      );
+
+      // Same "adjust state during render" pattern as the modal's own
+      // seeding logic -- mounts the modal only once this sibling's own
+      // fetch has landed in the shared cache, so the modal's hook always
+      // finds the key already populated in EditBookPage's shape.
+      if (data && !modalReady) {
+        setModalReady(true);
+      }
+
+      if (!modalReady) {
+        return null;
+      }
+
+      return <ImportSourceModal opened onClose={vi.fn()} bookId="book-1" />;
+    }
+
+    render(
+      <MantineProvider>
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <Harness />
+        </SWRConfig>
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByLabelText("Source text")).toBeInTheDocument();
+    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
   });
 
   it("ignores a background Source-lookup update once the upload workflow has started, instead of swapping to the saved-source view mid-session", async () => {
