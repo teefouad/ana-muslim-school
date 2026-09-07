@@ -12,6 +12,7 @@ import {
   Stack,
   Title,
 } from "@mantine/core";
+import { Upload } from "lucide-react";
 
 import {
   BookForm,
@@ -70,8 +71,12 @@ export default function AddBookPage() {
       <Group justify="space-between" wrap="wrap" gap="sm">
         <Title order={2}>Add Book</Title>
         <Group gap="sm">
-          <Button variant="default" disabled>
-            Import Source
+          <Button
+            variant="default"
+            disabled
+            leftSection={<Upload size={16} aria-hidden="true" />}
+          >
+            Create from PDF
           </Button>
           <Button type="submit" form={BOOK_FORM_ID} loading={isSubmitting}>
             Add book

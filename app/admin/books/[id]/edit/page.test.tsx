@@ -47,17 +47,24 @@ function buildModuleFixture(overrides: Partial<Module> = {}): Module {
 
 /** Routes the globally-stubbed `fetch` by method + URL, matching every real
  * request this page makes: `GET` the Book, `GET` its Modules (only once the
- * Book has loaded -- see page.tsx's conditional SWR key), and optionally
- * `PATCH` the Book on save. */
+ * Book has loaded -- see page.tsx's conditional SWR key), the page's own
+ * Source-by-bookId lookup (which drives the header button's label), and
+ * optionally `PATCH` the Book on save. */
 function setupFetch(
   book: ReturnType<typeof buildBookFixture> | null,
   options: {
     bookStatus?: number;
     modules?: Module[];
+    hasSource?: boolean;
     onPatch?: (body: unknown) => { status: number; body: unknown };
   } = {},
 ) {
-  const { bookStatus = 200, modules = [], onPatch } = options;
+  const {
+    bookStatus = 200,
+    modules = [],
+    hasSource = false,
+    onPatch,
+  } = options;
 
   (fetch as ReturnType<typeof vi.fn>).mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) => {
@@ -76,12 +83,18 @@ function setupFetch(
         return Promise.resolve(jsonResponse({ data: modules }));
       }
 
-      // ANA-71: the Import Source modal looks up a saved Source for the
-      // Book as soon as it's opened -- every test that opens it needs this
-      // handled, and no test in this file exercises a saved Source, so it
-      // always reports none.
+      // ANA-71: both this page (for the header button's label) and the
+      // Import Source modal (once opened) look up whether the Book already
+      // has a saved Source -- no test in this file exercises one by
+      // default, so it reports none unless `hasSource` is set.
       if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
-        return Promise.resolve(jsonResponse({ data: [] }));
+        return Promise.resolve(
+          jsonResponse({
+            data: hasSource
+              ? [{ id: "source-1", bookId: "book-1", content: "Saved text" }]
+              : [],
+          }),
+        );
       }
 
       if (method === "PATCH" && url === "/api/v1/books/book-1" && onPatch) {
@@ -152,20 +165,34 @@ describe("EditBookPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders Import Source immediately next to Save changes in the header, both enabled once loaded", async () => {
+  it("renders Create from PDF immediately next to Save changes in the header, both enabled once loaded", async () => {
     setupFetch(buildBookFixture());
     renderPage();
 
     const saveChanges = await screen.findByRole("button", {
       name: "Save changes",
     });
-    const importSource = screen.getByRole("button", { name: "Import Source" });
+    const importSource = screen.getByRole("button", {
+      name: "Create from PDF",
+    });
     expect(importSource).toBeEnabled();
     expect(saveChanges).toBeEnabled();
 
     // "Immediately next to" -- adjacent header buttons in the same action
     // group, not separated by unrelated content.
     expect(importSource.nextElementSibling).toBe(saveChanges);
+  });
+
+  it("labels the header button View source text when the Book already has a saved Source", async () => {
+    setupFetch(buildBookFixture(), { hasSource: true });
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", { name: "View source text" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create from PDF" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the Modules panel on the right, enabled", async () => {
@@ -184,17 +211,17 @@ describe("EditBookPage", () => {
     renderPage();
 
     const importSource = await screen.findByRole("button", {
-      name: "Import Source",
+      name: "Create from PDF",
     });
 
     expect(
-      screen.queryByRole("dialog", { name: "Import Source" }),
+      screen.queryByRole("dialog", { name: "Create from PDF" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(importSource);
 
     expect(
-      await screen.findByRole("dialog", { name: "Import Source" }),
+      await screen.findByRole("dialog", { name: "Create from PDF" }),
     ).toBeInTheDocument();
     // The modal's own Source-by-bookId lookup (ANA-71) resolves
     // asynchronously before the upload flow renders -- `findByRole` waits

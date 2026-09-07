@@ -33,3 +33,24 @@ export async function deleteSource(id: string): Promise<void> {
     throw new Error(await readErrorMessage(response));
   }
 }
+
+/** Updates a Source's content via `PATCH /api/v1/sources/{id}` -- used to
+ * save edits made directly in the saved-source view. */
+export async function updateSource(
+  id: string,
+  content: string,
+): Promise<Source> {
+  const response = await fetch(`/api/v1/sources/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  const { data } = (await response.json()) as { data: Source };
+
+  return data;
+}

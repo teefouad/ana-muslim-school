@@ -9,7 +9,7 @@ function ImportSourceModalDemo() {
 
   return (
     <>
-      <Button onClick={() => setOpened(true)}>Import Source</Button>
+      <Button onClick={() => setOpened(true)}>Create from PDF</Button>
       <ImportSourceModal
         opened={opened}
         onClose={() => setOpened(false)}

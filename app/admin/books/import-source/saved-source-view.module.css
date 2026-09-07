@@ -5,6 +5,16 @@
   min-height: 0;
 }
 
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  flex-shrink: 0;
+}
+
 .body {
   flex: 1;
   min-height: 0;
@@ -15,9 +25,8 @@
 
 /* Stretches root -> wrapper -> input to fill `.body`'s remaining height,
    same technique as ocr-page-card.module.css's `.textareaRoot`/
-   `.textareaWrapper` -- the explicit white background/dark text (ANA-71
-   spec) is set inline via `styles.input` in saved-source-view.tsx since
-   this is a fixed saved-document surface, not a themed form control. */
+   `.textareaWrapper`. No color overrides here -- this Textarea uses the
+   same themed styling as the rest of the dashboard. */
 .textareaRoot {
   flex: 1;
   display: flex;
@@ -35,6 +44,7 @@
 .footer {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 12px 16px;
   border-top: 1px solid var(--mantine-color-default-border);
