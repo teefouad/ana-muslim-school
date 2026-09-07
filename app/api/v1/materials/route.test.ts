@@ -56,11 +56,15 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
+function listRequest(query = "") {
+  return new Request(`http://localhost/api/v1/materials${query}`);
+}
+
 describe("GET /api/v1/materials", () => {
   it("requires books.read", async () => {
     deny();
 
-    const response = await GET();
+    const response = await GET(listRequest());
 
     expect(response.status).toBe(403);
     expect(requireBooksPermissionMock).toHaveBeenCalledWith("read");
@@ -71,10 +75,38 @@ describe("GET /api/v1/materials", () => {
     allow();
     listMaterialsServiceMock.mockResolvedValueOnce([{ id: "doc-1" }]);
 
-    const response = await GET();
+    const response = await GET(listRequest());
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ data: [{ id: "doc-1" }] });
+    expect(listMaterialsServiceMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it("forwards a `bookId` query param as a Book filter", async () => {
+    allow();
+    listMaterialsServiceMock.mockResolvedValueOnce([
+      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "x" },
+    ]);
+
+    const response = await GET(listRequest("?bookId=book-1"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: [
+        { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "x" },
+      ],
+    });
+    expect(listMaterialsServiceMock).toHaveBeenCalledWith("book-1");
+  });
+
+  it("treats an empty/whitespace-only `bookId` as no filter", async () => {
+    allow();
+    listMaterialsServiceMock.mockResolvedValueOnce([]);
+
+    const response = await GET(listRequest("?bookId=%20%20"));
+
+    expect(response.status).toBe(200);
+    expect(listMaterialsServiceMock).toHaveBeenCalledWith(undefined);
   });
 });
 

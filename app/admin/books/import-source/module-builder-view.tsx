@@ -114,7 +114,7 @@ export function ModuleBuilderView({
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <Text size="sm" fw={500}>
-              Extracted text
+              Source Text
             </Text>
           </div>
           <div className={styles.panelBody}>

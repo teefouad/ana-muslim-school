@@ -55,6 +55,18 @@ describe("listMaterialsService", () => {
     listMaterialsMock.mockResolvedValueOnce([{ id: "doc-1" }]);
 
     expect(await listMaterialsService()).toEqual([{ id: "doc-1" }]);
+    expect(listMaterialsMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it("forwards a given bookId to the repository's filtered query", async () => {
+    listMaterialsMock.mockResolvedValueOnce([
+      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+    ]);
+
+    expect(await listMaterialsService("book-1")).toEqual([
+      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+    ]);
+    expect(listMaterialsMock).toHaveBeenCalledWith("book-1");
   });
 });
 

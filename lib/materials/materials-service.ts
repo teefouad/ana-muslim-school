@@ -33,8 +33,10 @@ async function validateHierarchy(
   return null;
 }
 
-export async function listMaterialsService(): Promise<Material[]> {
-  return listMaterialsFromRepo();
+export async function listMaterialsService(
+  bookId?: string,
+): Promise<Material[]> {
+  return listMaterialsFromRepo(bookId);
 }
 
 export async function createMaterialService(

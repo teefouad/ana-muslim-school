@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Button, MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SWRConfig, useSWRConfig } from "swr";
+import useSWR, { SWRConfig, useSWRConfig } from "swr";
+
+import { fetchJson } from "../fetch-json";
 
 const {
   usePdfDocumentMock,
@@ -15,6 +18,7 @@ const {
   deleteSourceMock,
   updateSourceMock,
   createMaterialMock,
+  updateMaterialMock,
 } = vi.hoisted(() => ({
   usePdfDocumentMock: vi.fn(),
   requestOcrUploadUrlMock: vi.fn(),
@@ -26,6 +30,7 @@ const {
   deleteSourceMock: vi.fn(),
   updateSourceMock: vi.fn(),
   createMaterialMock: vi.fn(),
+  updateMaterialMock: vi.fn(),
 }));
 
 vi.mock("./use-pdf-document", () => ({
@@ -59,6 +64,7 @@ vi.mock("./sources-client", () => ({
 
 vi.mock("./materials-client", () => ({
   createMaterial: createMaterialMock,
+  updateMaterial: updateMaterialMock,
 }));
 
 const { ImportSourceModal } = await import("./import-source-modal");
@@ -72,6 +78,30 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// The Source Text panel's plain <textarea> also has an implicit
+// role="textbox", alongside each Module's contenteditable MarkdownEditor --
+// this narrows a `findAllByRole("textbox")` result down to just the latter.
+async function findMaterialEditors() {
+  const textboxes = await screen.findAllByRole("textbox");
+  return textboxes.filter((el) => el.tagName !== "TEXTAREA");
+}
+
+function moduleFixture(id: string) {
+  return {
+    id,
+    title: { ar: "", en: "" },
+    description: { ar: "", en: "" },
+    color: "",
+    lessons: [],
+    isLocked: false,
+    isPublished: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    createdBy: "actor@example.com",
+    updatedBy: "actor@example.com",
+  };
 }
 
 /** The only raw (non-client-wrapper) fetch this modal makes is the
@@ -169,6 +199,9 @@ describe("ImportSourceModal", () => {
           content,
         }),
     );
+    updateMaterialMock.mockImplementation((id: string, content: string) =>
+      Promise.resolve({ id, bookId: "book-1", moduleId: "module-1", content }),
+    );
   });
 
   afterEach(() => {
@@ -243,26 +276,105 @@ describe("ImportSourceModal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens directly on the saved-source view when the Book already has a Source", async () => {
+  /** Serves the Source-by-bookId, Book Modules, and Book-filtered Materials
+   * lookups the saved-Source workspace (ANA-72) needs before it can render
+   * -- every "existing Source" test needs all three, not just the Source
+   * one ANA-71 originally required. */
+  function mockExistingSource({
+    content = "Saved text",
+    modules = [],
+    materials = [],
+  }: {
+    content?: string;
+    modules?: { id: string }[];
+    materials?: { id: string; moduleId: string; content: string }[];
+  } = {}) {
     (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
       const url = String(input);
+
       if (url.startsWith("/api/v1/sources?bookId=")) {
         return Promise.resolve(
           jsonResponse({
-            data: [{ id: "source-1", bookId: "book-1", content: "Saved text" }],
+            data: [{ id: "source-1", bookId: "book-1", content }],
           }),
         );
       }
+
+      if (url === "/api/v1/books/book-1/modules") {
+        return Promise.resolve(
+          jsonResponse({
+            data: modules.map((module) => moduleFixture(module.id)),
+          }),
+        );
+      }
+
+      if (url.startsWith("/api/v1/materials?bookId=")) {
+        return Promise.resolve(jsonResponse({ data: materials }));
+      }
+
       throw new Error(`Unhandled fetch in test: ${url}`);
     });
+  }
+
+  it("opens directly on the two-panel Source Text + Modules workspace when the Book already has a Source", async () => {
+    mockExistingSource({ content: "Saved text" });
     renderModal();
 
-    expect(await screen.findByLabelText("Saved source text")).toHaveValue(
+    expect(await screen.findByLabelText("Source text")).toHaveValue(
       "Saved text",
     );
     expect(
       screen.queryByRole("button", { name: "Choose a PDF to import" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not crash when the Book Modules SWR cache key was already populated by another consumer using EditBookPage's own unwrapping fetcher (regression, PR review)", async () => {
+    // Bug report: clicking "View source text" after adding Modules via the
+    // PDF import Finish flow crashed with "Cannot read properties of
+    // undefined (reading 'map')". Root cause: this modal's own Modules SWR
+    // hook shares its cache key (`/api/v1/books/{bookId}/modules`) with
+    // EditBookPage's own Modules read (app/admin/books/[id]/edit/page.tsx)
+    // -- SWR caches one value per key regardless of which hook's fetcher
+    // produced it, and EditBookPage's fetcher unwraps the response to a
+    // plain `Module[]`, not the raw `{ data: Module[] }` envelope. Whoever
+    // populates the cache last determines the shape every other subscriber
+    // of that key sees. This reproduces that coexistence directly: a
+    // sibling hook using EditBookPage's exact fetcher populates the shared
+    // cache first, then the modal mounts and must still render correctly
+    // (not assume its own envelope shape).
+    mockExistingSource({ modules: [{ id: "module-1" }], materials: [] });
+
+    function Harness() {
+      const [modalReady, setModalReady] = useState(false);
+      const { data } = useSWR("/api/v1/books/book-1/modules", (url) =>
+        fetchJson<{ data: unknown[] }>(url).then((response) => response.data),
+      );
+
+      // Same "adjust state during render" pattern as the modal's own
+      // seeding logic -- mounts the modal only once this sibling's own
+      // fetch has landed in the shared cache, so the modal's hook always
+      // finds the key already populated in EditBookPage's shape.
+      if (data && !modalReady) {
+        setModalReady(true);
+      }
+
+      if (!modalReady) {
+        return null;
+      }
+
+      return <ImportSourceModal opened onClose={vi.fn()} bookId="book-1" />;
+    }
+
+    render(
+      <MantineProvider>
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <Harness />
+        </SWRConfig>
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByLabelText("Source text")).toBeInTheDocument();
+    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
   });
 
   it("ignores a background Source-lookup update once the upload workflow has started, instead of swapping to the saved-source view mid-session", async () => {
@@ -314,33 +426,17 @@ describe("ImportSourceModal", () => {
     // reopen would now see it) -- what must not happen is the active
     // workflow being replaced by it while this modal session is still open.
     expect(screen.getByText("book.pdf")).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Saved source text"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Source text")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Select Another PDF" }),
     ).not.toBeInTheDocument();
   });
 
   describe("Select Another PDF (removes the saved Source)", () => {
-    function mockExistingSource(content = "Saved text") {
-      (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
-        const url = String(input);
-        if (url.startsWith("/api/v1/sources?bookId=")) {
-          return Promise.resolve(
-            jsonResponse({
-              data: [{ id: "source-1", bookId: "book-1", content }],
-            }),
-          );
-        }
-        throw new Error(`Unhandled fetch in test: ${url}`);
-      });
-    }
-
     it("calls DELETE /api/v1/sources/{sourceId} and returns to the upload flow on success", async () => {
       mockExistingSource();
       renderModal();
-      await screen.findByLabelText("Saved source text");
+      await screen.findByLabelText("Source text");
 
       // After the DELETE succeeds, the SWR revalidation re-fetches -- this
       // second response is what flips the modal back to the upload flow.
@@ -362,26 +458,24 @@ describe("ImportSourceModal", () => {
       expect(deleteSourceMock).toHaveBeenCalledWith("source-1");
     });
 
-    it("keeps the saved Source visible and shows an error when deletion fails", async () => {
+    it("keeps the saved workspace visible and shows an error when deletion fails", async () => {
       mockExistingSource();
       deleteSourceMock.mockRejectedValueOnce(new Error("Cannot delete."));
       renderModal();
-      await screen.findByLabelText("Saved source text");
+      await screen.findByLabelText("Source text");
 
       fireEvent.click(
         screen.getByRole("button", { name: "Select Another PDF" }),
       );
 
       expect(await screen.findByText("Cannot delete.")).toBeInTheDocument();
-      expect(screen.getByLabelText("Saved source text")).toHaveValue(
-        "Saved text",
-      );
+      expect(screen.getByLabelText("Source text")).toHaveValue("Saved text");
     });
 
     it("does not touch Modules or Materials when removing a Source", async () => {
       mockExistingSource();
       renderModal();
-      await screen.findByLabelText("Saved source text");
+      await screen.findByLabelText("Source text");
 
       fireEvent.click(
         screen.getByRole("button", { name: "Select Another PDF" }),
@@ -390,30 +484,46 @@ describe("ImportSourceModal", () => {
       await vi.waitFor(() => expect(deleteSourceMock).toHaveBeenCalled());
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(createMaterialMock).not.toHaveBeenCalled();
+      expect(updateMaterialMock).not.toHaveBeenCalled();
     });
   });
 
-  describe("Save source text", () => {
-    function mockExistingSource(content = "Saved text") {
-      (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
-        const url = String(input);
-        if (url.startsWith("/api/v1/sources?bookId=")) {
-          return Promise.resolve(
-            jsonResponse({
-              data: [{ id: "source-1", bookId: "book-1", content }],
-            }),
-          );
-        }
-        throw new Error(`Unhandled fetch in test: ${url}`);
+  describe("Save Changes (saved-Source workspace, ANA-72)", () => {
+    it("loads existing Modules in Book order, each with its Learning Material, and shows an empty editor when a Module has none yet", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+        materials: [
+          { id: "material-1", moduleId: "module-1", content: "Module 1 md" },
+        ],
       });
-    }
+      renderModal();
+
+      await screen.findByLabelText("Source text");
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+      await screen.findByText("Module 1 md");
+
+      const editors = await findMaterialEditors();
+      expect(editors).toHaveLength(2);
+      expect(editors[1]).toHaveTextContent("");
+    });
+
+    it("PATCHes the Source only when its content actually changed", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(deleteSourceMock).not.toHaveBeenCalled());
+      expect(updateSourceMock).not.toHaveBeenCalled();
+    });
 
     it("calls updateSource with the edited text when Save changes is clicked", async () => {
       mockExistingSource();
       renderModal();
-      await screen.findByLabelText("Saved source text");
+      await screen.findByLabelText("Source text");
 
-      fireEvent.change(screen.getByLabelText("Saved source text"), {
+      fireEvent.change(screen.getByLabelText("Source text"), {
         target: { value: "Edited text" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -429,9 +539,9 @@ describe("ImportSourceModal", () => {
     it("closes the modal once the save succeeds", async () => {
       mockExistingSource();
       const { onClose } = renderModal();
-      await screen.findByLabelText("Saved source text");
+      await screen.findByLabelText("Source text");
 
-      fireEvent.change(screen.getByLabelText("Saved source text"), {
+      fireEvent.change(screen.getByLabelText("Source text"), {
         target: { value: "Edited text" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -439,20 +549,304 @@ describe("ImportSourceModal", () => {
       await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     });
 
-    it("keeps the edited text visible and shows an error when saving fails", async () => {
+    it("refreshes the Edit Book Modules list once the save succeeds", async () => {
+      mockExistingSource();
+      const onModulesCreated = vi.fn();
+      renderModal({ onModulesCreated });
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(onModulesCreated).toHaveBeenCalledTimes(1));
+    });
+
+    it("keeps the edited text visible and shows an error when saving the Source fails", async () => {
       mockExistingSource();
       updateSourceMock.mockRejectedValueOnce(new Error("Cannot save."));
       renderModal();
-      await screen.findByLabelText("Saved source text");
+      await screen.findByLabelText("Source text");
 
-      fireEvent.change(screen.getByLabelText("Saved source text"), {
+      fireEvent.change(screen.getByLabelText("Source text"), {
         target: { value: "Edited text" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
       expect(await screen.findByText("Cannot save.")).toBeInTheDocument();
-      expect(screen.getByLabelText("Saved source text")).toHaveValue(
-        "Edited text",
+      expect(screen.getByLabelText("Source text")).toHaveValue("Edited text");
+    });
+
+    it("PATCHes an existing Module's Material when its content changed", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }],
+        materials: [
+          { id: "material-1", moduleId: "module-1", content: "Original" },
+        ],
+      });
+      renderModal();
+      await screen.findByLabelText("Source text");
+      const [editable] = await findMaterialEditors();
+      const user = userEvent.setup();
+      await user.click(editable);
+      await user.type(editable, "!");
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(updateMaterialMock).toHaveBeenCalledWith(
+          "material-1",
+          "Original!",
+        ),
+      );
+      expect(createMaterialMock).not.toHaveBeenCalled();
+    });
+
+    it("does not PATCH or create a Material for an existing Module whose content didn't change", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }],
+        materials: [
+          { id: "material-1", moduleId: "module-1", content: "Original" },
+        ],
+      });
+      renderModal();
+      await screen.findByLabelText("Source text");
+      await screen.findByText("Original");
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(deleteSourceMock).not.toHaveBeenCalled());
+      expect(updateMaterialMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).not.toHaveBeenCalled();
+    });
+
+    it("creates a new Module then its Material, using the Module's real returned id, when Save Changes is clicked", async () => {
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (1)")).toBeInTheDocument();
+
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledWith(
+          "book-1",
+          "created-1",
+          "Some",
+        ),
+      );
+      expect(createModuleMock).toHaveBeenCalledWith("book-1", {
+        title: { ar: "", en: "" },
+        description: { ar: "", en: "" },
+        color: "",
+        isLocked: false,
+        isPublished: false,
+      });
+    });
+
+    it("retrying after a partial failure does not duplicate an already-created Module or Material", async () => {
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      createMaterialMock.mockRejectedValueOnce(new Error("Network error"));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createModuleMock).toHaveBeenCalledTimes(1);
+
+      createModuleMock.mockClear();
+      createMaterialMock.mockClear();
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-1",
+        bookId: "book-1",
+        moduleId: "created-1",
+        content: "Some",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledTimes(1),
+      );
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).toHaveBeenCalledWith(
+        "book-1",
+        "created-1",
+        "Some",
+      );
+    });
+
+    it("does not re-POST an already-succeeded new Module's Material -- across two new Modules, only the one that actually failed is retried (PR review, blocking)", async () => {
+      // Owner review (blocking): before this fix, an already-succeeded new
+      // Module's Material was tracked only by a one-shot
+      // "materialized" flag keyed off its *temporary* id, entirely
+      // separate from the `materialDocIdByModuleId`/
+      // `savedMaterialContentByModuleId` bookkeeping every other write
+      // path uses -- so any edit made to it *after* success (while the
+      // modal stays open for an unrelated later failure) could never be
+      // detected or PATCHed on a subsequent Save Changes click. The fix
+      // instead promotes a newly created entry (`moduleId` set, and
+      // registered in the same maps an originally-persisted Module uses)
+      // the moment its Material succeeds, so it's indistinguishable from
+      // an existing Module for every later Save Changes attempt --
+      // covered end-to-end for an actual content edit by "PATCHes an
+      // existing Module's Material when its content changed" above, since
+      // a promoted entry now goes through that exact same code path.
+      //
+      // A literal "type new content into a Module's Learning Material
+      // immediately after creating it" step can't be driven through the
+      // DOM here: jsdom's Selection/Range implementation can't place a
+      // cursor in a genuinely empty Lexical document (see
+      // components/ui/markdown-editor.test.tsx and every other test in
+      // this file that types into a Learning Material editor -- they all
+      // start from non-empty seed content for the same reason), and a
+      // newly created Module's Learning Material is always empty until
+      // Save Changes has already round-tripped it once. This instead
+      // verifies the property that *is* driveable end-to-end: once
+      // Module A's Material has succeeded, a later failure elsewhere in
+      // the same attempt must not cause a retry to re-POST A's Module or
+      // Material -- only B's, the one that actually never succeeded.
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      textarea.setSelectionRange(5, 11);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+
+      createModuleMock
+        .mockResolvedValueOnce(moduleFixture("created-A"))
+        .mockResolvedValueOnce(moduleFixture("created-B"));
+      createMaterialMock
+        .mockResolvedValueOnce({
+          id: "material-A",
+          bookId: "book-1",
+          moduleId: "created-A",
+          content: "Some",
+        })
+        .mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createMaterialMock).toHaveBeenCalledTimes(2);
+      expect(createMaterialMock).toHaveBeenNthCalledWith(
+        1,
+        "book-1",
+        "created-A",
+        "Some",
+      );
+
+      createModuleMock.mockClear();
+      createMaterialMock.mockClear();
+      updateMaterialMock.mockClear();
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-B",
+        bookId: "book-1",
+        moduleId: "created-B",
+        content: "source",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledTimes(1),
+      );
+      // Neither Module is re-created (both already exist from the first
+      // attempt), A's already-succeeded Material is neither re-POSTed nor
+      // PATCHed (it didn't change), and only B's still-missing Material is
+      // created.
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(updateMaterialMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).toHaveBeenCalledWith(
+        "book-1",
+        "created-B",
+        "source",
+      );
+    });
+
+    it("sends the selected Source text as the new Module's Material, never as part of the Module's own draft payload (PR review)", async () => {
+      // The selection seeds the Module's Learning Material draft (a
+      // convenience, not a persisted Source->Module reference) -- so it
+      // must flow to createMaterial's `content` argument, never appear in
+      // createModule's own draft payload.
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledWith(
+          "book-1",
+          "created-1",
+          "Some",
+        ),
+      );
+      for (const call of createModuleMock.mock.calls) {
+        expect(JSON.stringify(call)).not.toContain("Some");
+      }
+    });
+
+    it("creates multiple new Modules in the order they were added, then each one's Material with the matching real id and its own selected text", async () => {
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      textarea.setSelectionRange(5, 11);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+
+      createModuleMock
+        .mockResolvedValueOnce(moduleFixture("created-1"))
+        .mockResolvedValueOnce(moduleFixture("created-2"));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledTimes(2),
+      );
+      expect(createMaterialMock).toHaveBeenNthCalledWith(
+        1,
+        "book-1",
+        "created-1",
+        "Some",
+      );
+      expect(createMaterialMock).toHaveBeenNthCalledWith(
+        2,
+        "book-1",
+        "created-2",
+        "source",
       );
     });
   });
@@ -757,22 +1151,6 @@ describe("ImportSourceModal", () => {
       screen.getByRole("button", { name: "Create Learning Material" }),
     );
     await screen.findByText("2 modules created");
-  }
-
-  function moduleFixture(id: string) {
-    return {
-      id,
-      title: { ar: "", en: "" },
-      description: { ar: "", en: "" },
-      color: "",
-      lessons: [],
-      isLocked: false,
-      isPublished: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      createdBy: "actor@example.com",
-      updatedBy: "actor@example.com",
-    };
   }
 
   describe("Finish", () => {
