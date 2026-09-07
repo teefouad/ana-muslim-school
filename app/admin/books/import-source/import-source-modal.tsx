@@ -6,6 +6,7 @@ import { useMediaQuery } from "@mantine/hooks";
 
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule, TextDirection } from "./import-source-types";
+import { LearningMaterialView } from "./learning-material-view";
 import { ModuleBuilderView } from "./module-builder-view";
 import { OcrResultView } from "./ocr-result-view";
 import { PdfFilePicker } from "./pdf-file-picker";
@@ -13,7 +14,12 @@ import { PdfViewer } from "./pdf-viewer";
 import { useOcrRun } from "./use-ocr-run";
 import styles from "./import-source-modal.module.css";
 
-type Step = "pick" | "select-pages" | "review-ocr" | "build-modules";
+type Step =
+  | "pick"
+  | "select-pages"
+  | "review-ocr"
+  | "build-modules"
+  | "learning-material";
 
 export interface ImportSourceModalProps {
   /** The modal is open whenever this is true. Only a persisted Book can
@@ -24,18 +30,18 @@ export interface ImportSourceModalProps {
   /** The Book this import belongs to. Required so this component's props
    * only make sense wired to a real, persisted Book, even though nothing in
    * this card's temporary workflow state is sent to the server keyed by it
-   * yet -- a later card wires the reviewed source text and Modules into
-   * `/api/v1/books/{bookId}/modules` (see AGENTS.md's persistence
-   * boundary). */
+   * yet -- a later card wires the reviewed source text, Modules, and
+   * Learning Material into `/api/v1/books/{bookId}/modules` and
+   * `/api/v1/materials` (see AGENTS.md's persistence boundary). */
   bookId: string;
 }
 
-// The full PDF -> page selection -> Mistral OCR review -> Module-building
-// workflow (ANA-68). Owns every piece of workflow state itself -- opening
-// the modal never touches the Book form, and closing it always discards
-// this state (see resetState/handleClose below) so reopening always starts
-// from the PDF picker again. No route navigation is involved; the whole
-// workflow stays inside this modal.
+// The full PDF -> page selection -> Mistral OCR review -> Module-building ->
+// Learning Material workflow (ANA-68/ANA-69). Owns every piece of workflow
+// state itself -- opening the modal never touches the Book form, and
+// closing it always discards this state (see resetState/handleClose below)
+// so reopening always starts from the PDF picker again. No route
+// navigation is involved; the whole workflow stays inside this modal.
 export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
   const [step, setStep] = useState<Step>("pick");
   const [file, setFile] = useState<File | null>(null);
@@ -48,6 +54,9 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
   // Arabic is the primary content language for this School's sources.
   const [direction, setDirection] = useState<TextDirection>("rtl");
   const [modules, setModules] = useState<TempModule[]>([]);
+  const [learningMaterials, setLearningMaterials] = useState<
+    Record<string, string>
+  >({});
   const ocrRun = useOcrRun();
   const isMobile = useMediaQuery("(max-width: 768px)", false);
 
@@ -60,6 +69,7 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
     setFontScale(100);
     setDirection("rtl");
     setModules([]);
+    setLearningMaterials({});
     ocrRun.invalidate();
   }
 
@@ -80,13 +90,14 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
     setFile(null);
     setSelectedPages(new Set());
     // The source is being discarded entirely -- everything derived from it
-    // (the old OCR result, its edited Markdown, and any temporary Modules
-    // built from that text) belongs to a document the user is leaving
-    // behind, so none of it should still be there if they pick a new file
-    // and reach review/build-modules again.
+    // (the old OCR result, its edited Markdown, any temporary Modules built
+    // from that text, and any Learning Material drafted for them) belongs
+    // to a document the user is leaving behind, so none of it should still
+    // be there if they pick a new file and reach review/build-modules again.
     setOcrResult(null);
     setEditedMarkdown({});
     setModules([]);
+    setLearningMaterials({});
     setStep("pick");
   }
 
@@ -103,9 +114,10 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
       // A fresh OCR result (even for the same file, e.g. a different page
       // selection) replaces the source text Modules were built from --
       // without this, going Back -> Back to page selection -> Run OCR again
-      // would carry Modules built from the previous extracted text into the
-      // Module builder for the new one.
+      // would carry Modules (and their Learning Material) built from the
+      // previous extracted text into the Module builder for the new one.
       setModules([]);
+      setLearningMaterials({});
       setStep("review-ocr");
     });
   }
@@ -120,6 +132,14 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
 
   function handleBackToReview() {
     setStep("review-ocr");
+  }
+
+  function handleCreateLearningMaterial() {
+    setStep("learning-material");
+  }
+
+  function handleBackToModules() {
+    setStep("build-modules");
   }
 
   return (
@@ -187,6 +207,21 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
           modules={modules}
           onModulesChange={setModules}
           onBack={handleBackToReview}
+          onCreateLearningMaterial={handleCreateLearningMaterial}
+        />
+      )}
+
+      {step === "learning-material" && file && (
+        <LearningMaterialView
+          fileName={file.name}
+          modules={modules}
+          learningMaterials={learningMaterials}
+          onLearningMaterialsChange={setLearningMaterials}
+          fontScale={fontScale}
+          onFontScaleChange={setFontScale}
+          direction={direction}
+          onDirectionChange={setDirection}
+          onBack={handleBackToModules}
         />
       )}
     </Modal>
