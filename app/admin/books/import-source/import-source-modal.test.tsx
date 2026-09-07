@@ -530,6 +530,29 @@ describe("ImportSourceModal", () => {
       expect(screen.getByText("book.pdf")).toBeInTheDocument();
     });
 
+    it("disables Back to Modules once a Module has already been created, after a partial failure", async () => {
+      // PR review (ANA-70, blocking): a Module created before a later
+      // failure in the same Finish run already exists under the Book and
+      // can't be rolled back from here -- Back to Modules must stay
+      // disabled so the temporary set can't be reordered/deleted out from
+      // under it. Retrying Finish is the only way forward.
+      await reachLearningMaterialWithTwoModules();
+
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      createModuleMock.mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+      await screen.findByText("Network error");
+
+      const backButton = screen.getByRole("button", {
+        name: "Back to Modules",
+      });
+      expect(backButton).toBeDisabled();
+
+      fireEvent.click(backButton);
+      expect(screen.getByText("2 modules created")).toBeInTheDocument();
+    });
+
     it("retrying after a partial failure does not recreate Modules that already succeeded", async () => {
       await reachLearningMaterialWithTwoModules();
 

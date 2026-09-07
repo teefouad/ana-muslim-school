@@ -49,6 +49,7 @@ const meta = {
     onFinish: () => {},
     isFinishing: false,
     finishError: null,
+    backDisabled: false,
   },
   render: (args) => (
     <div style={{ height: "80vh" }}>
@@ -81,5 +82,16 @@ export const Finishing: Story = {
 export const FinishFailed: Story = {
   args: {
     finishError: "Could not create Module 2. Please try again.",
+  },
+};
+
+// After a partial failure (Module 1 already created, Module 2 failed),
+// Back to Modules is disabled -- the temporary set can no longer be
+// reordered/deleted out from under an already-persisted Module (PR review,
+// ANA-70). Retrying Finish is the only way forward from here.
+export const PartialFailureBackDisabled: Story = {
+  args: {
+    finishError: "Could not create Module 2. Please try again.",
+    backDisabled: true,
   },
 };

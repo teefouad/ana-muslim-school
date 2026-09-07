@@ -28,6 +28,7 @@ function renderView(
     onFinish: vi.fn(),
     isFinishing: false,
     finishError: null,
+    backDisabled: false,
     ...overrides,
   };
 
@@ -139,6 +140,7 @@ describe("LearningMaterialView", () => {
           onFinish={() => {}}
           isFinishing={false}
           finishError={null}
+          backDisabled={false}
         />
       );
     }
@@ -203,6 +205,26 @@ describe("LearningMaterialView", () => {
     renderView({ finishError: "Could not create Module 2." });
 
     expect(screen.getByText("Could not create Module 2.")).toBeInTheDocument();
+  });
+
+  it("disables Back to Modules once a Module has already been created in this Finish session", () => {
+    // PR review (ANA-70, blocking): once any Module POST has succeeded,
+    // going back to the Module builder would let the temporary set be
+    // reordered/deleted out from under a Module that already exists under
+    // the Book and can't be rolled back from here.
+    renderView({ backDisabled: true });
+
+    expect(
+      screen.getByRole("button", { name: "Back to Modules" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps Back to Modules enabled before any Module has been created", () => {
+    renderView({ backDisabled: false });
+
+    expect(
+      screen.getByRole("button", { name: "Back to Modules" }),
+    ).toBeEnabled();
   });
 
   it("makes no network requests", async () => {

@@ -135,10 +135,15 @@ test("returns the current selection as plain text and Markdown", async () => {
   expect(ref.current?.getSelectedMarkdown()).toBe("Hello");
 });
 
-test("omits the full-height layout by default", () => {
+test("omits the full-height layout by default", async () => {
   const { container } = renderWithProvider(
     <MarkdownEditor markdown="Hello" onChange={vi.fn()} />,
   );
+
+  // MarkdownEditor is loaded via next/dynamic({ ssr: false }) (see
+  // markdown-editor.tsx), so .mdxeditor isn't necessarily in the DOM yet
+  // right after render -- await the editor actually mounting first.
+  await screen.findByRole("textbox");
 
   expect(container.querySelector(".mdxeditor")).not.toHaveClass(
     "mdxeditor-full-height",
@@ -155,10 +160,12 @@ test("fillHeight applies MDXEditor's own full-height layout, without disturbing 
     <MarkdownEditor markdown="Hello" onChange={vi.fn()} fillHeight />,
   );
 
+  // Await the editor actually mounting (see the previous test) before
+  // asserting on .mdxeditor's classes.
+  const boldButton = await screen.findByRole("radio", { name: "Bold" });
   expect(container.querySelector(".mdxeditor")).toHaveClass(
     "mdxeditor-full-height",
   );
-  const boldButton = await screen.findByRole("radio", { name: "Bold" });
   expect(boldButton).toBeEnabled();
 });
 

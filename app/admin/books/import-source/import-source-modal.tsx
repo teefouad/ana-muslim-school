@@ -304,6 +304,7 @@ export function ImportSourceModal({
           onFinish={handleFinish}
           isFinishing={isFinishing}
           finishError={finishError}
+          backDisabled={createdModuleIds.size > 0}
         />
       )}
     </Modal>
