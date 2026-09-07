@@ -22,11 +22,16 @@ function getModuleLabel(module: MockModule, index: number): string {
 
 // The Modules side panel shared by the Add Book and Edit Book pages
 // (ANA-61, renamed from Sections in ANA-68 to match the canonical School
-// domain model). Wraps the reusable ItemList (ANA-58) around a small
-// in-memory modules dataset -- reorder, add, and (as of ANA-65) local
-// delete only update the caller's own state. This stays temporary/local
-// until the dedicated Module-persistence card wires it to the real
-// `/api/v1/books/{bookId}/modules` API (see lib/modules/types.ts).
+// domain model). Wraps the reusable ItemList (ANA-58) around a
+// caller-provided `modules` list -- reorder, add, and delete only update
+// the caller's own state; this component owns no persistence itself.
+// Add Book still passes local, pre-save `MockModule[]` state. Edit Book (as
+// of ANA-70) instead maps its real, API-backed Modules into this same
+// `MockModule` shape for display and creates Modules through the Import
+// Source flow's Finish action -- reorder/add/delete from this panel aren't
+// persisted for it yet, so its `onModulesChange` is a no-op until a
+// follow-up card wires those to `/api/v1/books/{bookId}/modules` (see
+// lib/modules/types.ts).
 export function ModulesPanel({
   modules,
   onModulesChange,

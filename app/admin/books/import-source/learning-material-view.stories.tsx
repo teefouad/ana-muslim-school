@@ -46,6 +46,9 @@ const meta = {
     onFontScaleChange: () => {},
     onDirectionChange: () => {},
     onBack: () => {},
+    onFinish: () => {},
+    isFinishing: false,
+    finishError: null,
   },
   render: (args) => (
     <div style={{ height: "80vh" }}>
@@ -64,5 +67,19 @@ export const WithLearningMaterial: Story = {
     learningMaterials: {
       "module-1": "## الدرس الأول\n\nملخص الدرس الأول.",
     },
+  },
+};
+
+export const NoModulesFinishDisabled: Story = {
+  args: { modules: [] },
+};
+
+export const Finishing: Story = {
+  args: { isFinishing: true },
+};
+
+export const FinishFailed: Story = {
+  args: {
+    finishError: "Could not create Module 2. Please try again.",
   },
 };

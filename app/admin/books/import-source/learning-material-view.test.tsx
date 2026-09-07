@@ -25,6 +25,9 @@ function renderView(
     direction: "rtl",
     onDirectionChange: vi.fn(),
     onBack: vi.fn(),
+    onFinish: vi.fn(),
+    isFinishing: false,
+    finishError: null,
     ...overrides,
   };
 
@@ -133,6 +136,9 @@ describe("LearningMaterialView", () => {
           direction="rtl"
           onDirectionChange={() => {}}
           onBack={() => setVisible(false)}
+          onFinish={() => {}}
+          isFinishing={false}
+          finishError={null}
         />
       );
     }
@@ -164,6 +170,39 @@ describe("LearningMaterialView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to Modules" }));
 
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it("disables Finish when there are no temporary Modules", () => {
+    renderView({ modules: [] });
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+  });
+
+  it("enables Finish once there is at least one temporary Module", () => {
+    renderView();
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled();
+  });
+
+  it("disables Finish and shows a loading state while submitting", () => {
+    renderView({ isFinishing: true });
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+  });
+
+  it("calls onFinish when Finish is clicked", () => {
+    const onFinish = vi.fn();
+    renderView({ onFinish });
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+    expect(onFinish).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a clear inline error when Module creation fails", () => {
+    renderView({ finishError: "Could not create Module 2." });
+
+    expect(screen.getByText("Could not create Module 2.")).toBeInTheDocument();
   });
 
   it("makes no network requests", async () => {

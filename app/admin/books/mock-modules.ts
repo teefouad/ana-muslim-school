@@ -1,10 +1,13 @@
 /**
  * Frontend-only fixture data for the Book Modules panel (ANA-61, renamed
  * from Sections in ANA-68). This shape only exists to exercise the panel's
- * local reorder/add behavior -- it is not the final Module persistence
- * model (see `lib/modules/types.ts` for the real, Firestore-backed
- * `Module`). Nothing here is read from or written to Firebase/an API/local
- * storage.
+ * local reorder/add behavior on the Add Book page -- it is not the final
+ * Module persistence model (see `lib/modules/types.ts` for the real,
+ * Firestore-backed `Module`). Nothing here is read from or written to
+ * Firebase/an API/local storage. Edit Book (ANA-70) reuses this same
+ * `{ id, title }` shape as ModulesPanel's display type, but maps it from
+ * real API Modules rather than from `INITIAL_MOCK_MODULES` below -- see
+ * `[id]/edit/page.tsx`.
  */
 export interface MockModule {
   id: string;

@@ -135,6 +135,33 @@ test("returns the current selection as plain text and Markdown", async () => {
   expect(ref.current?.getSelectedMarkdown()).toBe("Hello");
 });
 
+test("omits the full-height layout by default", () => {
+  const { container } = renderWithProvider(
+    <MarkdownEditor markdown="Hello" onChange={vi.fn()} />,
+  );
+
+  expect(container.querySelector(".mdxeditor")).not.toHaveClass(
+    "mdxeditor-full-height",
+  );
+});
+
+test("fillHeight applies MDXEditor's own full-height layout, without disturbing the toolbar", async () => {
+  // Regression test (ANA-70): the Learning Material editor needs its
+  // contenteditable area to grow and fill the available height (so
+  // clicking empty space below the text still focuses it) -- fillHeight
+  // wires MDXEditor's own `mdxeditor-full-height` class for that, rather
+  // than an overlay that could intercept toolbar clicks.
+  const { container } = renderWithProvider(
+    <MarkdownEditor markdown="Hello" onChange={vi.fn()} fillHeight />,
+  );
+
+  expect(container.querySelector(".mdxeditor")).toHaveClass(
+    "mdxeditor-full-height",
+  );
+  const boldButton = await screen.findByRole("radio", { name: "Bold" });
+  expect(boldButton).toBeEnabled();
+});
+
 test("returns empty strings when there is no selection", async () => {
   const ref = createRef<MarkdownEditorHandle>();
   renderWithProvider(

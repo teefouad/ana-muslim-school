@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Group, Text } from "@mantine/core";
+import { Alert, Button, Group, Text } from "@mantine/core";
 import { ArrowLeft } from "lucide-react";
 
 import type { TempModule, TextDirection } from "./import-source-types";
@@ -25,6 +25,16 @@ export interface LearningMaterialViewProps {
   direction: TextDirection;
   onDirectionChange: (value: TextDirection) => void;
   onBack: () => void;
+  /** Creates every temporary Module for the current Book through the
+   * existing Module API, in order (ANA-70). */
+  onFinish: () => void;
+  /** True while a Finish operation is in flight -- disables the button
+   * (showing a loading state) and guards against duplicate submission from
+   * repeated clicks. */
+  isFinishing: boolean;
+  /** Set when Module creation fails; cleared on the next Finish attempt.
+   * The modal stays open so the user can retry without losing progress. */
+  finishError: string | null;
 }
 
 // Step 5, the Learning Material step in the Import Source modal (ANA-69).
@@ -43,6 +53,9 @@ export function LearningMaterialView({
   direction,
   onDirectionChange,
   onBack,
+  onFinish,
+  isFinishing,
+  finishError,
 }: LearningMaterialViewProps) {
   function handleLearningMaterialChange(moduleId: string, value: string) {
     onLearningMaterialsChange({ ...learningMaterials, [moduleId]: value });
@@ -85,6 +98,12 @@ export function LearningMaterialView({
         ))}
       </div>
 
+      {finishError && (
+        <Alert color="red" mx="md" mb="sm">
+          {finishError}
+        </Alert>
+      )}
+
       <div className={styles.footer}>
         <Button
           variant="default"
@@ -92,6 +111,14 @@ export function LearningMaterialView({
           onClick={onBack}
         >
           Back to Modules
+        </Button>
+        <Button
+          ml="auto"
+          disabled={modules.length === 0 || isFinishing}
+          loading={isFinishing}
+          onClick={onFinish}
+        >
+          Finish
         </Button>
       </div>
     </div>

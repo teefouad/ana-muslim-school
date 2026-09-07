@@ -122,6 +122,36 @@ describe("LearningMaterialCard", () => {
     expect(editorScale).toHaveStyle({ fontSize: "21px" });
   });
 
+  it("stretches the Source text and Learning material columns to the same height (fillHeight wired through)", async () => {
+    // Regression test (ANA-70): the bordered source text and the Markdown
+    // editor must fill their stretched grid column, not just size to their
+    // own minimum content height -- see learning-material-card.module.css's
+    // .sourceText/.editorFill flex:1 and MarkdownEditor's own fillHeight.
+    renderCard();
+    await screen.findByRole("toolbar");
+
+    expect(screen.getByText("Extracted source content").className).toMatch(
+      /sourceText/,
+    );
+    expect(document.querySelector(".mdxeditor")).toHaveClass(
+      "mdxeditor-full-height",
+    );
+  });
+
+  it("keeps the toolbar clickable alongside the fill-height editor (no click-intercepting overlay)", async () => {
+    renderCard({ learningMaterial: "Existing notes" });
+
+    const editable = await screen.findByRole("textbox");
+    const user = userEvent.setup();
+    await user.click(editable);
+    await user.click(screen.getByRole("button", { name: "Heading 1" }));
+
+    expect(screen.getByRole("button", { name: "Heading 1" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("uses the given text direction for both the source text and the editor", async () => {
     renderCard({ direction: "ltr" });
 
