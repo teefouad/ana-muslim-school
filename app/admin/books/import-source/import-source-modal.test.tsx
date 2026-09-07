@@ -310,7 +310,7 @@ describe("ImportSourceModal", () => {
       screen.getByRole("button", { name: "Simulate background Source update" }),
     );
 
-    // The lookup's data did change (a real, later "Remove source text" or
+    // The lookup's data did change (a real, later "Select Another PDF" or
     // reopen would now see it) -- what must not happen is the active
     // workflow being replaced by it while this modal session is still open.
     expect(screen.getByText("book.pdf")).toBeInTheDocument();
@@ -318,11 +318,11 @@ describe("ImportSourceModal", () => {
       screen.queryByLabelText("Saved source text"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Remove source text" }),
+      screen.queryByRole("button", { name: "Select Another PDF" }),
     ).not.toBeInTheDocument();
   });
 
-  describe("Remove source text", () => {
+  describe("Select Another PDF (removes the saved Source)", () => {
     function mockExistingSource(content = "Saved text") {
       (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
         const url = String(input);
@@ -353,7 +353,7 @@ describe("ImportSourceModal", () => {
       });
 
       fireEvent.click(
-        screen.getByRole("button", { name: "Remove source text" }),
+        screen.getByRole("button", { name: "Select Another PDF" }),
       );
 
       expect(
@@ -369,7 +369,7 @@ describe("ImportSourceModal", () => {
       await screen.findByLabelText("Saved source text");
 
       fireEvent.click(
-        screen.getByRole("button", { name: "Remove source text" }),
+        screen.getByRole("button", { name: "Select Another PDF" }),
       );
 
       expect(await screen.findByText("Cannot delete.")).toBeInTheDocument();
@@ -384,7 +384,7 @@ describe("ImportSourceModal", () => {
       await screen.findByLabelText("Saved source text");
 
       fireEvent.click(
-        screen.getByRole("button", { name: "Remove source text" }),
+        screen.getByRole("button", { name: "Select Another PDF" }),
       );
 
       await vi.waitFor(() => expect(deleteSourceMock).toHaveBeenCalled());

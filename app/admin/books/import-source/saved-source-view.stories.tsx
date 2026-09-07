@@ -1,6 +1,25 @@
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
-import { SavedSourceView } from "./saved-source-view";
+import {
+  SavedSourceView,
+  type SavedSourceViewProps,
+} from "./saved-source-view";
+
+function SavedSourceViewDemo(props: SavedSourceViewProps) {
+  const [fontScale, setFontScale] = useState(props.fontScale);
+  const [direction, setDirection] = useState(props.direction);
+
+  return (
+    <SavedSourceView
+      {...props}
+      fontScale={fontScale}
+      onFontScaleChange={setFontScale}
+      direction={direction}
+      onDirectionChange={setDirection}
+    />
+  );
+}
 
 const meta = {
   title: "Books/ImportSource/SavedSourceView",
@@ -15,10 +34,14 @@ const meta = {
     onSave: () => {},
     isSaving: false,
     saveError: null,
+    fontScale: 100,
+    direction: "rtl" as const,
+    onFontScaleChange: () => {},
+    onDirectionChange: () => {},
   },
   render: (args) => (
     <div style={{ height: "80vh", display: "flex" }}>
-      <SavedSourceView {...args} />
+      <SavedSourceViewDemo {...args} />
     </div>
   ),
 } satisfies Meta<typeof SavedSourceView>;

@@ -427,6 +427,10 @@ export function ImportSourceModal({
             onSave={handleSaveSource}
             isSaving={isSavingSource}
             saveError={saveSourceError}
+            fontScale={fontScale}
+            onFontScaleChange={setFontScale}
+            direction={direction}
+            onDirectionChange={setDirection}
           />
         )}
 
