@@ -18,6 +18,16 @@
   opacity: 0;
 }
 
+/* The floating drag overlay (see module-list.tsx's ModuleCardOverlay) --
+   an elevated shadow so it always reads as floating above the list even
+   during the brief moment it visually coincides with a resettling
+   sibling, rather than blending into the same flat surface. */
+.overlayCard {
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
 .header {
   display: flex;
   align-items: center;

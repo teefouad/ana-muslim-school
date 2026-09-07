@@ -75,6 +75,40 @@ describe("ModuleList", () => {
     fireEvent.keyDown(header, { code: "Escape", key: "Escape" });
   });
 
+  it("gives the drag overlay its own elevation and a faster settle transition for siblings", async () => {
+    // Regression test: with dnd-kit's default 200ms sibling transition and
+    // no visual distinction between the overlay and the list, the overlay
+    // (which tracks the cursor with zero lag) could end up rendered exactly
+    // on top of a still-settling sibling -- since both share the same flat,
+    // opaque background, the sibling underneath became completely invisible
+    // for a stretch of the drag (found via manual browser testing -- see PR
+    // notes). Reproducing the real visual collision needs real layout, so
+    // this asserts the fix's two actual mechanisms instead: a shorter
+    // sibling transition (less time for the two to visually coincide) and
+    // the overlay's own elevation class (so even a partial overlap reads as
+    // "on top of", not "merged into").
+    renderList();
+    stubItemRects(["module-1", "module-2"]);
+
+    const header = screen.getByText("Module 1").closest("[aria-expanded]")!;
+    (header as HTMLElement).focus();
+    fireEvent.keyDown(header, { code: "Space", key: " " });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const settlingSibling = screen
+      .getByText("Module 2")
+      .closest('[data-testid^="module-card-"]') as HTMLElement;
+    expect(settlingSibling.style.transition).toContain("120ms");
+
+    const overlayCard = screen
+      .getAllByText(/^Module 1$/)
+      .map((el) => el.closest('[class*="card"]'))
+      .find((el) => el?.className.includes("overlayCard"));
+    expect(overlayCard).toBeTruthy();
+
+    fireEvent.keyDown(header, { code: "Escape", key: "Escape" });
+  });
+
   it("reorders via the keyboard and reports the new order, without toggling either card's expanded state", async () => {
     const onModulesChange = renderList();
     stubItemRects(["module-1", "module-2"]);

@@ -32,7 +32,7 @@ function ModuleCardOverlay({
   index: number;
 }) {
   return (
-    <div className={styles.card}>
+    <div className={`${styles.card} ${styles.overlayCard}`}>
       <div className={styles.header}>
         <span className={styles.grip} aria-hidden="true">
           <GripVertical size={16} />

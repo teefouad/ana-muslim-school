@@ -31,7 +31,19 @@ export function ModuleCard({ module, index, onTextChange }: ModuleCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: module.id });
+  } = useSortable({
+    id: module.id,
+    // dnd-kit's default 200ms ease lags visibly behind the drag overlay,
+    // which tracks the cursor with no lag at all -- for compact single-line
+    // rows (ItemList) that's barely noticeable, but for a full-height
+    // Module card it means the overlay and a resettling sibling can
+    // visually coincide (one briefly hiding completely behind the other)
+    // partway through the animation. A snappier transition shortens that
+    // window; see module-card.module.css's `.overlayCard` for the other
+    // half of the fix (giving the overlay its own elevation so it always
+    // reads as "on top of" the list, not "merged into" it).
+    transition: { duration: 120, easing: "ease" },
+  });
 
   function toggleExpanded() {
     setExpanded((prev) => !prev);
