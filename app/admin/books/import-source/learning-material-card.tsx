@@ -16,6 +16,11 @@ export interface LearningMaterialCardProps {
   onLearningMaterialChange: (value: string) => void;
   direction: TextDirection;
   fontScale: number;
+  /** True while a Finish operation is persisting the snapshot of
+   * `learningMaterial` this card was showing when Finish was clicked --
+   * makes the editor read-only so further edits can't diverge from what's
+   * actually being persisted (PR review, ANA-71). */
+  disabled?: boolean;
 }
 
 // A single Module's Learning Material editing card (ANA-69): a collapsible
@@ -29,6 +34,7 @@ export function LearningMaterialCard({
   onLearningMaterialChange,
   direction,
   fontScale,
+  disabled = false,
 }: LearningMaterialCardProps) {
   const [expanded, setExpanded] = useState(true);
 
@@ -80,6 +86,7 @@ export function LearningMaterialCard({
                 onChange={onLearningMaterialChange}
                 dir={direction}
                 fillHeight
+                disabled={disabled}
               />
             </div>
           </div>

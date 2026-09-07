@@ -2,7 +2,7 @@ import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Button, MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SWRConfig } from "swr";
+import { SWRConfig, useSWRConfig } from "swr";
 
 const {
   usePdfDocumentMock,
@@ -256,6 +256,63 @@ describe("ImportSourceModal", () => {
     );
     expect(
       screen.queryByRole("button", { name: "Choose a PDF to import" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ignores a background Source-lookup update once the upload workflow has started, instead of swapping to the saved-source view mid-session", async () => {
+    // PR review (ANA-71, blocking): the Source-by-bookId SWR read still has
+    // its default revalidateOnFocus/revalidateOnReconnect behavior. If a
+    // background revalidation of that exact key resolves with data while
+    // the user is mid-workflow (e.g. after Finish has already persisted the
+    // Source but failed on a later Material), `existingSource` must not
+    // flip the modal over to SavedSourceView and discard the in-progress
+    // Learning Material/retry screen. This simulates "the cache for this
+    // key changed for any reason" directly (a revalidateOnFocus/reconnect
+    // event is one such reason, among others) via a sibling component
+    // sharing the same isolated SWR cache as the modal.
+    function RevalidateSourceButton() {
+      const { mutate } = useSWRConfig();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            mutate("/api/v1/sources?bookId=book-1", {
+              data: [
+                { id: "source-1", bookId: "book-1", content: "Saved text" },
+              ],
+            })
+          }
+        >
+          Simulate background Source update
+        </button>
+      );
+    }
+
+    render(
+      <MantineProvider>
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <RevalidateSourceButton />
+          <ImportSourceModal opened onClose={vi.fn()} bookId="book-1" />
+        </SWRConfig>
+      </MantineProvider>,
+    );
+
+    await selectFile();
+    expect(screen.getByText("book.pdf")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Simulate background Source update" }),
+    );
+
+    // The lookup's data did change (a real, later "Remove source text" or
+    // reopen would now see it) -- what must not happen is the active
+    // workflow being replaced by it while this modal session is still open.
+    expect(screen.getByText("book.pdf")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Saved source text"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove source text" }),
     ).not.toBeInTheDocument();
   });
 

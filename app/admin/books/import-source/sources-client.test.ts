@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSource, deleteSource } from "./sources-client";
 
@@ -11,6 +11,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("createSource", () => {

@@ -361,7 +361,18 @@ export function ImportSourceModal({
       fullScreen={isMobile}
       centered
     >
-      {sourceLookupLoading && (
+      {/* Only the initial "pick" screen ever defers to the Source lookup
+          (loading/error/saved-source) below -- once the user has moved past
+          it into the upload workflow, `showUploadFlow` stays true for the
+          rest of this modal session regardless of what that lookup's SWR
+          data does in the background (a focus/reconnect-triggered
+          revalidation, another tab's write, etc.). Without this, a Source
+          created earlier in a Finish attempt that later fails on its
+          Material step could revalidate `existingSource` to true and swap
+          the in-progress Learning Material/retry screen for
+          SavedSourceView, silently discarding the temporary workflow state
+          Finish is required to preserve (see handleFinish, PR review). */}
+      {step === "pick" && sourceLookupLoading && (
         <div className={styles.centered}>
           <Group gap="sm">
             <Loader size="sm" />
@@ -372,7 +383,7 @@ export function ImportSourceModal({
         </div>
       )}
 
-      {!sourceLookupLoading && sourceLookupError && (
+      {step === "pick" && !sourceLookupLoading && sourceLookupError && (
         <div className={styles.centered}>
           <Alert color="red" title="Could not load the saved source">
             {sourceLookupError.message}
@@ -380,16 +391,20 @@ export function ImportSourceModal({
         </div>
       )}
 
-      {!sourceLookupLoading && !sourceLookupError && existingSource && (
-        <SavedSourceView
-          content={existingSource.content}
-          onRemove={handleRemoveSource}
-          isRemoving={isRemovingSource}
-          removeError={removeSourceError}
-        />
-      )}
+      {step === "pick" &&
+        !sourceLookupLoading &&
+        !sourceLookupError &&
+        existingSource && (
+          <SavedSourceView
+            content={existingSource.content}
+            onRemove={handleRemoveSource}
+            isRemoving={isRemovingSource}
+            removeError={removeSourceError}
+          />
+        )}
 
-      {!sourceLookupLoading && !sourceLookupError && !existingSource && (
+      {(step !== "pick" ||
+        (!sourceLookupLoading && !sourceLookupError && !existingSource)) && (
         <>
           {step === "pick" && (
             <PdfFilePicker onFileSelected={handleFileSelected} />

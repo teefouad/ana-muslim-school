@@ -192,6 +192,29 @@ describe("LearningMaterialView", () => {
     expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
   });
 
+  it("makes every Module's Learning Material editor read-only while Finish is submitting", async () => {
+    // PR review (ANA-71, blocking): `handleFinish` persists the
+    // `learningMaterials` snapshot from the moment Finish was clicked --
+    // edits typed while that request is in flight must not be possible,
+    // since they'd never actually reach the server.
+    renderView({ isFinishing: true });
+
+    const editors = await screen.findAllByRole("textbox");
+    expect(editors).toHaveLength(2);
+    editors.forEach((editor) =>
+      expect(editor).toHaveAttribute("contenteditable", "false"),
+    );
+  });
+
+  it("keeps every Module's Learning Material editor editable before Finish is submitting", async () => {
+    renderView({ isFinishing: false });
+
+    const editors = await screen.findAllByRole("textbox");
+    editors.forEach((editor) =>
+      expect(editor).toHaveAttribute("contenteditable", "true"),
+    );
+  });
+
   it("calls onFinish when Finish is clicked", () => {
     const onFinish = vi.fn();
     renderView({ onFinish });

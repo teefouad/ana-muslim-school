@@ -18,7 +18,11 @@ export async function GET(request: Request) {
     return auth.response;
   }
 
-  const bookId = new URL(request.url).searchParams.get("bookId") ?? undefined;
+  // An empty/whitespace-only `?bookId=` (e.g. a caller building the URL
+  // with an unset variable) is treated as "no filter" rather than as a
+  // literal filter value that can never match a real Book id (PR review).
+  const rawBookId = new URL(request.url).searchParams.get("bookId")?.trim();
+  const bookId = rawBookId ? rawBookId : undefined;
   const data = await listSourcesService(bookId);
 
   return NextResponse.json({ data });
