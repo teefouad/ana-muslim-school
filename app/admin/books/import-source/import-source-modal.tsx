@@ -155,8 +155,6 @@ export function ImportSourceModal({
   const [workspaceModuleIdMap, setWorkspaceModuleIdMap] = useState<
     Record<string, string>
   >({});
-  const [materializedWorkspaceModuleKeys, setMaterializedWorkspaceModuleKeys] =
-    useState<Set<string>>(new Set());
   const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
   const [saveWorkspaceError, setSaveWorkspaceError] = useState<string | null>(
     null,
@@ -261,7 +259,6 @@ export function ImportSourceModal({
     setSavedMaterialContentByModuleId(initialMaterialContents);
     setCreatedWorkspaceModuleKeys(new Set());
     setWorkspaceModuleIdMap({});
-    setMaterializedWorkspaceModuleKeys(new Set());
     setSaveWorkspaceError(null);
   }
 
@@ -291,7 +288,6 @@ export function ImportSourceModal({
     setSavedMaterialContentByModuleId({});
     setCreatedWorkspaceModuleKeys(new Set());
     setWorkspaceModuleIdMap({});
-    setMaterializedWorkspaceModuleKeys(new Set());
     setIsSavingWorkspace(false);
     setSaveWorkspaceError(null);
     ocrRun.invalidate();
@@ -464,8 +460,8 @@ export function ImportSourceModal({
     setSaveWorkspaceError(null);
 
     // Running copies of the bookkeeping state, updated as each step
-    // succeeds -- see handleFinish's `created`/`idMap`/`materialized` for
-    // the same pattern. `savedSourceContent` and `savedMaterialContents`
+    // succeeds -- see handleFinish's `created`/`idMap` for the same
+    // pattern. `savedSourceContent` and `savedMaterialContents`
     // additionally double as the "did this actually change" check: a PATCH
     // only fires when the current draft differs from the last value
     // confirmed persisted (initially, the last-fetched value; after a
@@ -475,7 +471,6 @@ export function ImportSourceModal({
     const materialDocIds = { ...materialDocIdByModuleId };
     const createdModuleKeys = new Set(createdWorkspaceModuleKeys);
     const idMap = { ...workspaceModuleIdMap };
-    const materializedModuleKeys = new Set(materializedWorkspaceModuleKeys);
 
     try {
       // 1. The Source itself, only if the draft actually changed.
@@ -539,15 +534,43 @@ export function ImportSourceModal({
       // 4. Each new Module's Learning Material, attached to its real
       // persisted id -- always created (even an intentionally empty one),
       // unlike step 2's existing Modules, which only write on a real
-      // change.
+      // change. Guarded by `materialDocIds` (the same map step 2 uses)
+      // rather than a separate one-shot "already materialized" flag: a
+      // flag would permanently skip this entry on every future Save
+      // Changes, silently dropping an edit made after this Material
+      // succeeds but a *different* write in the same attempt fails (PR
+      // review, blocking). Once created, the entry is promoted to look
+      // exactly like an originally-persisted Module (`moduleId` set,
+      // recorded in `materialDocIds`/`savedMaterialContents`) so step 2
+      // picks up any further edit to it on the next attempt via the same
+      // diff-based PATCH, instead of this step ever touching it again.
       for (const entry of workspaceEntries) {
-        if (entry.moduleId || materializedModuleKeys.has(entry.key)) {
+        if (entry.moduleId) {
           continue;
         }
 
-        await createMaterial(bookId, idMap[entry.key], entry.material);
-        materializedModuleKeys.add(entry.key);
-        setMaterializedWorkspaceModuleKeys(new Set(materializedModuleKeys));
+        const realModuleId = idMap[entry.key];
+
+        if (materialDocIds[realModuleId] !== undefined) {
+          continue;
+        }
+
+        const createdMaterial = await createMaterial(
+          bookId,
+          realModuleId,
+          entry.material,
+        );
+        materialDocIds[realModuleId] = createdMaterial.id;
+        savedMaterialContents[realModuleId] = entry.material;
+        setMaterialDocIdByModuleId({ ...materialDocIds });
+        setSavedMaterialContentByModuleId({ ...savedMaterialContents });
+        setWorkspaceEntries((current) =>
+          current.map((candidate) =>
+            candidate.key === entry.key
+              ? { ...candidate, moduleId: realModuleId }
+              : candidate,
+          ),
+        );
       }
 
       // Every write succeeded -- revalidate everything this screen could

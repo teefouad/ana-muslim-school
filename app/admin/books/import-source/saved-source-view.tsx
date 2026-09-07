@@ -140,6 +140,13 @@ export function SavedSourceView({
               value={content}
               onChange={(event) => onContentChange(event.currentTarget.value)}
               onSelect={handleSelect}
+              // `onSelect` alone doesn't reliably fire for every way a
+              // selection can collapse to a plain caret (e.g. a click with
+              // no drag) -- these are a redundant safety net so
+              // `hasSelection` can't go stale and leave Create Module
+              // enabled with nothing actually selected (Copilot review).
+              onMouseUp={handleSelect}
+              onKeyUp={handleSelect}
               onBlur={handleBlur}
               dir={direction}
               disabled={isSaving}

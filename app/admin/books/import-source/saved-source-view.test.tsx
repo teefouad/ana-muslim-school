@@ -184,6 +184,26 @@ describe("SavedSourceView", () => {
     ).toBeDisabled();
   });
 
+  it("also re-checks the selection on mouseup/keyup, not only onSelect (Copilot review hardening)", () => {
+    // `select` doesn't reliably fire for every way a selection can
+    // collapse to a plain caret in every browser -- firing only
+    // `mouseup`/`keyup` (never `select`) must still disable Create Module
+    // once the selection is gone, so `hasSelection` can't go stale.
+    renderView({ content: "Some source text" });
+    const textarea = screen.getByLabelText(
+      "Source text",
+    ) as HTMLTextAreaElement;
+    selectText(textarea, 0, 4);
+    expect(screen.getByRole("button", { name: "Create Module" })).toBeEnabled();
+
+    textarea.setSelectionRange(2, 2);
+    fireEvent.mouseUp(textarea);
+
+    expect(
+      screen.getByRole("button", { name: "Create Module" }),
+    ).toBeDisabled();
+  });
+
   it("prevents Create Module's mousedown default, so clicking it doesn't collapse the selection first", () => {
     renderView({ content: "Some source text" });
     const textarea = screen.getByLabelText(

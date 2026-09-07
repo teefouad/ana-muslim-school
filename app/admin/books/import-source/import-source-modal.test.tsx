@@ -690,6 +690,100 @@ describe("ImportSourceModal", () => {
       );
     });
 
+    it("does not re-POST an already-succeeded new Module's Material -- across two new Modules, only the one that actually failed is retried (PR review, blocking)", async () => {
+      // Owner review (blocking): before this fix, an already-succeeded new
+      // Module's Material was tracked only by a one-shot
+      // "materialized" flag keyed off its *temporary* id, entirely
+      // separate from the `materialDocIdByModuleId`/
+      // `savedMaterialContentByModuleId` bookkeeping every other write
+      // path uses -- so any edit made to it *after* success (while the
+      // modal stays open for an unrelated later failure) could never be
+      // detected or PATCHed on a subsequent Save Changes click. The fix
+      // instead promotes a newly created entry (`moduleId` set, and
+      // registered in the same maps an originally-persisted Module uses)
+      // the moment its Material succeeds, so it's indistinguishable from
+      // an existing Module for every later Save Changes attempt --
+      // covered end-to-end for an actual content edit by "PATCHes an
+      // existing Module's Material when its content changed" above, since
+      // a promoted entry now goes through that exact same code path.
+      //
+      // A literal "type new content into a Module's Learning Material
+      // immediately after creating it" step can't be driven through the
+      // DOM here: jsdom's Selection/Range implementation can't place a
+      // cursor in a genuinely empty Lexical document (see
+      // components/ui/markdown-editor.test.tsx and every other test in
+      // this file that types into a Learning Material editor -- they all
+      // start from non-empty seed content for the same reason), and a
+      // newly created Module's Learning Material is always empty until
+      // Save Changes has already round-tripped it once. This instead
+      // verifies the property that *is* driveable end-to-end: once
+      // Module A's Material has succeeded, a later failure elsewhere in
+      // the same attempt must not cause a retry to re-POST A's Module or
+      // Material -- only B's, the one that actually never succeeded.
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      textarea.setSelectionRange(5, 11);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+
+      createModuleMock
+        .mockResolvedValueOnce(moduleFixture("created-A"))
+        .mockResolvedValueOnce(moduleFixture("created-B"));
+      createMaterialMock
+        .mockResolvedValueOnce({
+          id: "material-A",
+          bookId: "book-1",
+          moduleId: "created-A",
+          content: "",
+        })
+        .mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createMaterialMock).toHaveBeenCalledTimes(2);
+      expect(createMaterialMock).toHaveBeenNthCalledWith(
+        1,
+        "book-1",
+        "created-A",
+        "",
+      );
+
+      createModuleMock.mockClear();
+      createMaterialMock.mockClear();
+      updateMaterialMock.mockClear();
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-B",
+        bookId: "book-1",
+        moduleId: "created-B",
+        content: "",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledTimes(1),
+      );
+      // Neither Module is re-created (both already exist from the first
+      // attempt), A's already-succeeded Material is neither re-POSTed nor
+      // PATCHed (it didn't change), and only B's still-missing Material is
+      // created.
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(updateMaterialMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).toHaveBeenCalledWith(
+        "book-1",
+        "created-B",
+        "",
+      );
+    });
+
     it("does not persist the selected Source text on the new Module", async () => {
       mockExistingSource({ content: "Some source text" });
       renderModal();
