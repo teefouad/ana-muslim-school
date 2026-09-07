@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
 
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule, TextDirection } from "./import-source-types";
+import { DocumentSummary } from "./document-summary";
 import { FontSizeControl } from "./font-size-control";
 import { ModuleList } from "./module-list";
 import { TextDirectionControl } from "./text-direction-control";
@@ -97,9 +98,7 @@ export function ModuleBuilderView({
   return (
     <div className={styles.shell}>
       <div className={styles.summaryHeader}>
-        <Text size="sm" fw={500}>
-          {fileName}
-        </Text>
+        <DocumentSummary fileName={fileName} ocrResult={ocrResult} />
         <Group gap="sm">
           <FontSizeControl value={fontScale} onChange={onFontScaleChange} />
           <TextDirectionControl

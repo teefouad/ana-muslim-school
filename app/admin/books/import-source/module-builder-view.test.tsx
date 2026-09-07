@@ -194,6 +194,19 @@ describe("ModuleBuilderView", () => {
     );
   });
 
+  it("shows the same document summary as OCR review, not just the filename", () => {
+    // Regression test: the Module-building header previously reduced the
+    // OCR review header's summary down to filename-only, dropping pages
+    // processed/model/size (PR review feedback for ANA-68) -- both screens
+    // now share the same DocumentSummary component.
+    renderView();
+
+    expect(screen.getByText("book.pdf")).toBeInTheDocument();
+    expect(
+      screen.getByText(/2 pages processed.*mistral-ocr-latest.*1000 B/),
+    ).toBeInTheDocument();
+  });
+
   it("Back calls onBack", () => {
     const onBack = vi.fn();
     renderView({ onBack });

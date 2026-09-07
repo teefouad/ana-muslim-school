@@ -79,6 +79,14 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
     ocrRun.invalidate();
     setFile(null);
     setSelectedPages(new Set());
+    // The source is being discarded entirely -- everything derived from it
+    // (the old OCR result, its edited Markdown, and any temporary Modules
+    // built from that text) belongs to a document the user is leaving
+    // behind, so none of it should still be there if they pick a new file
+    // and reach review/build-modules again.
+    setOcrResult(null);
+    setEditedMarkdown({});
+    setModules([]);
     setStep("pick");
   }
 
@@ -92,6 +100,12 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
       setEditedMarkdown(
         Object.fromEntries(result.pages.map((p) => [p.pageNumber, p.markdown])),
       );
+      // A fresh OCR result (even for the same file, e.g. a different page
+      // selection) replaces the source text Modules were built from --
+      // without this, going Back -> Back to page selection -> Run OCR again
+      // would carry Modules built from the previous extracted text into the
+      // Module builder for the new one.
+      setModules([]);
       setStep("review-ocr");
     });
   }

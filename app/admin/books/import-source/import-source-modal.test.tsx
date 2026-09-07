@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Button, MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -260,5 +260,77 @@ describe("ImportSourceModal", () => {
     expect(
       screen.getByRole("button", { name: "Create Learning Material" }),
     ).toBeDisabled();
+  });
+
+  it("clears temporary Modules built from an earlier document when the source is replaced with a new file", async () => {
+    // Regression test (PR review feedback for ANA-68, blocking): a user
+    // could create temporary Modules, go Back -> Back to page selection ->
+    // choose another file, run OCR on it, and still see the previous
+    // document's Modules in the Module builder -- `modules` state survived
+    // a source swap even though it was built from text that no longer
+    // exists anywhere in the flow.
+    requestOcrUploadUrlMock.mockResolvedValue({
+      uploadUrl: "https://storage/signed",
+      objectPath: "tmp/ocr-uploads/user-1/book.pdf",
+    });
+    uploadPdfToStorageMock.mockResolvedValue(undefined);
+    requestOcrMock.mockResolvedValueOnce({
+      model: "mistral-ocr-latest",
+      pagesProcessed: 1,
+      docSizeBytes: 100,
+      pages: [{ pageNumber: 1, markdown: "First document text" }],
+    });
+
+    renderModal();
+    await selectFile("book.pdf");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
+    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    await screen.findByRole("button", { name: "Create Modules" });
+    fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
+
+    // Select the extracted text and create a temporary Module from it.
+    const source = screen.getByText(/First document text/);
+    const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+    const textNode = walker.nextNode() as Text;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 5);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
+
+    // Back to review, back to page selection, choose a different file.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to page selection" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose a different file" }),
+    );
+
+    // Run OCR again on a new document.
+    requestOcrMock.mockResolvedValueOnce({
+      model: "mistral-ocr-latest",
+      pagesProcessed: 1,
+      docSizeBytes: 100,
+      pages: [{ pageNumber: 1, markdown: "Second document text" }],
+    });
+    await selectFile("book-2.pdf");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
+    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    await screen.findByRole("button", { name: "Create Modules" });
+    fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
+
+    expect(screen.queryByText(/Modules \(/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Select text on the left and click “Create Module” to get started.",
+      ),
+    ).toBeInTheDocument();
   });
 });
