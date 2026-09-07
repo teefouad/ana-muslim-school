@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule, TextDirection } from "./import-source-types";
@@ -48,6 +49,7 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
   const [direction, setDirection] = useState<TextDirection>("rtl");
   const [modules, setModules] = useState<TempModule[]>([]);
   const ocrRun = useOcrRun();
+  const isMobile = useMediaQuery("(max-width: 768px)", false);
 
   function resetState() {
     setStep("pick");
@@ -112,6 +114,20 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
       onClose={handleClose}
       title="Import Source"
       classNames={{ content: styles.content, body: styles.body }}
+      // Near-full desktop width with normal dashboard margins still
+      // visible: Mantine's own Modal.Inner reserves a *default* 5vw of
+      // horizontal padding around Modal.Content regardless of `size`
+      // (see Modal.css's `--modal-x-offset`), so a plain `size` override
+      // alone still gets clamped back down to ~90vw by that padding.
+      // `xOffset` shrinks that padding to a small fixed gutter that
+      // matches the margin already baked into `size` below, instead of
+      // stacking on top of it. `fullScreen` on narrow viewports matches
+      // the card's "use essentially the full viewport" requirement and
+      // is Mantine's own supported way to get there, rather than
+      // re-deriving full-bleed sizing by hand.
+      size={isMobile ? "100%" : "min(1800px, calc(100vw - 48px))"}
+      xOffset={isMobile ? "0px" : "24px"}
+      fullScreen={isMobile}
       centered
     >
       {step === "pick" && <PdfFilePicker onFileSelected={handleFileSelected} />}

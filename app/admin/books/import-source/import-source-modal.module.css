@@ -1,13 +1,15 @@
 /* Large workspace-style modal (ANA-68) -- near-full desktop width with
-   normal dashboard margins still visible, ~85-90vh tall, and a flex-column
-   body with `min-height: 0` so each workflow view (picker/viewer/OCR
-   review/module builder) can fill the remaining height and scroll
-   internally instead of the modal growing a page-level scrollbar.
-   `!important` matches the existing defensive pattern in app/globals.css
-   for overriding Mantine's own Modal content styles. */
+   normal dashboard margins still visible (via the `size`/`xOffset` props on
+   the Modal itself, see import-source-modal.tsx), ~85-90vh tall, and a
+   flex-column body with `min-height: 0` so each workflow view (picker/
+   viewer/OCR review/module builder) can fill the remaining height and
+   scroll internally instead of the modal growing a page-level scrollbar.
+
+   Height (unlike width) isn't affected by Modal.Inner's flex-row layout --
+   height is this row's cross axis, not its main axis -- so a plain
+   `!important` override here is sufficient; it doesn't need the same
+   prop-based approach the width does. */
 .content {
-  width: min(1400px, 92vw) !important;
-  max-width: min(1400px, 92vw) !important;
   height: 88vh !important;
   max-height: 88vh !important;
   display: flex;
@@ -23,10 +25,7 @@
 
 @media (max-width: 768px) {
   .content {
-    width: 100vw !important;
-    max-width: 100vw !important;
     height: 100dvh !important;
     max-height: 100dvh !important;
-    border-radius: 0 !important;
   }
 }

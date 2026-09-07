@@ -8,15 +8,26 @@ const {
   requestOcrUploadUrlMock,
   uploadPdfToStorageMock,
   requestOcrMock,
+  useMediaQueryMock,
 } = vi.hoisted(() => ({
   usePdfDocumentMock: vi.fn(),
   requestOcrUploadUrlMock: vi.fn(),
   uploadPdfToStorageMock: vi.fn(),
   requestOcrMock: vi.fn(),
+  useMediaQueryMock: vi.fn(),
 }));
 
 vi.mock("./use-pdf-document", () => ({
   usePdfDocument: usePdfDocumentMock,
+}));
+
+// jsdom's `matchMedia` (stubbed in vitest.setup.ts) always reports
+// `matches: false`, so the mobile/`fullScreen` branch below needs
+// `useMediaQuery` itself mocked -- every other `@mantine/hooks` export is
+// kept real since Mantine's own components rely on them internally.
+vi.mock("@mantine/hooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@mantine/hooks")>()),
+  useMediaQuery: useMediaQueryMock,
 }));
 
 vi.mock("./ocr-client", () => ({
@@ -67,6 +78,43 @@ describe("ImportSourceModal", () => {
       isLoading: false,
       error: null,
     });
+    useMediaQueryMock.mockReturnValue(false);
+  });
+
+  it("sizes near-full desktop width with a small fixed gutter, not fullScreen", () => {
+    renderModal();
+
+    const root = document.querySelector(".mantine-Modal-root");
+    const content = document.querySelector('[data-modal-content="true"]');
+
+    // Mantine's Modal.Inner reserves its own horizontal padding around the
+    // content by default (`--modal-x-offset: 5vw`) regardless of `size` --
+    // a plain width override alone still gets clamped back down to ~90vw
+    // by that padding, so both need to be set together (see
+    // import-source-modal.module.css for the fuller explanation).
+    expect(root).toHaveAttribute(
+      "style",
+      expect.stringContaining("--modal-size: min(1800px, calc(100vw - 48px))"),
+    );
+    expect(root).toHaveAttribute(
+      "style",
+      expect.stringContaining("--modal-x-offset:"),
+    );
+    expect(content).not.toHaveAttribute("data-full-screen", "true");
+  });
+
+  it("uses fullScreen with edge-to-edge sizing on narrow viewports", () => {
+    useMediaQueryMock.mockReturnValue(true);
+    renderModal();
+
+    const root = document.querySelector(".mantine-Modal-root");
+    const content = document.querySelector('[data-modal-content="true"]');
+
+    expect(root).toHaveAttribute(
+      "style",
+      expect.stringContaining("--modal-size: 100%"),
+    );
+    expect(content).toHaveAttribute("data-full-screen", "true");
   });
 
   it("starts at the PDF picker", () => {
