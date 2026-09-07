@@ -137,6 +137,28 @@ describe("listMaterials", () => {
     expect(await listMaterials()).toEqual([
       { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
     ]);
+    expect(whereMock).not.toHaveBeenCalled();
+  });
+
+  it("queries by bookId instead of fetching the full collection when given one", async () => {
+    whereGetMock.mockResolvedValueOnce({
+      docs: [
+        {
+          id: "doc-1",
+          data: () => ({
+            bookId: "book-1",
+            moduleId: "module-1",
+            content: "a",
+          }),
+        },
+      ],
+    });
+
+    expect(await listMaterials("book-1")).toEqual([
+      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+    ]);
+    expect(whereMock).toHaveBeenCalledWith("bookId", "==", "book-1");
+    expect(getMock).not.toHaveBeenCalled();
   });
 });
 

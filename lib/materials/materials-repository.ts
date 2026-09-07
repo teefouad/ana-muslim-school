@@ -50,10 +50,16 @@ export async function getMaterialById(id: string): Promise<Material | null> {
   return snapshot.exists ? parseMaterialDocument(snapshot) : null;
 }
 
-export async function listMaterials(): Promise<Material[]> {
-  const snapshot = await getAdminFirestore()
-    .collection(MATERIALS_COLLECTION)
-    .get();
+/**
+ * Lists Material documents, optionally filtered to a single Book via a
+ * Firestore `where` query -- not a full collection fetch filtered
+ * client-side (see ANA-72's saved-Source Modules/Materials workspace).
+ */
+export async function listMaterials(bookId?: string): Promise<Material[]> {
+  const collection = getAdminFirestore().collection(MATERIALS_COLLECTION);
+  const snapshot = await (
+    bookId ? collection.where("bookId", "==", bookId) : collection
+  ).get();
 
   return snapshot.docs
     .map(parseMaterialDocument)

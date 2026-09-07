@@ -8,3 +8,17 @@ export type TempModule = {
 };
 
 export type TextDirection = "ltr" | "rtl";
+
+/** A Module shown in the saved-Source Modules panel (ANA-72), paired with
+ * its Learning Material Markdown draft. `moduleId` is `null` for a Module
+ * created from a Source Text selection in the current modal session and
+ * not yet persisted -- Save Changes creates it via
+ * `POST /api/v1/books/{bookId}/modules` before creating its Material. There
+ * is no persisted Source->Module relationship: the selection that created
+ * a new entry is only a UI trigger and is never stored on it (see
+ * lib/modules/types.ts -- `Module` has no source-text field). */
+export type WorkspaceModuleEntry = {
+  key: string;
+  moduleId: string | null;
+  material: string;
+};

@@ -8,10 +8,15 @@ import useSWR from "swr";
 import { fetchJson } from "../fetch-json";
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { Source } from "@/lib/sources/types";
-import type { ModuleWritableFields } from "@/lib/modules/types";
-import type { TempModule, TextDirection } from "./import-source-types";
+import type { Module, ModuleWritableFields } from "@/lib/modules/types";
+import type { Material } from "@/lib/materials/types";
+import type {
+  TempModule,
+  TextDirection,
+  WorkspaceModuleEntry,
+} from "./import-source-types";
 import { buildSourceContent } from "./build-source-content";
-import { createMaterial } from "./materials-client";
+import { createMaterial, updateMaterial } from "./materials-client";
 import { LearningMaterialView } from "./learning-material-view";
 import { ModuleBuilderView } from "./module-builder-view";
 import { createModule } from "./modules-client";
@@ -121,8 +126,41 @@ export function ImportSourceModal({
   const [removeSourceError, setRemoveSourceError] = useState<string | null>(
     null,
   );
-  const [isSavingSource, setIsSavingSource] = useState(false);
-  const [saveSourceError, setSaveSourceError] = useState<string | null>(null);
+  // Saved-Source workspace (ANA-72): the id of the Source these are seeded
+  // from -- `null` until the initial Modules/Materials fetch has been used
+  // to populate the fields below once per modal-open session (see the
+  // render-time seeding block, right after the SWR reads below). Compared
+  // against `existingSource.id` rather than gated by a boolean so a
+  // Select-Another-PDF -> re-upload -> different Source cycle within the
+  // same mount reseeds instead of reusing a stale workspace.
+  const [seededSourceId, setSeededSourceId] = useState<string | null>(null);
+  const [workspaceContent, setWorkspaceContent] = useState("");
+  const [workspaceEntries, setWorkspaceEntries] = useState<
+    WorkspaceModuleEntry[]
+  >([]);
+  // Retry-safety bookkeeping for Save Changes, mirroring handleFinish's
+  // createdModuleIds/moduleIdMap/materializedModuleIds below -- each is
+  // updated the moment its own write succeeds so a retry after a partial
+  // failure only re-sends what didn't yet land.
+  const [savedWorkspaceSourceContent, setSavedWorkspaceSourceContent] =
+    useState("");
+  const [materialDocIdByModuleId, setMaterialDocIdByModuleId] = useState<
+    Record<string, string>
+  >({});
+  const [savedMaterialContentByModuleId, setSavedMaterialContentByModuleId] =
+    useState<Record<string, string>>({});
+  const [createdWorkspaceModuleKeys, setCreatedWorkspaceModuleKeys] = useState<
+    Set<string>
+  >(new Set());
+  const [workspaceModuleIdMap, setWorkspaceModuleIdMap] = useState<
+    Record<string, string>
+  >({});
+  const [materializedWorkspaceModuleKeys, setMaterializedWorkspaceModuleKeys] =
+    useState<Set<string>>(new Set());
+  const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
+  const [saveWorkspaceError, setSaveWorkspaceError] = useState<string | null>(
+    null,
+  );
   const ocrRun = useOcrRun();
   const isMobile = useMediaQuery("(max-width: 768px)", false);
 
@@ -143,6 +181,82 @@ export function ImportSourceModal({
   } = useSWR<{ data: Source[] }>(sourceUrl, fetchJson);
   const existingSource = sourceData?.data[0] ?? null;
 
+  // The Book's persisted Modules, in `Book.modules` order, and its
+  // Materials (Book-filtered via `?bookId=`, never the full collection --
+  // ANA-72) -- both only needed to render the saved-Source workspace on the
+  // "pick" step, unlike the Source lookup above, which deliberately keeps
+  // polling across every step (see the "ignores a background Source-lookup
+  // update" test). Same SWR key as EditBookPage's own Modules read, so
+  // opening this modal right after the Edit Book page has loaded doesn't
+  // refetch, and `onModulesCreated` (that page's `mutateModules`)
+  // revalidates the same cache entry this hook reads.
+  const modulesUrl =
+    step === "pick" && existingSource
+      ? `/api/v1/books/${bookId}/modules`
+      : null;
+  const {
+    data: workspaceModulesData,
+    error: workspaceModulesError,
+    mutate: mutateWorkspaceModules,
+  } = useSWR<{ data: Module[] }>(modulesUrl, fetchJson);
+
+  const materialsUrl =
+    step === "pick" && existingSource
+      ? `/api/v1/materials?bookId=${encodeURIComponent(bookId)}`
+      : null;
+  const {
+    data: workspaceMaterialsData,
+    error: workspaceMaterialsError,
+    mutate: mutateWorkspaceMaterials,
+  } = useSWR<{ data: Material[] }>(materialsUrl, fetchJson);
+
+  // Seeds the editable workspace fields from the Modules/Materials fetch,
+  // once per Source (React's documented "adjusting state when a prop
+  // changes" pattern -- see react.dev/reference/react/useState#storing-information-from-previous-renders
+  // -- rather than a useEffect, which this project's lint config flags any
+  // state update inside as an error; see AGENTS.md). Runs during render
+  // itself: React discards this in-progress render and re-runs the
+  // component immediately once the state above is set, so by the time this
+  // component actually paints, `workspaceContent`/`workspaceEntries`
+  // already reflect the seeded values below.
+  if (
+    existingSource &&
+    workspaceModulesData &&
+    workspaceMaterialsData &&
+    seededSourceId !== existingSource.id
+  ) {
+    const materialByModuleId = new Map(
+      workspaceMaterialsData.data.map((material) => [
+        material.moduleId,
+        material,
+      ]),
+    );
+    const initialMaterialDocIds: Record<string, string> = {};
+    const initialMaterialContents: Record<string, string> = {};
+
+    for (const material of workspaceMaterialsData.data) {
+      initialMaterialDocIds[material.moduleId] = material.id;
+      initialMaterialContents[material.moduleId] = material.content;
+    }
+
+    setSeededSourceId(existingSource.id);
+    setWorkspaceContent(existingSource.content);
+    setWorkspaceEntries(
+      workspaceModulesData.data.map((module) => ({
+        key: module.id,
+        moduleId: module.id,
+        material: materialByModuleId.get(module.id)?.content ?? "",
+      })),
+    );
+    setSavedWorkspaceSourceContent(existingSource.content);
+    setMaterialDocIdByModuleId(initialMaterialDocIds);
+    setSavedMaterialContentByModuleId(initialMaterialContents);
+    setCreatedWorkspaceModuleKeys(new Set());
+    setWorkspaceModuleIdMap({});
+    setMaterializedWorkspaceModuleKeys(new Set());
+    setSaveWorkspaceError(null);
+  }
+
   function resetState() {
     setStep("pick");
     setFile(null);
@@ -161,8 +275,17 @@ export function ImportSourceModal({
     setFinishError(null);
     setIsRemovingSource(false);
     setRemoveSourceError(null);
-    setIsSavingSource(false);
-    setSaveSourceError(null);
+    setSeededSourceId(null);
+    setWorkspaceContent("");
+    setWorkspaceEntries([]);
+    setSavedWorkspaceSourceContent("");
+    setMaterialDocIdByModuleId({});
+    setSavedMaterialContentByModuleId({});
+    setCreatedWorkspaceModuleKeys(new Set());
+    setWorkspaceModuleIdMap({});
+    setMaterializedWorkspaceModuleKeys(new Set());
+    setIsSavingWorkspace(false);
+    setSaveWorkspaceError(null);
     ocrRun.invalidate();
   }
 
@@ -323,24 +446,118 @@ export function ImportSourceModal({
     }
   }
 
-  async function handleSaveSource(content: string) {
-    if (!existingSource) {
+  async function handleSaveWorkspace() {
+    // Guards against a duplicate submission the same way handleFinish does.
+    if (!existingSource || isSavingWorkspace) {
       return;
     }
 
-    setIsSavingSource(true);
-    setSaveSourceError(null);
+    setIsSavingWorkspace(true);
+    setSaveWorkspaceError(null);
+
+    // Running copies of the bookkeeping state, updated as each step
+    // succeeds -- see handleFinish's `created`/`idMap`/`materialized` for
+    // the same pattern. `savedSourceContent` and `savedMaterialContents`
+    // additionally double as the "did this actually change" check: a PATCH
+    // only fires when the current draft differs from the last value
+    // confirmed persisted (initially, the last-fetched value; after a
+    // retry, whatever a previous attempt in this session already saved).
+    let savedSourceContent = savedWorkspaceSourceContent;
+    const savedMaterialContents = { ...savedMaterialContentByModuleId };
+    const materialDocIds = { ...materialDocIdByModuleId };
+    const createdModuleKeys = new Set(createdWorkspaceModuleKeys);
+    const idMap = { ...workspaceModuleIdMap };
+    const materializedModuleKeys = new Set(materializedWorkspaceModuleKeys);
 
     try {
-      await updateSource(existingSource.id, content);
+      // 1. The Source itself, only if the draft actually changed.
+      if (workspaceContent !== savedSourceContent) {
+        await updateSource(existingSource.id, workspaceContent);
+        savedSourceContent = workspaceContent;
+        setSavedWorkspaceSourceContent(savedSourceContent);
+      }
+
+      // 2. Learning Material edits for Modules that already existed when
+      // this workspace opened -- PATCH when a Material already exists,
+      // otherwise create one, but only when the draft actually changed
+      // (an untouched empty Module stays without a Material).
+      for (const entry of workspaceEntries) {
+        if (!entry.moduleId) {
+          continue;
+        }
+
+        const original = savedMaterialContents[entry.moduleId] ?? "";
+
+        if (entry.material === original) {
+          continue;
+        }
+
+        const existingMaterialId = materialDocIds[entry.moduleId];
+
+        if (existingMaterialId) {
+          await updateMaterial(existingMaterialId, entry.material);
+        } else {
+          const createdMaterial = await createMaterial(
+            bookId,
+            entry.moduleId,
+            entry.material,
+          );
+          materialDocIds[entry.moduleId] = createdMaterial.id;
+          setMaterialDocIdByModuleId({ ...materialDocIds });
+        }
+
+        savedMaterialContents[entry.moduleId] = entry.material;
+        setSavedMaterialContentByModuleId({ ...savedMaterialContents });
+      }
+
+      // 3. Every Module created from a Source Text selection in this
+      // session -- sequential and in order, since each POST atomically
+      // appends to `Book.modules` (same reasoning as handleFinish).
+      for (const entry of workspaceEntries) {
+        if (entry.moduleId || createdModuleKeys.has(entry.key)) {
+          continue;
+        }
+
+        const persistedModule = await createModule(
+          bookId,
+          MODULE_DRAFT_DEFAULTS,
+        );
+        createdModuleKeys.add(entry.key);
+        idMap[entry.key] = persistedModule.id;
+        setCreatedWorkspaceModuleKeys(new Set(createdModuleKeys));
+        setWorkspaceModuleIdMap({ ...idMap });
+      }
+
+      // 4. Each new Module's Learning Material, attached to its real
+      // persisted id -- always created (even an intentionally empty one),
+      // unlike step 2's existing Modules, which only write on a real
+      // change.
+      for (const entry of workspaceEntries) {
+        if (entry.moduleId || materializedModuleKeys.has(entry.key)) {
+          continue;
+        }
+
+        await createMaterial(bookId, idMap[entry.key], entry.material);
+        materializedModuleKeys.add(entry.key);
+        setMaterializedWorkspaceModuleKeys(new Set(materializedModuleKeys));
+      }
+
+      // Every write succeeded -- revalidate everything this screen could
+      // have changed (the Edit Book page's own Modules panel included, via
+      // onModulesCreated) and close, matching the saved-Source Save
+      // changes success behavior.
+      onModulesCreated?.();
+      await mutateWorkspaceModules();
+      await mutateWorkspaceMaterials();
       await mutateSource();
-      setIsSavingSource(false);
-      handleClose();
+      setIsSavingWorkspace(false);
+      resetState();
+      onClose();
     } catch (err) {
-      setSaveSourceError(
+      setSaveWorkspaceError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
-      setIsSavingSource(false);
+      setIsSavingWorkspace(false);
     }
   }
 
@@ -419,15 +636,54 @@ export function ImportSourceModal({
       {step === "pick" &&
         !sourceLookupLoading &&
         !sourceLookupError &&
-        existingSource && (
+        existingSource &&
+        !(workspaceModulesData && workspaceMaterialsData) &&
+        !(workspaceModulesError || workspaceMaterialsError) && (
+          <div className={styles.centered}>
+            <Group gap="sm">
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">
+                Loading modules…
+              </Text>
+            </Group>
+          </div>
+        )}
+
+      {step === "pick" &&
+        !sourceLookupLoading &&
+        !sourceLookupError &&
+        existingSource &&
+        // Excludes the case where Modules/Materials were already loaded
+        // once and a later background revalidation failed (SWR keeps the
+        // previous data on such a failure) -- that keeps showing the
+        // workspace below instead of also stacking an error banner above
+        // it.
+        !(workspaceModulesData && workspaceMaterialsData) &&
+        (workspaceModulesError || workspaceMaterialsError) && (
+          <div className={styles.centered}>
+            <Alert color="red" title="Could not load the Book's Modules">
+              {(workspaceModulesError ?? workspaceMaterialsError)?.message}
+            </Alert>
+          </div>
+        )}
+
+      {step === "pick" &&
+        !sourceLookupLoading &&
+        !sourceLookupError &&
+        existingSource &&
+        workspaceModulesData &&
+        workspaceMaterialsData && (
           <SavedSourceView
-            content={existingSource.content}
+            content={workspaceContent}
+            onContentChange={setWorkspaceContent}
+            entries={workspaceEntries}
+            onEntriesChange={setWorkspaceEntries}
             onRemove={handleRemoveSource}
             isRemoving={isRemovingSource}
             removeError={removeSourceError}
-            onSave={handleSaveSource}
-            isSaving={isSavingSource}
-            saveError={saveSourceError}
+            onSave={handleSaveWorkspace}
+            isSaving={isSavingWorkspace}
+            saveError={saveWorkspaceError}
             fontScale={fontScale}
             onFontScaleChange={setFontScale}
             direction={direction}

@@ -81,6 +81,13 @@ describe("ModuleBuilderView", () => {
     collapseSelection();
   });
 
+  it("labels the left panel 'Source Text', not 'Extracted text' (ANA-72)", () => {
+    renderView();
+
+    expect(screen.getByText("Source Text")).toBeInTheDocument();
+    expect(screen.queryByText("Extracted text")).not.toBeInTheDocument();
+  });
+
   it("joins the edited OCR pages in page order, separated by a blank line", () => {
     renderView({
       editedMarkdown: { 1: "Edited first", 2: "Edited second" },

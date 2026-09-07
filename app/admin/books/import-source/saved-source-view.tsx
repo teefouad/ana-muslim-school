@@ -1,18 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { Alert, Button, Group, Textarea } from "@mantine/core";
-import { X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Alert, Button, Group, Text, Textarea } from "@mantine/core";
+import { Plus, X } from "lucide-react";
 
-import type { TextDirection } from "./import-source-types";
+import type {
+  TextDirection,
+  WorkspaceModuleEntry,
+} from "./import-source-types";
 import { FontSizeControl } from "./font-size-control";
+import { SourceModuleCard } from "./source-module-card";
 import { TextDirectionControl } from "./text-direction-control";
 import styles from "./saved-source-view.module.css";
 
 export interface SavedSourceViewProps {
-  /** The persisted Source's full text (ANA-71). Editable in this card --
-   * `onSave` persists changes back to the Source record. */
+  /** The persisted Source's draft text (ANA-71/ANA-72) -- editable; Save
+   * Changes persists it back to the Source record when it changed. */
   content: string;
+  onContentChange: (value: string) => void;
+  /** Every Module shown in the Modules panel, in Book order, existing
+   * Modules first followed by any created from a Source Text selection in
+   * this modal session (ANA-72). */
+  entries: WorkspaceModuleEntry[];
+  onEntriesChange: (entries: WorkspaceModuleEntry[]) => void;
   onRemove: () => void;
   /** True while the DELETE request is in flight -- disables the button and
    * shows a loading state. */
@@ -20,12 +30,12 @@ export interface SavedSourceViewProps {
   /** Set when removal fails; the saved Source stays visible so the user can
    * retry instead of silently losing it. */
   removeError: string | null;
-  onSave: (content: string) => void;
-  /** True while the PATCH request is in flight -- disables Save and shows a
-   * loading state. */
+  onSave: () => void;
+  /** True while Save Changes is in flight -- disables/freezes every
+   * editable control so the UI can't diverge from the snapshot being
+   * persisted (ANA-72). */
   isSaving: boolean;
-  /** Set when saving fails; the edited text stays in the field so the user
-   * can retry instead of losing their edit. */
+  /** Set when saving fails; the modal stays open so the user can retry. */
   saveError: string | null;
   /** Same zoom/direction controls as the upload flow's OCR review step --
    * shared state owned by the modal so switching between this view and the
@@ -37,12 +47,17 @@ export interface SavedSourceViewProps {
 }
 
 // Shown in place of the PDF upload flow when Import Source opens for a Book
-// that already has a persisted Source (ANA-71) -- the original PDF is
-// intentionally not preserved after OCR, so this is a simple text surface
-// rather than the PDF viewer. Editable, styled like every other Textarea in
-// the dashboard (no bespoke colors) rather than as a fixed document preview.
+// that already has a persisted Source (ANA-71) -- upgraded in ANA-72 to the
+// same two-panel Source Text + Modules workspace as the upload flow's
+// Module builder (module-builder-view.tsx), instead of a single textarea:
+// the left panel is the editable Source Text (selectable, so the user can
+// still create a Module from a passage), the right panel lists every
+// persisted Module alongside its Learning Material, editable in place.
 export function SavedSourceView({
   content,
+  onContentChange,
+  entries,
+  onEntriesChange,
   onRemove,
   isRemoving,
   removeError,
@@ -54,8 +69,51 @@ export function SavedSourceView({
   direction,
   onDirectionChange,
 }: SavedSourceViewProps) {
-  const [value, setValue] = useState(content);
-  const isDirty = value !== content;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [hasSelection, setHasSelection] = useState(false);
+
+  function handleSelect() {
+    const el = textareaRef.current;
+
+    if (!el || el.selectionStart === el.selectionEnd) {
+      setHasSelection(false);
+      return;
+    }
+
+    const selected = el.value.slice(el.selectionStart, el.selectionEnd);
+    setHasSelection(selected.trim().length > 0);
+  }
+
+  function handleBlur() {
+    setHasSelection(false);
+  }
+
+  function handleCreateModule() {
+    if (!hasSelection) {
+      return;
+    }
+
+    onEntriesChange([
+      ...entries,
+      { key: crypto.randomUUID(), moduleId: null, material: "" },
+    ]);
+
+    const el = textareaRef.current;
+
+    if (el) {
+      el.setSelectionRange(el.selectionEnd, el.selectionEnd);
+    }
+
+    setHasSelection(false);
+  }
+
+  function handleMaterialChange(key: string, value: string) {
+    onEntriesChange(
+      entries.map((entry) =>
+        entry.key === key ? { ...entry, material: value } : entry,
+      ),
+    );
+  }
 
   return (
     <div className={styles.shell}>
@@ -70,27 +128,85 @@ export function SavedSourceView({
       </div>
 
       <div className={styles.body}>
-        <Textarea
-          value={value}
-          onChange={(event) => setValue(event.currentTarget.value)}
-          dir={direction}
-          aria-label="Saved source text"
-          className={styles.textareaRoot}
-          classNames={{ wrapper: styles.textareaWrapper }}
-          styles={{
-            input: {
-              flex: 1,
-              minHeight: 0,
-              height: "100%",
-              resize: "none",
-              fontFamily: "var(--font-mono, monospace)",
-              fontSize: `${14 * (fontScale / 100)}px`,
-              lineHeight: 1.6,
-              padding: 16,
-              whiteSpace: "pre-wrap",
-            },
-          }}
-        />
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <Text size="sm" fw={500}>
+              Source Text
+            </Text>
+          </div>
+          <div className={styles.panelBody}>
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(event) => onContentChange(event.currentTarget.value)}
+              onSelect={handleSelect}
+              onBlur={handleBlur}
+              dir={direction}
+              disabled={isSaving}
+              aria-label="Source text"
+              className={styles.textareaRoot}
+              classNames={{ wrapper: styles.textareaWrapper }}
+              styles={{
+                input: {
+                  flex: 1,
+                  minHeight: 0,
+                  height: "100%",
+                  resize: "none",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: `${14 * (fontScale / 100)}px`,
+                  lineHeight: 1.6,
+                  padding: 16,
+                  whiteSpace: "pre-wrap",
+                },
+              }}
+            />
+          </div>
+        </div>
+
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <Text size="sm" fw={500}>
+              Modules{entries.length > 0 ? ` (${entries.length})` : ""}
+            </Text>
+            <Button
+              size="xs"
+              leftSection={<Plus size={14} aria-hidden="true" />}
+              disabled={!hasSelection || isSaving}
+              // Same technique as module-builder-view.tsx's Create Module --
+              // preventing mousedown's default focus shift/selection
+              // collapse keeps the textarea's selection intact through the
+              // click.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleCreateModule}
+            >
+              Create Module
+            </Button>
+          </div>
+          <div className={styles.panelBody}>
+            {entries.length === 0 ? (
+              <p className={styles.emptyState}>
+                Select text on the left and click &ldquo;Create Module&rdquo; to
+                get started.
+              </p>
+            ) : (
+              <div className={styles.moduleList}>
+                {entries.map((entry, index) => (
+                  <SourceModuleCard
+                    key={entry.key}
+                    index={index}
+                    material={entry.material}
+                    onMaterialChange={(value) =>
+                      handleMaterialChange(entry.key, value)
+                    }
+                    direction={direction}
+                    fontScale={fontScale}
+                    disabled={isSaving}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {removeError && (
@@ -109,17 +225,13 @@ export function SavedSourceView({
           variant="default"
           color="red"
           loading={isRemoving}
-          disabled={isRemoving}
+          disabled={isRemoving || isSaving}
           onClick={onRemove}
           leftSection={<X size={16} aria-hidden="true" />}
         >
           Select Another PDF
         </Button>
-        <Button
-          loading={isSaving}
-          disabled={isSaving || !isDirty}
-          onClick={() => onSave(value)}
-        >
+        <Button loading={isSaving} disabled={isSaving} onClick={onSave}>
           Save changes
         </Button>
       </div>

@@ -8,15 +8,23 @@ import {
   listMaterialsService,
 } from "@/lib/materials/materials-service";
 
-/** Lists all `materials` records. */
-export async function GET() {
+/** Lists `materials` records, optionally filtered to a single Book via
+ * `?bookId=` (ANA-72) -- the filter is applied by the repository's own
+ * Firestore query, not by fetching every Material and filtering here. */
+export async function GET(request: Request) {
   const auth = await requireBooksPermission("read");
 
   if (!auth.ok) {
     return auth.response;
   }
 
-  const data = await listMaterialsService();
+  // An empty/whitespace-only `?bookId=` (e.g. a caller building the URL
+  // with an unset variable) is treated as "no filter" rather than as a
+  // literal filter value that can never match a real Book id, matching
+  // the Sources `?bookId=` convention.
+  const rawBookId = new URL(request.url).searchParams.get("bookId")?.trim();
+  const bookId = rawBookId ? rawBookId : undefined;
+  const data = await listMaterialsService(bookId);
 
   return NextResponse.json({ data });
 }

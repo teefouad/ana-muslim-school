@@ -23,3 +23,24 @@ export async function createMaterial(
 
   return data;
 }
+
+/** Updates a Material's content via `PATCH /api/v1/materials/{id}` (ANA-72)
+ * -- used to save edits to a Learning Material that was already persisted. */
+export async function updateMaterial(
+  id: string,
+  content: string,
+): Promise<Material> {
+  const response = await fetch(`/api/v1/materials/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  const { data } = (await response.json()) as { data: Material };
+
+  return data;
+}
