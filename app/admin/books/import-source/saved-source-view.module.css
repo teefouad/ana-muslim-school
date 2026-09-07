@@ -77,10 +77,18 @@
   font-size: 14px;
 }
 
+/* `min-height: 100%` (not a fixed height) lets this stretch to fill
+   `.panelBody`'s visible height when the Modules don't need it all --
+   giving an expanded SourceModuleCard's own `flex: 1` (source-module-card
+   .module.css's `.expanded`) real extra space to grow into instead of
+   sizing to its small minimum -- while still growing taller than 100% and
+   triggering `.panelBody`'s own scroll once there's too much content to
+   fit. */
 .moduleList {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 100%;
 }
 
 .footer {

@@ -9,8 +9,11 @@ import styles from "./source-module-card.module.css";
 export interface SourceModuleCardProps {
   index: number;
   /** The Module's Learning Material Markdown -- empty when the Module has
-   * no Material yet (ANA-72). Never source text: there is no persisted
-   * Source->Module relationship, so this card has nothing else to show. */
+   * no Material yet, or seeded from a Source Text selection for a Module
+   * just created in this session (ANA-72, PR review). Either way it's
+   * just this Module's Material draft, editable like any other -- there
+   * is no persisted Source->Module relationship or separate source-text
+   * field to show alongside it. */
   material: string;
   onMaterialChange: (value: string) => void;
   direction: TextDirection;
@@ -37,7 +40,17 @@ export function SourceModuleCard({
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <div className={styles.card} data-testid={`source-module-card-${index}`}>
+    <div
+      // Grows to fill any extra space in the Modules list while expanded,
+      // so the Markdown editor inside actually uses the available height
+      // instead of sizing to its own small minimum -- collapsed keeps its
+      // natural header-only height regardless (see .expanded in
+      // source-module-card.module.css).
+      className={[styles.card, expanded && styles.expanded]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`source-module-card-${index}`}
+    >
       <button
         type="button"
         className={styles.header}

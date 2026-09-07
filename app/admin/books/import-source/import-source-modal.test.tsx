@@ -640,7 +640,7 @@ describe("ImportSourceModal", () => {
         expect(createMaterialMock).toHaveBeenCalledWith(
           "book-1",
           "created-1",
-          "",
+          "Some",
         ),
       );
       expect(createModuleMock).toHaveBeenCalledWith("book-1", {
@@ -674,7 +674,7 @@ describe("ImportSourceModal", () => {
         id: "material-1",
         bookId: "book-1",
         moduleId: "created-1",
-        content: "",
+        content: "Some",
       });
 
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -686,7 +686,7 @@ describe("ImportSourceModal", () => {
       expect(createMaterialMock).toHaveBeenCalledWith(
         "book-1",
         "created-1",
-        "",
+        "Some",
       );
     });
 
@@ -742,7 +742,7 @@ describe("ImportSourceModal", () => {
           id: "material-A",
           bookId: "book-1",
           moduleId: "created-A",
-          content: "",
+          content: "Some",
         })
         .mockRejectedValueOnce(new Error("Network error"));
 
@@ -753,7 +753,7 @@ describe("ImportSourceModal", () => {
         1,
         "book-1",
         "created-A",
-        "",
+        "Some",
       );
 
       createModuleMock.mockClear();
@@ -763,7 +763,7 @@ describe("ImportSourceModal", () => {
         id: "material-B",
         bookId: "book-1",
         moduleId: "created-B",
-        content: "",
+        content: "source",
       });
 
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -780,11 +780,15 @@ describe("ImportSourceModal", () => {
       expect(createMaterialMock).toHaveBeenCalledWith(
         "book-1",
         "created-B",
-        "",
+        "source",
       );
     });
 
-    it("does not persist the selected Source text on the new Module", async () => {
+    it("sends the selected Source text as the new Module's Material, never as part of the Module's own draft payload (PR review)", async () => {
+      // The selection seeds the Module's Learning Material draft (a
+      // convenience, not a persisted Source->Module reference) -- so it
+      // must flow to createMaterial's `content` argument, never appear in
+      // createModule's own draft payload.
       mockExistingSource({ content: "Some source text" });
       renderModal();
       const textarea = (await screen.findByLabelText(
@@ -797,15 +801,19 @@ describe("ImportSourceModal", () => {
       createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-      await vi.waitFor(() => expect(createModuleMock).toHaveBeenCalled());
-      // Every createModule call is the fixed draft payload -- never the
-      // selected text ("Some") in any form.
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledWith(
+          "book-1",
+          "created-1",
+          "Some",
+        ),
+      );
       for (const call of createModuleMock.mock.calls) {
         expect(JSON.stringify(call)).not.toContain("Some");
       }
     });
 
-    it("creates multiple new Modules in the order they were added, then each one's Material with the matching real id", async () => {
+    it("creates multiple new Modules in the order they were added, then each one's Material with the matching real id and its own selected text", async () => {
       mockExistingSource({ content: "Some source text" });
       renderModal();
       const textarea = (await screen.findByLabelText(
@@ -832,13 +840,13 @@ describe("ImportSourceModal", () => {
         1,
         "book-1",
         "created-1",
-        "",
+        "Some",
       );
       expect(createMaterialMock).toHaveBeenNthCalledWith(
         2,
         "book-1",
         "created-2",
-        "",
+        "source",
       );
     });
   });

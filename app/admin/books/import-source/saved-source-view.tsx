@@ -93,12 +93,20 @@ export function SavedSourceView({
       return;
     }
 
+    const el = textareaRef.current;
+    // The selection becomes the new Module's starting Learning Material
+    // draft -- a convenience seed the user edits from, not a persisted
+    // reference to the Source: it's stored in the same `material` field a
+    // manually typed edit would be, with no separate Source->Module link
+    // or field (see WorkspaceModuleEntry).
+    const selectedText = el
+      ? el.value.slice(el.selectionStart, el.selectionEnd)
+      : "";
+
     onEntriesChange([
       ...entries,
-      { key: crypto.randomUUID(), moduleId: null, material: "" },
+      { key: crypto.randomUUID(), moduleId: null, material: selectedText },
     ]);
-
-    const el = textareaRef.current;
 
     if (el) {
       el.setSelectionRange(el.selectionEnd, el.selectionEnd);

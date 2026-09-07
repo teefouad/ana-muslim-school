@@ -13,10 +13,11 @@ export type TextDirection = "ltr" | "rtl";
  * its Learning Material Markdown draft. `moduleId` is `null` for a Module
  * created from a Source Text selection in the current modal session and
  * not yet persisted -- Save Changes creates it via
- * `POST /api/v1/books/{bookId}/modules` before creating its Material. There
- * is no persisted Source->Module relationship: the selection that created
- * a new entry is only a UI trigger and is never stored on it (see
- * lib/modules/types.ts -- `Module` has no source-text field). */
+ * `POST /api/v1/books/{bookId}/modules` before creating its Material. The
+ * selected Source text seeds `material` as a starting draft the user then
+ * edits (PR review) -- it isn't stored anywhere else: there is no
+ * persisted Source->Module relationship or separate source-text field on
+ * `Module` (see lib/modules/types.ts). */
 export type WorkspaceModuleEntry = {
   key: string;
   moduleId: string | null;

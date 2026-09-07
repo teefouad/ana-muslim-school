@@ -5,6 +5,19 @@
   color: #ededed;
 }
 
+/* Applied only while expanded (see source-module-card.tsx) -- turns the
+   card into a flex column so `.body`'s own `flex: 1` below has a definite
+   height to fill once the Modules list (saved-source-view.module.css's
+   `.moduleList`) hands it a share of any extra space. A collapsed card
+   (no `.body` rendered) is left as a plain block, so it never grows past
+   its own header's natural height. */
+.expanded {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -18,6 +31,7 @@
   text-align: start;
   cursor: pointer;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .title {
@@ -28,6 +42,7 @@
 .body {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 240px;
   padding: 0 12px 12px;
 }

@@ -148,7 +148,7 @@ describe("SavedSourceView", () => {
     ).toBeDisabled();
   });
 
-  it("enables Create Module once Source Text is selected, and creates a Module without persisting the selected text", () => {
+  it("enables Create Module once Source Text is selected, and seeds the new Module's Learning Material with the exact selection", () => {
     const onEntriesChange = vi.fn();
     renderView({
       content: "Some source text to select",
@@ -167,7 +167,7 @@ describe("SavedSourceView", () => {
     fireEvent.click(createModule);
 
     expect(onEntriesChange).toHaveBeenCalledWith([
-      { key: expect.any(String), moduleId: null, material: "" },
+      { key: expect.any(String), moduleId: null, material: "Some" },
     ]);
   });
 
