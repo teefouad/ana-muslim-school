@@ -29,6 +29,7 @@ import type { MockModule } from "../../mock-modules";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 import type { Module } from "@/lib/modules/types";
+import type { Source } from "@/lib/sources/types";
 
 function getModuleLabel(module: Module): string {
   // The panel's own `Module N` fallback (see modules-panel.tsx) covers a
@@ -71,6 +72,17 @@ export default function EditBookPage() {
     id: module.id,
     title: getModuleLabel(module),
   }));
+  // Whether this Book already has a saved Source (ANA-71) -- fetched here,
+  // not gated on the Import Source modal being open, since the header
+  // button's own label (Create from PDF vs. View source text) needs to
+  // reflect this before the modal has ever been opened. Shares the modal's
+  // own Source-by-bookId SWR cache entry (same key) so opening the modal
+  // right after doesn't re-fetch.
+  const { data: sourceData } = useSWR<{ data: Source[] }>(
+    book ? `/api/v1/sources?bookId=${encodeURIComponent(book.id)}` : null,
+    fetchJson,
+  );
+  const hasSource = (sourceData?.data.length ?? 0) > 0;
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importSourceOpened, setImportSourceOpened] = useState(false);
@@ -116,7 +128,7 @@ export default function EditBookPage() {
             onClick={() => setImportSourceOpened(true)}
             leftSection={<Upload size={16} aria-hidden="true" />}
           >
-            Create from PDF
+            {hasSource ? "View source text" : "Create from PDF"}
           </Button>
           <Button
             type="submit"

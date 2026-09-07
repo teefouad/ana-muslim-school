@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Alert, Button, Group, Textarea } from "@mantine/core";
+import { X } from "lucide-react";
 
 import type { TextDirection } from "./import-source-types";
 import { FontSizeControl } from "./font-size-control";
@@ -110,6 +111,7 @@ export function SavedSourceView({
           loading={isRemoving}
           disabled={isRemoving}
           onClick={onRemove}
+          leftSection={<X size={16} aria-hidden="true" />}
         >
           Select Another PDF
         </Button>
