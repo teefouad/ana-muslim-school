@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -117,6 +123,25 @@ describe("ModuleBuilderView", () => {
     expect(onModulesChange).toHaveBeenCalledWith([
       expect.objectContaining({ text: "First" }),
     ]);
+  });
+
+  it("prevents Create Module's mousedown default, so clicking it doesn't collapse the selection/steal focus before onClick runs", () => {
+    // A real browser both collapses the current text selection and moves
+    // focus away from the source <pre> as soon as a mousedown lands on
+    // another element -- either one alone clears `selectedText` before
+    // this button's own onClick could fire. jsdom doesn't reproduce that
+    // browser-level side effect on its own, so the mousedown handler's
+    // preventDefault() call -- which is what stops it in a real browser --
+    // is asserted directly here instead.
+    renderView();
+    const source = screen.getByText(/First page text/);
+    selectFirstCharacters(source, 5);
+
+    const createModule = screen.getByRole("button", { name: "Create Module" });
+    const mouseDownEvent = createEvent.mouseDown(createModule);
+    fireEvent(createModule, mouseDownEvent);
+
+    expect(mouseDownEvent.defaultPrevented).toBe(true);
   });
 
   it("clears the selection state after creating a Module", () => {

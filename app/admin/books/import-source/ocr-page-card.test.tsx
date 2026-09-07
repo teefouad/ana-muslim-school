@@ -61,6 +61,26 @@ describe("OcrPageCard", () => {
     expect(textarea.closest("[dir]")).toHaveAttribute("dir", "ltr");
   });
 
+  it("stretches the textarea to fill the card's height rather than a fixed row count", () => {
+    // jsdom doesn't compute real layout, so this can't assert the actual
+    // rendered pixel height (verified visually instead, see PR notes) --
+    // it documents the fix's mechanism: without `autosize`, Mantine's
+    // Textarea silently drops `minRows` and falls back to the browser's
+    // tiny ~2-row default, so the textarea must flex-fill its column
+    // (stretched by `.row`'s `align-items: stretch` to match the preview
+    // column's height) via explicit flex/height styles instead.
+    renderCard();
+
+    const textarea = screen.getByLabelText("Extracted text for page 1");
+    expect(textarea).toHaveStyle({ flex: "1 1 0%", height: "100%" });
+
+    const wrapper = textarea.parentElement;
+    expect(wrapper?.className).toMatch(/textareaWrapper/);
+
+    const root = wrapper?.parentElement;
+    expect(root?.className).toMatch(/textareaRoot/);
+  });
+
   it("starts the split divider at 50% and clamps keyboard resizing to 15-85%", () => {
     renderCard();
     const handle = screen.getByRole("separator", {

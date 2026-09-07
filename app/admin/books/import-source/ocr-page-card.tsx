@@ -136,11 +136,15 @@ export function OcrPageCard({
             value={markdown}
             onChange={(event) => onMarkdownChange(event.currentTarget.value)}
             placeholder="No text was extracted from this page."
-            minRows={10}
             dir={direction}
             aria-label={`Extracted text for page ${pageNumber}`}
+            className={styles.textareaRoot}
+            classNames={{ wrapper: styles.textareaWrapper }}
             styles={{
               input: {
+                flex: 1,
+                minHeight: 0,
+                height: "100%",
                 fontFamily: "var(--font-mono, monospace)",
                 fontSize: `${14 * (fontScale / 100)}px`,
                 lineHeight: 1.6,

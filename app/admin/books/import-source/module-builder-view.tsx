@@ -143,6 +143,14 @@ export function ModuleBuilderView({
               size="xs"
               leftSection={<Plus size={14} aria-hidden="true" />}
               disabled={!canCreateModule}
+              // Clicking a button starts with a mousedown, whose default
+              // browser behavior both collapses the current text selection
+              // and shifts focus away from the source `<pre>` -- either one
+              // alone clears `selectedText` (via `selectionchange`/
+              // `handleSourceBlur`) before this button's own onClick can
+              // run. Preventing that default keeps the selection (and
+              // focus) intact through the click.
+              onMouseDown={(event) => event.preventDefault()}
               onClick={handleCreateModule}
             >
               Create Module

@@ -16,8 +16,33 @@
   min-width: 0;
 }
 
+.textColumn {
+  display: flex;
+  flex-direction: column;
+}
+
 .previewCanvas {
   width: 100%;
+}
+
+/* Without `autosize`, Mantine's Textarea drops `minRows` entirely and
+   renders a plain native <textarea> with no explicit height -- it falls
+   back to the browser's tiny ~2-row default. Stretching root -> wrapper ->
+   textarea to fill `.textColumn` (itself stretched by `.row`'s
+   `align-items: stretch` to match the preview column's height) is what
+   makes the extracted-text side actually fill the available card height. */
+.textareaRoot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.textareaWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .handle {
