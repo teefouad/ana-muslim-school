@@ -15,7 +15,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { Upload } from "lucide-react";
+import { Eye, Upload } from "lucide-react";
 
 import {
   BookForm,
@@ -126,7 +126,13 @@ export default function EditBookPage() {
             variant="default"
             disabled={!book}
             onClick={() => setImportSourceOpened(true)}
-            leftSection={<Upload size={16} aria-hidden="true" />}
+            leftSection={
+              hasSource ? (
+                <Eye size={16} aria-hidden="true" />
+              ) : (
+                <Upload size={16} aria-hidden="true" />
+              )
+            }
           >
             {hasSource ? "View source text" : "Create from PDF"}
           </Button>
