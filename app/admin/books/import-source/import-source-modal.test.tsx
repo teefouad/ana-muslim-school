@@ -426,6 +426,19 @@ describe("ImportSourceModal", () => {
       );
     });
 
+    it("closes the modal once the save succeeds", async () => {
+      mockExistingSource();
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Saved source text");
+
+      fireEvent.change(screen.getByLabelText("Saved source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
     it("keeps the edited text visible and shows an error when saving fails", async () => {
       mockExistingSource();
       updateSourceMock.mockRejectedValueOnce(new Error("Cannot save."));

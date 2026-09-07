@@ -335,6 +335,7 @@ export function ImportSourceModal({
       await updateSource(existingSource.id, content);
       await mutateSource();
       setIsSavingSource(false);
+      handleClose();
     } catch (err) {
       setSaveSourceError(
         err instanceof Error ? err.message : "Something went wrong.",
