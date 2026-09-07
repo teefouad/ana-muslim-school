@@ -108,6 +108,20 @@ describe("LearningMaterialCard", () => {
     );
   });
 
+  it("scales the Learning Material editor's font size along with the source text, not just the source text", () => {
+    // PR review feedback (ANA-69, blocking): the Font Size control
+    // previously only scaled the read-only source text, leaving the
+    // Markdown editor's own text a fixed size -- the same visible control
+    // must affect both columns.
+    renderCard({ fontScale: 150 });
+
+    const source = screen.getByText("Extracted source content");
+    expect(source).toHaveStyle({ fontSize: "21px" });
+
+    const editorScale = screen.getByTestId("learning-material-editor-scale");
+    expect(editorScale).toHaveStyle({ fontSize: "21px" });
+  });
+
   it("uses the given text direction for both the source text and the editor", async () => {
     renderCard({ direction: "ltr" });
 

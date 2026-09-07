@@ -63,11 +63,23 @@ export function LearningMaterialCard({
             <Text size="sm" fw={500} className={styles.columnLabel}>
               Learning material
             </Text>
-            <MarkdownEditor
-              markdown={learningMaterial}
-              onChange={onLearningMaterialChange}
-              dir={direction}
-            />
+            {/* MarkdownEditor has no fontSize prop of its own (see
+                components/README.md's "no business logic" rule -- it only
+                takes value/onChange/dir) -- its rendered content has no
+                font-size of its own either, so a plain wrapping font-size
+                cascades to it via ordinary CSS inheritance, matching the
+                source text's scaling without touching the shared
+                component. */}
+            <div
+              data-testid="learning-material-editor-scale"
+              style={{ fontSize: `${14 * (fontScale / 100)}px` }}
+            >
+              <MarkdownEditor
+                markdown={learningMaterial}
+                onChange={onLearningMaterialChange}
+                dir={direction}
+              />
+            </div>
           </div>
         </div>
       )}
