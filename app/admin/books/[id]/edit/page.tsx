@@ -15,6 +15,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { Upload } from "lucide-react";
 
 import {
   BookForm,
@@ -113,6 +114,7 @@ export default function EditBookPage() {
             variant="default"
             disabled={!book}
             onClick={() => setImportSourceOpened(true)}
+            leftSection={<Upload size={16} aria-hidden="true" />}
           >
             Import Source
           </Button>
