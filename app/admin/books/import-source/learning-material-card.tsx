@@ -72,12 +72,14 @@ export function LearningMaterialCard({
                 component. */}
             <div
               data-testid="learning-material-editor-scale"
+              className={styles.editorFill}
               style={{ fontSize: `${14 * (fontScale / 100)}px` }}
             >
               <MarkdownEditor
                 markdown={learningMaterial}
                 onChange={onLearningMaterialChange}
                 dir={direction}
+                fillHeight
               />
             </div>
           </div>

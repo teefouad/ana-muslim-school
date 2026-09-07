@@ -25,6 +25,10 @@ function renderView(
     direction: "rtl",
     onDirectionChange: vi.fn(),
     onBack: vi.fn(),
+    onFinish: vi.fn(),
+    isFinishing: false,
+    finishError: null,
+    backDisabled: false,
     ...overrides,
   };
 
@@ -133,6 +137,10 @@ describe("LearningMaterialView", () => {
           direction="rtl"
           onDirectionChange={() => {}}
           onBack={() => setVisible(false)}
+          onFinish={() => {}}
+          isFinishing={false}
+          finishError={null}
+          backDisabled={false}
         />
       );
     }
@@ -164,6 +172,59 @@ describe("LearningMaterialView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to Modules" }));
 
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it("disables Finish when there are no temporary Modules", () => {
+    renderView({ modules: [] });
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+  });
+
+  it("enables Finish once there is at least one temporary Module", () => {
+    renderView();
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled();
+  });
+
+  it("disables Finish and shows a loading state while submitting", () => {
+    renderView({ isFinishing: true });
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+  });
+
+  it("calls onFinish when Finish is clicked", () => {
+    const onFinish = vi.fn();
+    renderView({ onFinish });
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+    expect(onFinish).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a clear inline error when Module creation fails", () => {
+    renderView({ finishError: "Could not create Module 2." });
+
+    expect(screen.getByText("Could not create Module 2.")).toBeInTheDocument();
+  });
+
+  it("disables Back to Modules once a Module has already been created in this Finish session", () => {
+    // PR review (ANA-70, blocking): once any Module POST has succeeded,
+    // going back to the Module builder would let the temporary set be
+    // reordered/deleted out from under a Module that already exists under
+    // the Book and can't be rolled back from here.
+    renderView({ backDisabled: true });
+
+    expect(
+      screen.getByRole("button", { name: "Back to Modules" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps Back to Modules enabled before any Module has been created", () => {
+    renderView({ backDisabled: false });
+
+    expect(
+      screen.getByRole("button", { name: "Back to Modules" }),
+    ).toBeEnabled();
   });
 
   it("makes no network requests", async () => {

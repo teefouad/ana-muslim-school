@@ -5,14 +5,28 @@ import { Modal } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 
 import type { OcrResult } from "@/lib/sources/ocr-types";
+import type { ModuleWritableFields } from "@/lib/modules/types";
 import type { TempModule, TextDirection } from "./import-source-types";
 import { LearningMaterialView } from "./learning-material-view";
 import { ModuleBuilderView } from "./module-builder-view";
+import { createModule } from "./modules-client";
 import { OcrResultView } from "./ocr-result-view";
 import { PdfFilePicker } from "./pdf-file-picker";
 import { PdfViewer } from "./pdf-viewer";
 import { useOcrRun } from "./use-ocr-run";
 import styles from "./import-source-modal.module.css";
+
+// Every temporary Module is created with these exact draft values (ANA-70)
+// -- the import flow only has selected source text at this point, not
+// Module metadata, and the Modules list's own `Module N` fallback already
+// covers a blank title, so nothing here is invented from the source text.
+const MODULE_DRAFT_DEFAULTS: ModuleWritableFields = {
+  title: { ar: "", en: "" },
+  description: { ar: "", en: "" },
+  color: "",
+  isLocked: false,
+  isPublished: false,
+};
 
 type Step =
   | "pick"
@@ -27,13 +41,17 @@ export interface ImportSourceModalProps {
    * "Import Source" button disabled until a real `bookId` exists. */
   opened: boolean;
   onClose: () => void;
-  /** The Book this import belongs to. Required so this component's props
-   * only make sense wired to a real, persisted Book, even though nothing in
-   * this card's temporary workflow state is sent to the server keyed by it
-   * yet -- a later card wires the reviewed source text, Modules, and
-   * Learning Material into `/api/v1/books/{bookId}/modules` and
-   * `/api/v1/materials` (see AGENTS.md's persistence boundary). */
+  /** The Book this import belongs to -- Finish creates the temporary
+   * Modules under it via `POST /api/v1/books/{bookId}/modules` (ANA-70).
+   * The OCR source text and Learning Material Markdown are still never
+   * sent to the server (see AGENTS.md's persistence boundary); only
+   * Modules are persisted by this card. */
   bookId: string;
+  /** Called once every temporary Module has been created successfully,
+   * before the modal closes -- the caller's own Modules SWR data (Edit
+   * Book's panel) should be revalidated here so the new Modules appear
+   * immediately without a full-page reload. */
+  onModulesCreated?: () => void;
 }
 
 // The full PDF -> page selection -> Mistral OCR review -> Module-building ->
@@ -42,7 +60,12 @@ export interface ImportSourceModalProps {
 // closing it always discards this state (see resetState/handleClose below)
 // so reopening always starts from the PDF picker again. No route
 // navigation is involved; the whole workflow stays inside this modal.
-export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
+export function ImportSourceModal({
+  opened,
+  onClose,
+  bookId,
+  onModulesCreated,
+}: ImportSourceModalProps) {
   const [step, setStep] = useState<Step>("pick");
   const [file, setFile] = useState<File | null>(null);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
@@ -57,6 +80,16 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
   const [learningMaterials, setLearningMaterials] = useState<
     Record<string, string>
   >({});
+  // Temporary Module ids already persisted through POST
+  // /api/v1/books/{bookId}/modules in this modal session -- a retry after a
+  // partial failure (see handleFinish) skips these instead of re-creating
+  // them. Reset alongside every other piece of workflow state, so a fresh
+  // open of the modal always starts a fresh Finish session too.
+  const [createdModuleIds, setCreatedModuleIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const ocrRun = useOcrRun();
   const isMobile = useMediaQuery("(max-width: 768px)", false);
 
@@ -70,6 +103,9 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
     setDirection("rtl");
     setModules([]);
     setLearningMaterials({});
+    setCreatedModuleIds(new Set());
+    setIsFinishing(false);
+    setFinishError(null);
     ocrRun.invalidate();
   }
 
@@ -140,6 +176,49 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
 
   function handleBackToModules() {
     setStep("build-modules");
+  }
+
+  async function handleFinish() {
+    // Guards against a duplicate submission from repeated clicks while a
+    // Finish operation is already running, in addition to the button's own
+    // disabled-while-loading state (belt and suspenders against a fast
+    // double-click landing before the re-render).
+    if (isFinishing || modules.length === 0) {
+      return;
+    }
+
+    setIsFinishing(true);
+    setFinishError(null);
+
+    // A running copy of createdModuleIds, updated as each Module succeeds
+    // -- so that if a later Module fails, everything created before it is
+    // still recorded (via the setState below) for the next retry to skip,
+    // rather than only being recorded after the whole batch finishes.
+    const created = new Set(createdModuleIds);
+
+    try {
+      // Sequential, not Promise.all: Modules must be created in the current
+      // temporary Module order so the resulting Book.modules order (each
+      // POST atomically appends its id) matches the order shown here.
+      for (const tempModule of modules) {
+        if (created.has(tempModule.id)) {
+          continue;
+        }
+
+        await createModule(bookId, MODULE_DRAFT_DEFAULTS);
+        created.add(tempModule.id);
+        setCreatedModuleIds(new Set(created));
+      }
+
+      onModulesCreated?.();
+      resetState();
+      onClose();
+    } catch (err) {
+      setFinishError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+      setIsFinishing(false);
+    }
   }
 
   return (
@@ -222,6 +301,10 @@ export function ImportSourceModal({ opened, onClose }: ImportSourceModalProps) {
           direction={direction}
           onDirectionChange={setDirection}
           onBack={handleBackToModules}
+          onFinish={handleFinish}
+          isFinishing={isFinishing}
+          finishError={finishError}
+          backDisabled={createdModuleIds.size > 0}
         />
       )}
     </Modal>

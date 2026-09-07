@@ -24,9 +24,17 @@ import {
 } from "../../book-form";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
-import { INITIAL_MOCK_MODULES, type MockModule } from "../../mock-modules";
+import type { MockModule } from "../../mock-modules";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
+import type { Module } from "@/lib/modules/types";
+
+function getModuleLabel(module: Module): string {
+  // The panel's own `Module N` fallback (see modules-panel.tsx) covers a
+  // blank label -- passing "" through when both languages are empty lets
+  // that fallback do the last step instead of duplicating it here.
+  return module.title.ar || module.title.en || "";
+}
 
 const BOOK_FORM_ID = "edit-book-form";
 
@@ -46,7 +54,22 @@ export default function EditBookPage() {
     (url) => fetchJson<{ data: Book }>(url).then((response) => response.data),
     { shouldRetryOnError: false },
   );
-  const [modules, setModules] = useState<MockModule[]>(INITIAL_MOCK_MODULES);
+  // Real Modules for the persisted Book, in Book.modules order (ANA-70) --
+  // conditional on `book` so this never fires before the Book itself has
+  // loaded (a bookId-less key tells SWR to skip the fetch). Add Book's own
+  // pre-save/local Modules behavior is untouched -- that page never reaches
+  // this one, since it has no persisted `book` to key off of.
+  const {
+    data: modulesData,
+    isLoading: modulesLoading,
+    mutate: mutateModules,
+  } = useSWR(book ? `/api/v1/books/${book.id}/modules` : null, (url) =>
+    fetchJson<{ data: Module[] }>(url).then((response) => response.data),
+  );
+  const modules: MockModule[] = (modulesData ?? []).map((module) => ({
+    id: module.id,
+    title: getModuleLabel(module),
+  }));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importSourceOpened, setImportSourceOpened] = useState(false);
@@ -138,7 +161,21 @@ export default function EditBookPage() {
             />
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
-            <ModulesPanel modules={modules} onModulesChange={setModules} />
+            {modulesLoading ? (
+              <Group gap="sm">
+                <Loader size="sm" />
+                <Text size="sm" c="dimmed">
+                  Loading modules…
+                </Text>
+              </Group>
+            ) : (
+              // Reorder/add/delete aren't persisted from this panel yet
+              // (ANA-70 scope boundary -- see modules-panel.tsx) -- Modules
+              // now come from the real API, and this card doesn't add fake
+              // local mutations on top of that list, so these stay no-ops
+              // until a follow-up card wires them to real endpoints.
+              <ModulesPanel modules={modules} onModulesChange={() => {}} />
+            )}
           </Box>
         </Flex>
       )}
@@ -148,6 +185,7 @@ export default function EditBookPage() {
           opened={importSourceOpened}
           onClose={() => setImportSourceOpened(false)}
           bookId={book.id}
+          onModulesCreated={() => mutateModules()}
         />
       )}
     </Stack>

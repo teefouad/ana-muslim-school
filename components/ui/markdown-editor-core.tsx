@@ -136,6 +136,14 @@ export interface MarkdownEditorCoreProps {
   disabled?: boolean;
   dir?: "ltr" | "rtl";
   className?: string;
+  /** When true, the editor fills its container's height instead of sizing
+   * to its content's minimum height: the toolbar stays at its natural size
+   * and the contenteditable area grows (and scrolls) to fill the rest, via
+   * MDXEditor's own `mdxeditor-full-height` class. The container must give
+   * this component a definite height (e.g. a flex item with `flex: 1`) for
+   * that growth to have anything to fill. Off by default so existing
+   * content-sized usages (e.g. TranslatableTextArea) are unaffected. */
+  fillHeight?: boolean;
   /** Passed as a plain prop rather than a React `ref` because this module is
    * loaded through `next/dynamic` (see markdown-editor.tsx), whose loading
    * wrapper does not forward refs to the lazily-loaded component. */
@@ -153,6 +161,7 @@ export default function MarkdownEditorCore({
   disabled,
   dir,
   className,
+  fillHeight,
   handleRef,
 }: MarkdownEditorCoreProps) {
   const editorRef = useRef<MDXEditorMethods>(null);
@@ -170,18 +179,32 @@ export default function MarkdownEditorCore({
   }));
 
   return (
-    <div dir={dir} className={`${styles.container} ${className ?? ""}`}>
+    <div
+      dir={dir}
+      className={[
+        styles.container,
+        fillHeight ? styles.fillHeight : "",
+        className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <MDXEditor
         ref={editorRef}
         markdown={markdown}
         onChange={onChange}
         readOnly={disabled}
         placeholder={placeholder}
-        className={
-          colorScheme === "dark"
-            ? "mantine-markdown-editor dark-theme"
-            : "mantine-markdown-editor"
-        }
+        className={[
+          "mantine-markdown-editor",
+          colorScheme === "dark" ? "dark-theme" : "",
+          // MDXEditor's own bundled stylesheet defines this class: toolbar
+          // stays at its natural size, the contenteditable area flex-grows
+          // (and scrolls) to fill the rest -- see fillHeight above.
+          fillHeight ? "mdxeditor-full-height" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         contentEditableClassName="mantine-markdown-editor__content"
         plugins={[
           headingsPlugin({ allowedHeadingLevels: [1, 2, 3] }),

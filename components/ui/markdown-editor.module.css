@@ -51,6 +51,29 @@
   padding-inline-start: 1.5em;
 }
 
+/* Lets the editor fill a stretched flex/grid ancestor's height instead of
+   sizing to its own minimum content height -- see MarkdownEditorCoreProps'
+   `fillHeight`. The container needs a definite height from its own parent
+   (a flex item with `flex: 1`, typically) for this to have any effect. */
+.container.fillHeight {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.container.fillHeight :global(.mantine-markdown-editor) {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Overrides the fixed 8rem minimum above so the contenteditable area's
+   actual height comes entirely from MDXEditor's own `mdxeditor-full-height`
+   flex-grow instead of a fallback minimum meant for content-sized usage. */
+.container.fillHeight :global(.mdxeditor-root-contenteditable) {
+  min-height: 0;
+}
+
 /* Every built-in toolbar button renders a Radix tooltip on hover, with no
    prop to opt individual buttons out -- hide the tooltip content itself
    (Radix always sets role="tooltip" on it, unlike its internal, hashed CSS

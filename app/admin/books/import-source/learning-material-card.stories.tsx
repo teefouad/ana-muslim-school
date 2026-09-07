@@ -62,3 +62,24 @@ export const Ltr: Story = {
     direction: "ltr",
   },
 };
+
+// Demonstrates the equal-height fix (ANA-70): a much longer Source text
+// than Learning material still leaves both columns the same height, and the
+// Markdown editor's contenteditable area fills the extra space below its
+// short content instead of leaving unclickable empty whitespace.
+export const LongSourceText: Story = {
+  args: {
+    module: {
+      id: "module-3",
+      text: [
+        "This is a long block of extracted source text meant to push the",
+        "Source text column well past the Learning material column's own",
+        "natural height, to demonstrate that both columns still stretch to",
+        "match -- and that the Markdown editor grows to fill its column",
+        "instead of stopping at its minimum content height.",
+      ].join("\n"),
+    },
+    direction: "ltr",
+    learningMaterial: "Short note.",
+  },
+};
