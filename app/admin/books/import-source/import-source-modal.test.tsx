@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Button, MantineProvider } from "@mantine/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SWRConfig } from "swr";
 
 const {
   usePdfDocumentMock,
@@ -10,6 +11,9 @@ const {
   requestOcrMock,
   useMediaQueryMock,
   createModuleMock,
+  createSourceMock,
+  deleteSourceMock,
+  createMaterialMock,
 } = vi.hoisted(() => ({
   usePdfDocumentMock: vi.fn(),
   requestOcrUploadUrlMock: vi.fn(),
@@ -17,6 +21,9 @@ const {
   requestOcrMock: vi.fn(),
   useMediaQueryMock: vi.fn(),
   createModuleMock: vi.fn(),
+  createSourceMock: vi.fn(),
+  deleteSourceMock: vi.fn(),
+  createMaterialMock: vi.fn(),
 }));
 
 vi.mock("./use-pdf-document", () => ({
@@ -42,10 +49,41 @@ vi.mock("./modules-client", () => ({
   createModule: createModuleMock,
 }));
 
+vi.mock("./sources-client", () => ({
+  createSource: createSourceMock,
+  deleteSource: deleteSourceMock,
+}));
+
+vi.mock("./materials-client", () => ({
+  createMaterial: createMaterialMock,
+}));
+
 const { ImportSourceModal } = await import("./import-source-modal");
 
 function pdfFile(name = "book.pdf"): File {
   return new File(["%PDF-1.4"], name, { type: "application/pdf" });
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** The only raw (non-client-wrapper) fetch this modal makes is the
+ * Source-by-bookId SWR read -- every test gets a "no saved Source" default
+ * via the global `fetch` stub below unless it overrides `fetch` itself. */
+function mockNoSavedSource() {
+  (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+    const url = String(input);
+
+    if (url.startsWith("/api/v1/sources?bookId=")) {
+      return Promise.resolve(jsonResponse({ data: [] }));
+    }
+
+    throw new Error(`Unhandled fetch in test: ${url}`);
+  });
 }
 
 function renderModal(
@@ -60,7 +98,12 @@ function renderModal(
 
   const utils = render(
     <MantineProvider>
-      <ImportSourceModal {...props} />
+      {/* A fresh SWR cache per render -- otherwise SWR's module-level cache
+          would leak the Source-by-bookId fixture across test cases keyed by
+          the same URL (see AGENTS.md's SWR testing convention). */}
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <ImportSourceModal {...props} />
+      </SWRConfig>
     </MantineProvider>,
   );
 
@@ -68,7 +111,12 @@ function renderModal(
 }
 
 async function selectFile(name = "book.pdf") {
-  const input = screen.getByTestId("pdf-file-input") as HTMLInputElement;
+  // The Source-by-bookId lookup (ANA-71) resolves asynchronously before the
+  // upload flow (including this picker) renders at all -- `findByTestId`
+  // waits for that instead of assuming the picker is already there.
+  const input = (await screen.findByTestId(
+    "pdf-file-input",
+  )) as HTMLInputElement;
   fireEvent.change(input, { target: { files: [pdfFile(name)] } });
   // PdfViewer is loaded via next/dynamic({ ssr: false }) (see pdf-viewer.tsx)
   // -- its module resolves asynchronously even with usePdfDocument mocked.
@@ -78,6 +126,8 @@ async function selectFile(name = "book.pdf") {
 describe("ImportSourceModal", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubGlobal("fetch", vi.fn());
+    mockNoSavedSource();
     usePdfDocumentMock.mockReturnValue({
       doc: {},
       numPages: 3,
@@ -100,6 +150,23 @@ describe("ImportSourceModal", () => {
         updatedBy: "actor@example.com",
       }),
     );
+    createSourceMock.mockImplementation((bookId: string, content: string) =>
+      Promise.resolve({ id: "source-1", bookId, content }),
+    );
+    deleteSourceMock.mockResolvedValue(undefined);
+    createMaterialMock.mockImplementation(
+      (bookId: string, moduleId: string, content: string) =>
+        Promise.resolve({
+          id: `material-${createMaterialMock.mock.calls.length}`,
+          bookId,
+          moduleId,
+          content,
+        }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("sizes near-full desktop width with a small fixed gutter, not fullScreen", () => {
@@ -138,12 +205,129 @@ describe("ImportSourceModal", () => {
     expect(content).toHaveAttribute("data-full-screen", "true");
   });
 
-  it("starts at the PDF picker", () => {
+  it("shows a loading state while looking up a saved Source", () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    renderModal();
+
+    expect(screen.getByText("Loading source…")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Choose a PDF to import" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("starts at the PDF picker once the Source lookup finds nothing", async () => {
     renderModal();
 
     expect(
-      screen.getByRole("button", { name: "Choose a PDF to import" }),
+      await screen.findByRole("button", { name: "Choose a PDF to import" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows an error instead of silently falling back to the upload flow when the Source lookup fails", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: "Sources are unavailable." }, 500),
+    );
+    renderModal();
+
+    expect(
+      await screen.findByText("Sources are unavailable."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Choose a PDF to import" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens directly on the saved-source view when the Book already has a Source", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/sources?bookId=")) {
+        return Promise.resolve(
+          jsonResponse({
+            data: [{ id: "source-1", bookId: "book-1", content: "Saved text" }],
+          }),
+        );
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    renderModal();
+
+    expect(await screen.findByLabelText("Saved source text")).toHaveValue(
+      "Saved text",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Choose a PDF to import" }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe("Remove source text", () => {
+    function mockExistingSource(content = "Saved text") {
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/sources?bookId=")) {
+          return Promise.resolve(
+            jsonResponse({
+              data: [{ id: "source-1", bookId: "book-1", content }],
+            }),
+          );
+        }
+        throw new Error(`Unhandled fetch in test: ${url}`);
+      });
+    }
+
+    it("calls DELETE /api/v1/sources/{sourceId} and returns to the upload flow on success", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByLabelText("Saved source text");
+
+      // After the DELETE succeeds, the SWR revalidation re-fetches -- this
+      // second response is what flips the modal back to the upload flow.
+      (fetch as ReturnType<typeof vi.fn>).mockImplementationOnce((input) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/sources?bookId=")) {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        throw new Error(`Unhandled fetch in test: ${url}`);
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Remove source text" }),
+      );
+
+      expect(
+        await screen.findByRole("button", { name: "Choose a PDF to import" }),
+      ).toBeInTheDocument();
+      expect(deleteSourceMock).toHaveBeenCalledWith("source-1");
+    });
+
+    it("keeps the saved Source visible and shows an error when deletion fails", async () => {
+      mockExistingSource();
+      deleteSourceMock.mockRejectedValueOnce(new Error("Cannot delete."));
+      renderModal();
+      await screen.findByLabelText("Saved source text");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Remove source text" }),
+      );
+
+      expect(await screen.findByText("Cannot delete.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Saved source text")).toHaveValue(
+        "Saved text",
+      );
+    });
+
+    it("does not touch Modules or Materials when removing a Source", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByLabelText("Saved source text");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Remove source text" }),
+      );
+
+      await vi.waitFor(() => expect(deleteSourceMock).toHaveBeenCalled());
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).not.toHaveBeenCalled();
+    });
   });
 
   it("moves to the PDF viewer once a file is selected", async () => {
@@ -178,7 +362,9 @@ describe("ImportSourceModal", () => {
 
     render(
       <MantineProvider>
-        <Harness />
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <Harness />
+        </SWRConfig>
       </MantineProvider>,
     );
     await selectFile();
@@ -587,6 +773,109 @@ describe("ImportSourceModal", () => {
 
       await vi.waitFor(() => expect(onModulesCreated).toHaveBeenCalledTimes(1));
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("persists the Source with the Book id and the full reviewed OCR text once every Module is created", async () => {
+      await reachLearningMaterialWithTwoModules();
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      await vi.waitFor(() =>
+        expect(createSourceMock).toHaveBeenCalledWith(
+          "book-1",
+          "Some source text",
+        ),
+      );
+    });
+
+    it("does not create the Source before every Module has been created", async () => {
+      await reachLearningMaterialWithTwoModules();
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      createModuleMock.mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createSourceMock).not.toHaveBeenCalled();
+    });
+
+    it("persists one Material per Module using the real persisted moduleId (never the temporary id), including an empty Learning Material", async () => {
+      await reachLearningMaterialWithTwoModules();
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledTimes(2),
+      );
+      expect(createMaterialMock).toHaveBeenNthCalledWith(
+        1,
+        "book-1",
+        "created-1",
+        "",
+      );
+      expect(createMaterialMock).toHaveBeenNthCalledWith(
+        2,
+        "book-1",
+        "created-2",
+        "",
+      );
+      // "created-N" (the module fixture ids returned by createModuleMock) are
+      // the only moduleId values ever passed -- never a temporary Module id
+      // (which the Module builder generates via crypto.randomUUID()-style
+      // ids, not this "created-N" shape).
+      for (const call of createMaterialMock.mock.calls) {
+        expect(call[1]).toMatch(/^created-\d+$/);
+      }
+    });
+
+    it("does not create Materials before the Source has been created", async () => {
+      await reachLearningMaterialWithTwoModules();
+      createSourceMock.mockRejectedValueOnce(new Error("Storage error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      expect(await screen.findByText("Storage error")).toBeInTheDocument();
+      expect(createMaterialMock).not.toHaveBeenCalled();
+    });
+
+    it("retrying after a Material failure does not recreate the Modules or the Source, and skips the Material that already succeeded", async () => {
+      await reachLearningMaterialWithTwoModules();
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-1",
+        bookId: "book-1",
+        moduleId: "created-1",
+        content: "",
+      });
+      createMaterialMock.mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createModuleMock).toHaveBeenCalledTimes(2);
+      expect(createSourceMock).toHaveBeenCalledTimes(1);
+      expect(createMaterialMock).toHaveBeenCalledTimes(2);
+
+      createModuleMock.mockClear();
+      createSourceMock.mockClear();
+      createMaterialMock.mockClear();
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-2",
+        bookId: "book-1",
+        moduleId: "created-2",
+        content: "",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      await vi.waitFor(() =>
+        expect(createMaterialMock).toHaveBeenCalledTimes(1),
+      );
+      expect(createMaterialMock).toHaveBeenCalledWith(
+        "book-1",
+        "created-2",
+        "",
+      );
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createSourceMock).not.toHaveBeenCalled();
     });
   });
 

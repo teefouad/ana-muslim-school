@@ -8,15 +8,18 @@ import {
   listSourcesService,
 } from "@/lib/sources/sources-service";
 
-/** Lists all `sources` records. */
-export async function GET() {
+/** Lists `sources` records, optionally filtered to a single Book via
+ * `?bookId=` (ANA-71) -- the filter is applied by the repository's own
+ * Firestore query, not by fetching every Source and filtering here. */
+export async function GET(request: Request) {
   const auth = await requireBooksPermission("read");
 
   if (!auth.ok) {
     return auth.response;
   }
 
-  const data = await listSourcesService();
+  const bookId = new URL(request.url).searchParams.get("bookId") ?? undefined;
+  const data = await listSourcesService(bookId);
 
   return NextResponse.json({ data });
 }

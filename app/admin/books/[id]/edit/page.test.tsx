@@ -76,6 +76,14 @@ function setupFetch(
         return Promise.resolve(jsonResponse({ data: modules }));
       }
 
+      // ANA-71: the Import Source modal looks up a saved Source for the
+      // Book as soon as it's opened -- every test that opens it needs this
+      // handled, and no test in this file exercises a saved Source, so it
+      // always reports none.
+      if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+        return Promise.resolve(jsonResponse({ data: [] }));
+      }
+
       if (method === "PATCH" && url === "/api/v1/books/book-1" && onPatch) {
         const { status, body } = onPatch(JSON.parse(init?.body as string));
         return Promise.resolve(jsonResponse(body, status));
@@ -188,8 +196,11 @@ describe("EditBookPage", () => {
     expect(
       await screen.findByRole("dialog", { name: "Import Source" }),
     ).toBeInTheDocument();
+    // The modal's own Source-by-bookId lookup (ANA-71) resolves
+    // asynchronously before the upload flow renders -- `findByRole` waits
+    // for that instead of assuming the picker is already there.
     expect(
-      screen.getByRole("button", { name: "Choose a PDF to import" }),
+      await screen.findByRole("button", { name: "Choose a PDF to import" }),
     ).toBeInTheDocument();
   });
 

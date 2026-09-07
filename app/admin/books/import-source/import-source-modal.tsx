@@ -1,18 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@mantine/core";
+import { Alert, Group, Loader, Modal, Text } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
+import useSWR from "swr";
 
+import { fetchJson } from "../fetch-json";
 import type { OcrResult } from "@/lib/sources/ocr-types";
+import type { Source } from "@/lib/sources/types";
 import type { ModuleWritableFields } from "@/lib/modules/types";
 import type { TempModule, TextDirection } from "./import-source-types";
+import { buildSourceContent } from "./build-source-content";
+import { createMaterial } from "./materials-client";
 import { LearningMaterialView } from "./learning-material-view";
 import { ModuleBuilderView } from "./module-builder-view";
 import { createModule } from "./modules-client";
 import { OcrResultView } from "./ocr-result-view";
 import { PdfFilePicker } from "./pdf-file-picker";
 import { PdfViewer } from "./pdf-viewer";
+import { SavedSourceView } from "./saved-source-view";
+import { createSource, deleteSource } from "./sources-client";
 import { useOcrRun } from "./use-ocr-run";
 import styles from "./import-source-modal.module.css";
 
@@ -42,10 +49,10 @@ export interface ImportSourceModalProps {
   opened: boolean;
   onClose: () => void;
   /** The Book this import belongs to -- Finish creates the temporary
-   * Modules under it via `POST /api/v1/books/{bookId}/modules` (ANA-70).
-   * The OCR source text and Learning Material Markdown are still never
-   * sent to the server (see AGENTS.md's persistence boundary); only
-   * Modules are persisted by this card. */
+   * Modules under it via `POST /api/v1/books/{bookId}/modules` (ANA-70),
+   * then persists the reviewed Source and each Module's Learning Material
+   * (ANA-71). This is also the key used to look up whether the Book
+   * already has a saved Source when the modal opens. */
   bookId: string;
   /** Called once every temporary Module has been created successfully,
    * before the modal closes -- the caller's own Modules SWR data (Edit
@@ -55,11 +62,14 @@ export interface ImportSourceModalProps {
 }
 
 // The full PDF -> page selection -> Mistral OCR review -> Module-building ->
-// Learning Material workflow (ANA-68/ANA-69). Owns every piece of workflow
-// state itself -- opening the modal never touches the Book form, and
-// closing it always discards this state (see resetState/handleClose below)
-// so reopening always starts from the PDF picker again. No route
-// navigation is involved; the whole workflow stays inside this modal.
+// Learning Material -> persistence workflow (ANA-68/ANA-69/ANA-70/ANA-71).
+// Owns every piece of workflow state itself -- opening the modal never
+// touches the Book form, and closing it always discards this state (see
+// resetState/handleClose below) so reopening always starts from the PDF
+// picker again, unless the Book already has a saved Source (see the
+// Source-by-bookId lookup below), in which case it opens straight on the
+// saved-source view instead. No route navigation is involved; the whole
+// workflow stays inside this modal.
 export function ImportSourceModal({
   opened,
   onClose,
@@ -88,10 +98,48 @@ export function ImportSourceModal({
   const [createdModuleIds, setCreatedModuleIds] = useState<Set<string>>(
     new Set(),
   );
+  // Temporary Module id -> real persisted Module id (ANA-71) -- kept
+  // explicit so a Learning Material is never attached to the wrong Module,
+  // and so retrying Finish after a partial failure can still resolve the
+  // real Module id for a Module created in an earlier attempt.
+  const [moduleIdMap, setModuleIdMap] = useState<Record<string, string>>({});
+  // The real Source id once Finish has persisted it in this modal session
+  // (ANA-71) -- distinct from the SWR-derived `existingSource` below, which
+  // is deliberately not refreshed until the whole Finish operation
+  // succeeds (see handleFinish) so a Learning Material failure after the
+  // Source is created doesn't flip the modal over to the saved-source view
+  // mid-retry.
+  const [sourceId, setSourceId] = useState<string | null>(null);
+  // Temporary Module ids whose Learning Material has already been
+  // persisted in this modal session -- a retry skips these too.
+  const [materializedModuleIds, setMaterializedModuleIds] = useState<
+    Set<string>
+  >(new Set());
   const [isFinishing, setIsFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const [isRemovingSource, setIsRemovingSource] = useState(false);
+  const [removeSourceError, setRemoveSourceError] = useState<string | null>(
+    null,
+  );
   const ocrRun = useOcrRun();
   const isMobile = useMediaQuery("(max-width: 768px)", false);
+
+  // Whether this Book already has a saved Source (ANA-71) -- looked up via
+  // the Book-filtered `GET /api/v1/sources?bookId=` (never the full
+  // collection) with SWR, paused while the modal is closed. Cache persists
+  // across opens/closes (this component stays mounted regardless of
+  // `opened` -- see EditBookPage), so `mutateSource()` after a successful
+  // Finish or a successful Remove immediately reflects on the next open.
+  const sourceUrl = opened
+    ? `/api/v1/sources?bookId=${encodeURIComponent(bookId)}`
+    : null;
+  const {
+    data: sourceData,
+    error: sourceLookupError,
+    isLoading: sourceLookupLoading,
+    mutate: mutateSource,
+  } = useSWR<{ data: Source[] }>(sourceUrl, fetchJson);
+  const existingSource = sourceData?.data[0] ?? null;
 
   function resetState() {
     setStep("pick");
@@ -104,8 +152,13 @@ export function ImportSourceModal({
     setModules([]);
     setLearningMaterials({});
     setCreatedModuleIds(new Set());
+    setModuleIdMap({});
+    setSourceId(null);
+    setMaterializedModuleIds(new Set());
     setIsFinishing(false);
     setFinishError(null);
+    setIsRemovingSource(false);
+    setRemoveSourceError(null);
     ocrRun.invalidate();
   }
 
@@ -190,11 +243,14 @@ export function ImportSourceModal({
     setIsFinishing(true);
     setFinishError(null);
 
-    // A running copy of createdModuleIds, updated as each Module succeeds
-    // -- so that if a later Module fails, everything created before it is
-    // still recorded (via the setState below) for the next retry to skip,
-    // rather than only being recorded after the whole batch finishes.
+    // Running copies of the "already succeeded" trackers, updated as each
+    // step succeeds -- so that if a later step fails, everything created
+    // before it is still recorded (via the setState calls below) for the
+    // next retry to skip, rather than only being recorded after the whole
+    // operation finishes.
     const created = new Set(createdModuleIds);
+    const idMap = { ...moduleIdMap };
+    const materialized = new Set(materializedModuleIds);
 
     try {
       // Sequential, not Promise.all: Modules must be created in the current
@@ -205,12 +261,54 @@ export function ImportSourceModal({
           continue;
         }
 
-        await createModule(bookId, MODULE_DRAFT_DEFAULTS);
+        const persistedModule = await createModule(
+          bookId,
+          MODULE_DRAFT_DEFAULTS,
+        );
         created.add(tempModule.id);
+        idMap[tempModule.id] = persistedModule.id;
         setCreatedModuleIds(new Set(created));
+        setModuleIdMap({ ...idMap });
+      }
+
+      // This import flow treats a Book as having one active Source --
+      // Finish only runs from the upload flow, which only shows once the
+      // Source-by-bookId lookup above has confirmed none exists yet, so
+      // this never intentionally creates a second one. `sourceId` (rather
+      // than `existingSource`) is what a retry checks, since it's updated
+      // the moment this succeeds instead of only after the whole Finish
+      // operation completes.
+      let persistedSourceId = sourceId;
+
+      if (!persistedSourceId) {
+        const source = await createSource(
+          bookId,
+          buildSourceContent(editedMarkdown),
+        );
+        persistedSourceId = source.id;
+        setSourceId(source.id);
+      }
+
+      // Same order as the Modules loop above, each attached to its
+      // Module's real persisted id -- never the temporary one.
+      for (const tempModule of modules) {
+        if (materialized.has(tempModule.id)) {
+          continue;
+        }
+
+        await createMaterial(
+          bookId,
+          idMap[tempModule.id],
+          learningMaterials[tempModule.id] ?? "",
+        );
+        materialized.add(tempModule.id);
+        setMaterializedModuleIds(new Set(materialized));
       }
 
       onModulesCreated?.();
+      // Only revalidated now that every step has succeeded -- see the
+      // `sourceId` comment above for why this isn't done any earlier.
+      mutateSource();
       resetState();
       onClose();
     } catch (err) {
@@ -218,6 +316,26 @@ export function ImportSourceModal({
         err instanceof Error ? err.message : "Something went wrong.",
       );
       setIsFinishing(false);
+    }
+  }
+
+  async function handleRemoveSource() {
+    if (!existingSource) {
+      return;
+    }
+
+    setIsRemovingSource(true);
+    setRemoveSourceError(null);
+
+    try {
+      await deleteSource(existingSource.id);
+      await mutateSource();
+      setIsRemovingSource(false);
+    } catch (err) {
+      setRemoveSourceError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+      setIsRemovingSource(false);
     }
   }
 
@@ -243,69 +361,103 @@ export function ImportSourceModal({
       fullScreen={isMobile}
       centered
     >
-      {step === "pick" && <PdfFilePicker onFileSelected={handleFileSelected} />}
+      {sourceLookupLoading && (
+        <div className={styles.centered}>
+          <Group gap="sm">
+            <Loader size="sm" />
+            <Text size="sm" c="dimmed">
+              Loading source…
+            </Text>
+          </Group>
+        </div>
+      )}
 
-      {step === "select-pages" && file && (
-        <PdfViewer
-          file={file}
-          selectedPages={selectedPages}
-          onSelectedPagesChange={setSelectedPages}
-          onChooseDifferentFile={handleChooseDifferentFile}
-          onRunOcr={handleRunOcr}
-          isRunningOcr={ocrRun.state.status === "running"}
-          ocrError={
-            ocrRun.state.status === "error" ? ocrRun.state.message : null
-          }
+      {!sourceLookupLoading && sourceLookupError && (
+        <div className={styles.centered}>
+          <Alert color="red" title="Could not load the saved source">
+            {sourceLookupError.message}
+          </Alert>
+        </div>
+      )}
+
+      {!sourceLookupLoading && !sourceLookupError && existingSource && (
+        <SavedSourceView
+          content={existingSource.content}
+          onRemove={handleRemoveSource}
+          isRemoving={isRemovingSource}
+          removeError={removeSourceError}
         />
       )}
 
-      {step === "review-ocr" && ocrResult && file && (
-        <OcrResultView
-          file={file}
-          ocrResult={ocrResult}
-          editedMarkdown={editedMarkdown}
-          onEditedMarkdownChange={setEditedMarkdown}
-          fontScale={fontScale}
-          onFontScaleChange={setFontScale}
-          direction={direction}
-          onDirectionChange={setDirection}
-          onBack={handleBackToPageSelection}
-          onCreateModules={handleCreateModules}
-        />
-      )}
+      {!sourceLookupLoading && !sourceLookupError && !existingSource && (
+        <>
+          {step === "pick" && (
+            <PdfFilePicker onFileSelected={handleFileSelected} />
+          )}
 
-      {step === "build-modules" && ocrResult && file && (
-        <ModuleBuilderView
-          fileName={file.name}
-          ocrResult={ocrResult}
-          editedMarkdown={editedMarkdown}
-          fontScale={fontScale}
-          onFontScaleChange={setFontScale}
-          direction={direction}
-          onDirectionChange={setDirection}
-          modules={modules}
-          onModulesChange={setModules}
-          onBack={handleBackToReview}
-          onCreateLearningMaterial={handleCreateLearningMaterial}
-        />
-      )}
+          {step === "select-pages" && file && (
+            <PdfViewer
+              file={file}
+              selectedPages={selectedPages}
+              onSelectedPagesChange={setSelectedPages}
+              onChooseDifferentFile={handleChooseDifferentFile}
+              onRunOcr={handleRunOcr}
+              isRunningOcr={ocrRun.state.status === "running"}
+              ocrError={
+                ocrRun.state.status === "error" ? ocrRun.state.message : null
+              }
+            />
+          )}
 
-      {step === "learning-material" && file && (
-        <LearningMaterialView
-          fileName={file.name}
-          modules={modules}
-          learningMaterials={learningMaterials}
-          onLearningMaterialsChange={setLearningMaterials}
-          fontScale={fontScale}
-          onFontScaleChange={setFontScale}
-          direction={direction}
-          onDirectionChange={setDirection}
-          onBack={handleBackToModules}
-          onFinish={handleFinish}
-          isFinishing={isFinishing}
-          finishError={finishError}
-          backDisabled={createdModuleIds.size > 0}
-        />
+          {step === "review-ocr" && ocrResult && file && (
+            <OcrResultView
+              file={file}
+              ocrResult={ocrResult}
+              editedMarkdown={editedMarkdown}
+              onEditedMarkdownChange={setEditedMarkdown}
+              fontScale={fontScale}
+              onFontScaleChange={setFontScale}
+              direction={direction}
+              onDirectionChange={setDirection}
+              onBack={handleBackToPageSelection}
+              onCreateModules={handleCreateModules}
+            />
+          )}
+
+          {step === "build-modules" && ocrResult && file && (
+            <ModuleBuilderView
+              fileName={file.name}
+              ocrResult={ocrResult}
+              editedMarkdown={editedMarkdown}
+              fontScale={fontScale}
+              onFontScaleChange={setFontScale}
+              direction={direction}
+              onDirectionChange={setDirection}
+              modules={modules}
+              onModulesChange={setModules}
+              onBack={handleBackToReview}
+              onCreateLearningMaterial={handleCreateLearningMaterial}
+            />
+          )}
+
+          {step === "learning-material" && file && (
+            <LearningMaterialView
+              fileName={file.name}
+              modules={modules}
+              learningMaterials={learningMaterials}
+              onLearningMaterialsChange={setLearningMaterials}
+              fontScale={fontScale}
+              onFontScaleChange={setFontScale}
+              direction={direction}
+              onDirectionChange={setDirection}
+              onBack={handleBackToModules}
+              onFinish={handleFinish}
+              isFinishing={isFinishing}
+              finishError={finishError}
+              backDisabled={createdModuleIds.size > 0}
+            />
+          )}
+        </>
       )}
     </Modal>
   );

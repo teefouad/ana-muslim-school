@@ -13,8 +13,8 @@ import {
 import type { Source } from "./types";
 import { parseSourceCreateInput, parseSourcePatchInput } from "./validation";
 
-export async function listSourcesService(): Promise<Source[]> {
-  return listSourcesFromRepo();
+export async function listSourcesService(bookId?: string): Promise<Source[]> {
+  return listSourcesFromRepo(bookId);
 }
 
 export async function createSourceService(
