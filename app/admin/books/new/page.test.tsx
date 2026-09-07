@@ -69,11 +69,11 @@ describe("AddBookPage", () => {
     expect(addButton).toHaveAttribute("form");
   });
 
-  it("renders Import Source and the Modules panel disabled", () => {
+  it("renders Create from PDF and the Modules panel disabled", () => {
     renderPage();
 
     expect(
-      screen.getByRole("button", { name: "Import Source" }),
+      screen.getByRole("button", { name: "Create from PDF" }),
     ).toBeDisabled();
     expect(screen.getByText("Modules")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add module" })).toBeDisabled();

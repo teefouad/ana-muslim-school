@@ -12,6 +12,9 @@ const meta = {
     onRemove: () => {},
     isRemoving: false,
     removeError: null,
+    onSave: () => {},
+    isSaving: false,
+    saveError: null,
   },
   render: (args) => (
     <div style={{ height: "80vh", display: "flex" }}>
@@ -31,4 +34,12 @@ export const Removing: Story = {
 
 export const RemoveFailed: Story = {
   args: { removeError: "Could not remove the source. Please try again." },
+};
+
+export const Saving: Story = {
+  args: { isSaving: true },
+};
+
+export const SaveFailed: Story = {
+  args: { saveError: "Could not save the source. Please try again." },
 };

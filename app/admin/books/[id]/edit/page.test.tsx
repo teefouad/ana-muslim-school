@@ -152,14 +152,16 @@ describe("EditBookPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders Import Source immediately next to Save changes in the header, both enabled once loaded", async () => {
+  it("renders Create from PDF immediately next to Save changes in the header, both enabled once loaded", async () => {
     setupFetch(buildBookFixture());
     renderPage();
 
     const saveChanges = await screen.findByRole("button", {
       name: "Save changes",
     });
-    const importSource = screen.getByRole("button", { name: "Import Source" });
+    const importSource = screen.getByRole("button", {
+      name: "Create from PDF",
+    });
     expect(importSource).toBeEnabled();
     expect(saveChanges).toBeEnabled();
 
@@ -184,17 +186,17 @@ describe("EditBookPage", () => {
     renderPage();
 
     const importSource = await screen.findByRole("button", {
-      name: "Import Source",
+      name: "Create from PDF",
     });
 
     expect(
-      screen.queryByRole("dialog", { name: "Import Source" }),
+      screen.queryByRole("dialog", { name: "Create from PDF" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(importSource);
 
     expect(
-      await screen.findByRole("dialog", { name: "Import Source" }),
+      await screen.findByRole("dialog", { name: "Create from PDF" }),
     ).toBeInTheDocument();
     // The modal's own Source-by-bookId lookup (ANA-71) resolves
     // asynchronously before the upload flow renders -- `findByRole` waits

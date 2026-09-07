@@ -19,7 +19,7 @@ import { OcrResultView } from "./ocr-result-view";
 import { PdfFilePicker } from "./pdf-file-picker";
 import { PdfViewer } from "./pdf-viewer";
 import { SavedSourceView } from "./saved-source-view";
-import { createSource, deleteSource } from "./sources-client";
+import { createSource, deleteSource, updateSource } from "./sources-client";
 import { useOcrRun } from "./use-ocr-run";
 import styles from "./import-source-modal.module.css";
 
@@ -45,7 +45,7 @@ type Step =
 export interface ImportSourceModalProps {
   /** The modal is open whenever this is true. Only a persisted Book can
    * open the flow -- callers are responsible for keeping the triggering
-   * "Import Source" button disabled until a real `bookId` exists. */
+   * "Create from PDF" button disabled until a real `bookId` exists. */
   opened: boolean;
   onClose: () => void;
   /** The Book this import belongs to -- Finish creates the temporary
@@ -121,6 +121,8 @@ export function ImportSourceModal({
   const [removeSourceError, setRemoveSourceError] = useState<string | null>(
     null,
   );
+  const [isSavingSource, setIsSavingSource] = useState(false);
+  const [saveSourceError, setSaveSourceError] = useState<string | null>(null);
   const ocrRun = useOcrRun();
   const isMobile = useMediaQuery("(max-width: 768px)", false);
 
@@ -159,6 +161,8 @@ export function ImportSourceModal({
     setFinishError(null);
     setIsRemovingSource(false);
     setRemoveSourceError(null);
+    setIsSavingSource(false);
+    setSaveSourceError(null);
     ocrRun.invalidate();
   }
 
@@ -319,6 +323,26 @@ export function ImportSourceModal({
     }
   }
 
+  async function handleSaveSource(content: string) {
+    if (!existingSource) {
+      return;
+    }
+
+    setIsSavingSource(true);
+    setSaveSourceError(null);
+
+    try {
+      await updateSource(existingSource.id, content);
+      await mutateSource();
+      setIsSavingSource(false);
+    } catch (err) {
+      setSaveSourceError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+      setIsSavingSource(false);
+    }
+  }
+
   async function handleRemoveSource() {
     if (!existingSource) {
       return;
@@ -343,7 +367,7 @@ export function ImportSourceModal({
     <Modal
       opened={opened}
       onClose={handleClose}
-      title="Import Source"
+      title="Create from PDF"
       classNames={{ content: styles.content, body: styles.body }}
       // Near-full desktop width with normal dashboard margins still
       // visible: Mantine's own Modal.Inner reserves a *default* 5vw of
@@ -400,6 +424,9 @@ export function ImportSourceModal({
             onRemove={handleRemoveSource}
             isRemoving={isRemovingSource}
             removeError={removeSourceError}
+            onSave={handleSaveSource}
+            isSaving={isSavingSource}
+            saveError={saveSourceError}
           />
         )}
 

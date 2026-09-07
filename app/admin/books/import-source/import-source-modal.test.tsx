@@ -13,6 +13,7 @@ const {
   createModuleMock,
   createSourceMock,
   deleteSourceMock,
+  updateSourceMock,
   createMaterialMock,
 } = vi.hoisted(() => ({
   usePdfDocumentMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   createModuleMock: vi.fn(),
   createSourceMock: vi.fn(),
   deleteSourceMock: vi.fn(),
+  updateSourceMock: vi.fn(),
   createMaterialMock: vi.fn(),
 }));
 
@@ -52,6 +54,7 @@ vi.mock("./modules-client", () => ({
 vi.mock("./sources-client", () => ({
   createSource: createSourceMock,
   deleteSource: deleteSourceMock,
+  updateSource: updateSourceMock,
 }));
 
 vi.mock("./materials-client", () => ({
@@ -154,6 +157,9 @@ describe("ImportSourceModal", () => {
       Promise.resolve({ id: "source-1", bookId, content }),
     );
     deleteSourceMock.mockResolvedValue(undefined);
+    updateSourceMock.mockImplementation((id: string, content: string) =>
+      Promise.resolve({ id, bookId: "book-1", content }),
+    );
     createMaterialMock.mockImplementation(
       (bookId: string, moduleId: string, content: string) =>
         Promise.resolve({
@@ -384,6 +390,57 @@ describe("ImportSourceModal", () => {
       await vi.waitFor(() => expect(deleteSourceMock).toHaveBeenCalled());
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(createMaterialMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Save source text", () => {
+    function mockExistingSource(content = "Saved text") {
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/sources?bookId=")) {
+          return Promise.resolve(
+            jsonResponse({
+              data: [{ id: "source-1", bookId: "book-1", content }],
+            }),
+          );
+        }
+        throw new Error(`Unhandled fetch in test: ${url}`);
+      });
+    }
+
+    it("calls updateSource with the edited text when Save changes is clicked", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByLabelText("Saved source text");
+
+      fireEvent.change(screen.getByLabelText("Saved source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(updateSourceMock).toHaveBeenCalledWith(
+          "source-1",
+          "Edited text",
+        ),
+      );
+    });
+
+    it("keeps the edited text visible and shows an error when saving fails", async () => {
+      mockExistingSource();
+      updateSourceMock.mockRejectedValueOnce(new Error("Cannot save."));
+      renderModal();
+      await screen.findByLabelText("Saved source text");
+
+      fireEvent.change(screen.getByLabelText("Saved source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(await screen.findByText("Cannot save.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Saved source text")).toHaveValue(
+        "Edited text",
+      );
     });
   });
 

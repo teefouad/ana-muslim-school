@@ -76,7 +76,7 @@ export default function AddBookPage() {
             disabled
             leftSection={<Upload size={16} aria-hidden="true" />}
           >
-            Import Source
+            Create from PDF
           </Button>
           <Button type="submit" form={BOOK_FORM_ID} loading={isSubmitting}>
             Add book

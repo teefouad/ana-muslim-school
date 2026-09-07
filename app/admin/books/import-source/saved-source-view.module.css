@@ -15,9 +15,8 @@
 
 /* Stretches root -> wrapper -> input to fill `.body`'s remaining height,
    same technique as ocr-page-card.module.css's `.textareaRoot`/
-   `.textareaWrapper` -- the explicit white background/dark text (ANA-71
-   spec) is set inline via `styles.input` in saved-source-view.tsx since
-   this is a fixed saved-document surface, not a themed form control. */
+   `.textareaWrapper`. No color overrides here -- this Textarea uses the
+   same themed styling as the rest of the dashboard. */
 .textareaRoot {
   flex: 1;
   display: flex;

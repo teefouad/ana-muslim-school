@@ -116,7 +116,7 @@ export default function EditBookPage() {
             onClick={() => setImportSourceOpened(true)}
             leftSection={<Upload size={16} aria-hidden="true" />}
           >
-            Import Source
+            Create from PDF
           </Button>
           <Button
             type="submit"
