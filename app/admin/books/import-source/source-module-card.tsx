@@ -40,17 +40,7 @@ export function SourceModuleCard({
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <div
-      // Grows to fill any extra space in the Modules list while expanded,
-      // so the Markdown editor inside actually uses the available height
-      // instead of sizing to its own small minimum -- collapsed keeps its
-      // natural header-only height regardless (see .expanded in
-      // source-module-card.module.css).
-      className={[styles.card, expanded && styles.expanded]
-        .filter(Boolean)
-        .join(" ")}
-      data-testid={`source-module-card-${index}`}
-    >
+    <div className={styles.card} data-testid={`source-module-card-${index}`}>
       <button
         type="button"
         className={styles.header}

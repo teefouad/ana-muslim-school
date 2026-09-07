@@ -15,7 +15,8 @@
   --baseText: var(--mantine-color-text);
   --baseTextContrast: var(--mantine-color-white);
 
-  font-family: var(--mantine-font-family);
+  font-family: "Geist Mono", "Geist Mono Fallback";
+
   border: 1px solid #292929;
   border-radius: 12px;
   overflow: hidden;
