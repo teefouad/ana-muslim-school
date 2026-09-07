@@ -8,15 +8,22 @@ import {
   listSourcesService,
 } from "@/lib/sources/sources-service";
 
-/** Lists all `sources` records. */
-export async function GET() {
+/** Lists `sources` records, optionally filtered to a single Book via
+ * `?bookId=` (ANA-71) -- the filter is applied by the repository's own
+ * Firestore query, not by fetching every Source and filtering here. */
+export async function GET(request: Request) {
   const auth = await requireBooksPermission("read");
 
   if (!auth.ok) {
     return auth.response;
   }
 
-  const data = await listSourcesService();
+  // An empty/whitespace-only `?bookId=` (e.g. a caller building the URL
+  // with an unset variable) is treated as "no filter" rather than as a
+  // literal filter value that can never match a real Book id (PR review).
+  const rawBookId = new URL(request.url).searchParams.get("bookId")?.trim();
+  const bookId = rawBookId ? rawBookId : undefined;
+  const data = await listSourcesService(bookId);
 
   return NextResponse.json({ data });
 }

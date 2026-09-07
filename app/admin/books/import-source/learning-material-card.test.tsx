@@ -162,4 +162,22 @@ describe("LearningMaterialCard", () => {
     const editable = await screen.findByRole("textbox");
     expect(editable.closest("[dir]")).toHaveAttribute("dir", "ltr");
   });
+
+  it("makes the Learning Material editor read-only when disabled", async () => {
+    // PR review (ANA-71, blocking): while Finish is persisting the
+    // Learning Material snapshot it captured, the editor must not accept
+    // further edits -- otherwise the UI can show text that was never
+    // actually persisted.
+    renderCard({ learningMaterial: "Existing notes", disabled: true });
+
+    const editable = await screen.findByRole("textbox");
+    expect(editable).toHaveAttribute("contenteditable", "false");
+  });
+
+  it("leaves the Learning Material editor editable by default", async () => {
+    renderCard({ learningMaterial: "Existing notes" });
+
+    const editable = await screen.findByRole("textbox");
+    expect(editable).toHaveAttribute("contenteditable", "true");
+  });
 });

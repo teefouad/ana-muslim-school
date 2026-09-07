@@ -102,6 +102,7 @@ export function LearningMaterialView({
             }
             direction={direction}
             fontScale={fontScale}
+            disabled={isFinishing}
           />
         ))}
       </div>

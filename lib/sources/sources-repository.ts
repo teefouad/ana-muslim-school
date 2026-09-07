@@ -45,10 +45,17 @@ export async function getSourceById(id: string): Promise<Source | null> {
   return snapshot.exists ? parseSourceDocument(snapshot) : null;
 }
 
-export async function listSources(): Promise<Source[]> {
-  const snapshot = await getAdminFirestore()
-    .collection(SOURCES_COLLECTION)
-    .get();
+/**
+ * Lists Source documents, optionally filtered to a single Book via a
+ * Firestore `where` query -- not a full collection fetch filtered
+ * client-side (see ANA-71's Import Source "which Book already has a saved
+ * Source" lookup).
+ */
+export async function listSources(bookId?: string): Promise<Source[]> {
+  const collection = getAdminFirestore().collection(SOURCES_COLLECTION);
+  const snapshot = await (
+    bookId ? collection.where("bookId", "==", bookId) : collection
+  ).get();
 
   return snapshot.docs
     .map(parseSourceDocument)
