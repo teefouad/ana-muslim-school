@@ -333,4 +333,105 @@ describe("ImportSourceModal", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  async function reachBuildModulesWithOneModule() {
+    requestOcrUploadUrlMock.mockResolvedValue({
+      uploadUrl: "https://storage/signed",
+      objectPath: "tmp/ocr-uploads/user-1/book.pdf",
+    });
+    uploadPdfToStorageMock.mockResolvedValue(undefined);
+    requestOcrMock.mockResolvedValueOnce({
+      model: "mistral-ocr-latest",
+      pagesProcessed: 1,
+      docSizeBytes: 100,
+      pages: [{ pageNumber: 1, markdown: "Some source text" }],
+    });
+
+    renderModal();
+    await selectFile();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
+    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    await screen.findByRole("button", { name: "Create Modules" });
+    fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
+
+    const source = screen.getByText(/Some source text/);
+    const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+    const textNode = walker.nextNode() as Text;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 4);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
+  }
+
+  it("Create Learning Material advances to the Learning Material step, showing the filename and Module count", async () => {
+    await reachBuildModulesWithOneModule();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Learning Material" }),
+    );
+
+    expect(screen.getByText("book.pdf")).toBeInTheDocument();
+    expect(screen.getByText("1 module created")).toBeInTheDocument();
+    expect(await screen.findByText("Some")).toBeInTheDocument();
+  });
+
+  it("Back to Modules returns to the Module builder, preserving the temporary Modules", async () => {
+    await reachBuildModulesWithOneModule();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Learning Material" }),
+    );
+    await screen.findByText("1 module created");
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to Modules" }));
+
+    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
+  });
+
+  it("returning to the Module builder and back to Learning Material shows the same Module, not a reset flow", async () => {
+    // The Learning Material screen's own persistence of *edits* across a
+    // remount (Back -> Create Learning Material again) is covered by
+    // learning-material-view.test.tsx, using non-empty seed content --
+    // jsdom's contenteditable emulation can't place a cursor in a
+    // genuinely empty Lexical document (see components/ui/markdown-editor
+    // .test.tsx's own tests, which only ever type onto existing content),
+    // so a real Learning Material edit can't be driven end-to-end from
+    // this modal's actual empty starting state. This instead exercises
+    // the modal-level plumbing: the same Module set (not e.g. an emptied
+    // or duplicated one) is what comes back after a Back -> forward round
+    // trip.
+    await reachBuildModulesWithOneModule();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Learning Material" }),
+    );
+    await screen.findByText("1 module created");
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to Modules" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Learning Material" }),
+    );
+
+    expect(screen.getByText("1 module created")).toBeInTheDocument();
+    expect(await screen.findByText("Some")).toBeInTheDocument();
+  });
+
+  it("makes no API/network requests from the Learning Material step", async () => {
+    await reachBuildModulesWithOneModule();
+    vi.stubGlobal("fetch", vi.fn());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create Learning Material" }),
+    );
+    await screen.findByText("1 module created");
+    await screen.findByRole("toolbar");
+
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });

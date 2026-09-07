@@ -60,6 +60,7 @@ const meta = {
     modules: [],
     onModulesChange: () => {},
     onBack: () => {},
+    onCreateLearningMaterial: () => {},
   },
   render: (args) => (
     <div style={{ height: "80vh" }}>

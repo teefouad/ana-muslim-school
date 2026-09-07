@@ -62,6 +62,7 @@ function renderView(
     modules: [],
     onModulesChange: vi.fn(),
     onBack: vi.fn(),
+    onCreateLearningMaterial: vi.fn(),
     ...overrides,
   };
 
@@ -164,9 +165,10 @@ describe("ModuleBuilderView", () => {
     ).toBeDisabled();
   });
 
-  it("enables Create Learning Material once a Module exists, and clicking it performs no request", () => {
+  it("enables Create Learning Material once a Module exists, and clicking it calls onCreateLearningMaterial without making a request", () => {
     const modules: TempModule[] = [{ id: "module-1", text: "Selected text" }];
-    renderView({ modules });
+    const onCreateLearningMaterial = vi.fn();
+    renderView({ modules, onCreateLearningMaterial });
 
     const button = screen.getByRole("button", {
       name: "Create Learning Material",
@@ -175,6 +177,7 @@ describe("ModuleBuilderView", () => {
 
     fireEvent.click(button);
 
+    expect(onCreateLearningMaterial).toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
 

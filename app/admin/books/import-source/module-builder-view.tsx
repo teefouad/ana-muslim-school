@@ -23,12 +23,13 @@ export interface ModuleBuilderViewProps {
   modules: TempModule[];
   onModulesChange: (modules: TempModule[]) => void;
   onBack: () => void;
+  onCreateLearningMaterial: () => void;
 }
 
-// Step 4, the final functional screen in the Import Source modal (ANA-68).
-// No pdf.js dependency here (unlike PdfViewer/OcrResultView) -- the source
-// text is already extracted -- so this needs no next/dynamic({ssr:false})
-// wrapper.
+// Step 4 in the Import Source modal (ANA-68); "Create Learning Material"
+// advances to the Learning Material step (ANA-69). No pdf.js dependency
+// here (unlike PdfViewer/OcrResultView) -- the source text is already
+// extracted -- so this needs no next/dynamic({ssr:false}) wrapper.
 export function ModuleBuilderView({
   fileName,
   ocrResult,
@@ -40,6 +41,7 @@ export function ModuleBuilderView({
   modules,
   onModulesChange,
   onBack,
+  onCreateLearningMaterial,
 }: ModuleBuilderViewProps) {
   const sourceRef = useRef<HTMLPreElement>(null);
   const [selectedText, setSelectedText] = useState("");
@@ -179,9 +181,7 @@ export function ModuleBuilderView({
         <Button
           rightSection={<ArrowRight size={16} aria-hidden="true" />}
           disabled={modules.length === 0}
-          // Intentionally no onClick -- Create Learning Material is present
-          // per ANA-68 but must perform no action in this card. Generation/
-          // persistence is explicitly follow-up work.
+          onClick={onCreateLearningMaterial}
         >
           Create Learning Material
         </Button>
