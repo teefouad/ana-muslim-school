@@ -1,3 +1,7 @@
+.root {
+  max-height: 584px;
+}
+
 .disabled {
   opacity: 0.6;
 }

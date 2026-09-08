@@ -48,7 +48,7 @@ export function ModulesPanel({
 
   return (
     <ItemList<MockModule>
-      className={[className, disabled && styles.disabled]
+      className={[className, styles.root, disabled && styles.disabled]
         .filter(Boolean)
         .join(" ")}
       title="Modules"
