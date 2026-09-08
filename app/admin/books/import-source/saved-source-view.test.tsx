@@ -2,7 +2,7 @@ import { useState } from "react";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceModuleEntry } from "./import-source-types";
 
@@ -578,6 +578,14 @@ describe("SavedSourceView", () => {
         },
       );
     }
+
+    // The spy above is created fresh per test, on the shared
+    // `Element.prototype` -- restore it after each test so the mocked
+    // geometry can't leak into unrelated tests in this file (Copilot
+    // review).
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
 
     it("reorders persisted Modules via keyboard drag and reports the full new order", async () => {
       stubItemRects(["module-1", "module-2"]);

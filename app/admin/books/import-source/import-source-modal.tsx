@@ -323,16 +323,33 @@ export function ImportSourceModal({
     setSaveWorkspaceError(null);
   }
 
+  // Whether the currently displayed order differs from what's actually
+  // persisted (ANA-79) -- `null` (rather than `false`) whenever any entry
+  // is still unresolved (`moduleId === null`), since that alone already
+  // makes the workspace dirty via the check below and a temp key can't be
+  // compared against `savedWorkspaceModuleOrder`'s real ids anyway.
+  const currentWorkspaceModuleOrder = workspaceEntries.every(
+    (entry) => entry.moduleId,
+  )
+    ? workspaceEntries.map((entry) => entry.moduleId as string)
+    : null;
+  const isWorkspaceOrderDirty =
+    currentWorkspaceModuleOrder !== null &&
+    !arraysEqual(currentWorkspaceModuleOrder, savedWorkspaceModuleOrder);
+
   // Whether the saved-Source workspace has anything Save Changes hasn't
-  // persisted yet (ANA-75): the Source Text draft, any Module's Learning
-  // Material draft (either language), or a new temporary Module created in
-  // this session (`moduleId === null`, always dirty until Save Changes
-  // creates it). Reuses the exact same "did this actually change" baselines
-  // Save Changes itself already tracks for retry-safety
-  // (`savedWorkspaceSourceContent`/`savedMaterialContentByModuleId`), so
-  // there's only one notion of "changed" for this workspace, not two.
+  // persisted yet (ANA-75, order dirty-checking added ANA-79): the Source
+  // Text draft, a reordered Module list, any Module's Learning Material
+  // draft (either language), or a new temporary Module created in this
+  // session (`moduleId === null`, always dirty until Save Changes creates
+  // it). Reuses the exact same "did this actually change" baselines Save
+  // Changes itself already tracks for retry-safety
+  // (`savedWorkspaceSourceContent`/`savedMaterialContentByModuleId`/
+  // `savedWorkspaceModuleOrder`), so there's only one notion of "changed"
+  // for this workspace, not two.
   const isWorkspaceDirty =
     workspaceContent !== savedWorkspaceSourceContent ||
+    isWorkspaceOrderDirty ||
     workspaceEntries.some(
       (entry) =>
         !entry.moduleId ||
@@ -966,7 +983,20 @@ export function ImportSourceModal({
               entries={workspaceEntries}
               onEntriesChange={setWorkspaceEntries}
               onModuleDeleted={async () => {
-                await mutateWorkspaceModules();
+                // A persisted delete already removed the Module from
+                // `Book.modules` server-side (and the entry from
+                // `workspaceEntries` locally, via `SavedSourceView`'s own
+                // `onEntriesChange`) -- resyncing `savedWorkspaceModuleOrder`
+                // to the now-revalidated server order keeps the dirty
+                // check (`isWorkspaceOrderDirty`, ANA-79) from treating
+                // this already-persisted removal as an unsaved reorder
+                // (PR review, blocking).
+                const updatedModules = await mutateWorkspaceModules();
+                if (updatedModules) {
+                  setSavedWorkspaceModuleOrder(
+                    updatedModules.map((module) => module.id),
+                  );
+                }
                 await mutateWorkspaceMaterials();
               }}
               onRemove={handleRemoveSourceRequest}

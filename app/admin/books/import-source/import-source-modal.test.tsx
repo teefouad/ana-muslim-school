@@ -1127,6 +1127,14 @@ describe("ImportSourceModal", () => {
       );
     }
 
+    // The spy above is created fresh per test, on the shared
+    // `Element.prototype` -- restore it after each test so the mocked
+    // geometry can't leak into unrelated tests in this file (Copilot
+    // review).
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     async function dragFirstCardDown() {
       const card = screen.getByTestId("module-card-module-1");
       const handle = card.querySelector('span[role="button"]') as HTMLElement;
@@ -1978,6 +1986,110 @@ describe("ImportSourceModal", () => {
         screen.getByText("Your changes have not been saved and will be lost."),
       ).toBeInTheDocument();
       expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("blocks closing after a reorder-only change (no content/Material edit), and Save changes clears it (ANA-79, PR review)", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      const restoreRects = vi
+        .spyOn(Element.prototype, "getBoundingClientRect")
+        .mockImplementation(function (this: Element) {
+          const container = this.closest('[data-testid^="module-card-"]');
+          const id = container
+            ?.getAttribute("data-testid")
+            ?.replace("module-card-", "");
+          const order = ["module-1", "module-2"];
+          const index = id ? order.indexOf(id) : -1;
+          const top = index === -1 ? 0 : index * 60;
+          return {
+            top,
+            bottom: top + 60,
+            left: 0,
+            right: 300,
+            width: 300,
+            height: 60,
+            x: 0,
+            y: top,
+            toJSON() {},
+          } as DOMRect;
+        });
+      const card = screen.getByTestId("module-card-module-1");
+      const handle = card.querySelector('span[role="button"]') as HTMLElement;
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      restoreRects.mockRestore();
+    });
+
+    it("does not treat an already-persisted Delete as an unsaved reorder -- the close guard stays clear (ANA-79, PR review)", async () => {
+      let currentModuleIds = ["module-1", "module-2"];
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+        const url = String(input);
+
+        if (url.startsWith("/api/v1/sources?bookId=")) {
+          return Promise.resolve(
+            jsonResponse({
+              data: [
+                { id: "source-1", bookId: "book-1", content: "Saved text" },
+              ],
+            }),
+          );
+        }
+        if (url === "/api/v1/books/book-1/modules") {
+          return Promise.resolve(
+            jsonResponse({
+              data: currentModuleIds.map((id) => moduleFixture(id)),
+            }),
+          );
+        }
+        if (url.startsWith("/api/v1/materials?bookId=")) {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        throw new Error(`Unhandled fetch in test: ${url}`);
+      });
+      deleteModuleMock.mockImplementationOnce(async () => {
+        currentModuleIds = currentModuleIds.filter((id) => id !== "module-1");
+      });
+
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() =>
+        expect(deleteModuleMock).toHaveBeenCalledWith("book-1", "module-1"),
+      );
+      await vi.waitFor(() =>
+        expect(screen.getByText("Modules (1)")).toBeInTheDocument(),
+      );
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it("Keep editing closes only the confirmation and preserves the edited workspace", async () => {

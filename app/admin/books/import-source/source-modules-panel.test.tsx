@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { SourceModulesPanel } from "./source-modules-panel";
@@ -70,6 +70,13 @@ function renderPanel(
 }
 
 describe("SourceModulesPanel", () => {
+  // `stubItemRects` spies `Element.prototype.getBoundingClientRect` fresh
+  // per test -- restore it after each so the mocked geometry can't leak
+  // into unrelated tests in this file (Copilot review).
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("shows the Modules count and each item as the shared Module card", () => {
     renderPanel();
 

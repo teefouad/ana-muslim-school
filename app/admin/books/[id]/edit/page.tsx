@@ -25,10 +25,7 @@ import {
 } from "../../book-form";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
-import {
-  deleteModule,
-  reorderModules,
-} from "../../import-source/modules-client";
+import { deleteModule } from "../../import-source/modules-client";
 import type { MockModule } from "../../mock-modules";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
@@ -73,10 +70,43 @@ export default function EditBookPage() {
   } = useSWR(book ? `/api/v1/books/${book.id}/modules` : null, (url) =>
     fetchJson<{ data: Module[] }>(url).then((response) => response.data),
   );
-  const modules: MockModule[] = (modulesData ?? []).map((module) => ({
+  const serverModules: MockModule[] = (modulesData ?? []).map((module) => ({
     id: module.id,
     title: getModuleLabel(module),
   }));
+  // A pending drag-and-drop reorder, not yet persisted (ANA-79) -- `null`
+  // means "show the server order as-is". Module sorting on this page is a
+  // local draft: dropping a Module never makes a network request by
+  // itself, only Save changes (the Book form's own submit) persists it,
+  // bundled into that same `PATCH /api/v1/books/{bookId}` request as the
+  // rest of the form's fields (the endpoint already accepts `modules`
+  // alongside other writable fields -- see lib/books/validation.ts).
+  const [moduleOrderDraft, setModuleOrderDraft] = useState<MockModule[] | null>(
+    null,
+  );
+
+  // If the server's Module *set* has changed since the draft was built --
+  // e.g. a Module was created or deleted elsewhere (Import Source's Finish/
+  // Save changes, or this page's own Delete) while a reorder was pending --
+  // the draft can no longer be trusted to cover every current Module, so
+  // fall back to the fresh server order rather than risk submitting a
+  // stale/incomplete reorder. A same-set reorder of the *same* Modules is
+  // exactly what `isValidReorder` already checks (ANA-62). Runs during
+  // render (React's documented "adjusting state when a prop changes"
+  // pattern) rather than a `useEffect`, which this project's lint config
+  // flags any state update inside as an error (see AGENTS.md).
+  if (
+    modulesData &&
+    moduleOrderDraft &&
+    !isValidReorder(
+      moduleOrderDraft.map((module) => module.id),
+      modulesData.map((module) => module.id),
+    )
+  ) {
+    setModuleOrderDraft(null);
+  }
+
+  const modules: MockModule[] = moduleOrderDraft ?? serverModules;
   // Whether this Book already has a saved Source (ANA-71) -- fetched here,
   // not gated on the Import Source modal being open, since the header
   // button's own label (Create from PDF vs. View source text) needs to
@@ -99,12 +129,6 @@ export default function EditBookPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importSourceOpened, setImportSourceOpened] = useState(false);
-  // True while a drag-and-drop reorder is being persisted through the
-  // Book.modules reorder PATCH (ANA-79) -- suspends further reordering
-  // (`ModulesPanel`'s `disabled`) so overlapping reorder writes can't race
-  // each other.
-  const [isReordering, setIsReordering] = useState(false);
-  const [reorderError, setReorderError] = useState<string | null>(null);
 
   const notFound = error instanceof HttpError && error.status === 404;
 
@@ -113,67 +137,39 @@ export default function EditBookPage() {
   // `book` is always set here: ModulesPanel only renders once it has loaded
   // (see the render below). Revalidates the Modules SWR data on success so
   // the row disappears without a page reload; a rejection propagates to
-  // ModulesPanel, which keeps the row visible and shows the error.
+  // ModulesPanel, which keeps the row visible and shows the error. Clears
+  // any pending reorder draft -- it necessarily referenced the now-deleted
+  // Module, so it can no longer be replayed as-is (the render-time check
+  // above would also catch this once `modulesData` revalidates, but
+  // clearing it immediately avoids a stale drag order flashing first).
   async function handleDeleteModule(module: MockModule) {
     if (!book) {
       return;
     }
 
-    setReorderError(null);
-
     await deleteModule(book.id, module.id);
     await mutateModules();
+    setModuleOrderDraft(null);
   }
 
-  // Persists a drag-and-drop reorder of the real, API-backed Modules
-  // (ANA-79) -- `ModulesPanel`'s `onModulesChange` previously stayed a
-  // no-op here, so a drop visually snapped back once SWR's unchanged
-  // `modulesData` re-rendered the panel (see the panel's own render below).
-  // `book`/`modulesData` are always set here: the panel only renders once
-  // both have loaded. `ModulesPanel`'s Add action (still out of scope for
-  // this Book-level panel -- ANA-79) funnels through this same prop, so
-  // this only actually persists a same-set reorder; anything else (Add's
-  // extra, never-persisted blank entry) is left exactly as inert as before.
-  async function handleReorderModules(reordered: MockModule[]) {
+  // Updates the local Module order draft (ANA-79) -- a plain client-side
+  // state change, no network request. Validated as a same-set reorder of
+  // whatever is *currently displayed* (the draft if one exists, otherwise
+  // the server order) so `ModulesPanel`'s Add action -- which funnels
+  // through this same prop and is still out of scope for this Book-level
+  // panel (ANA-70) -- can't slip its extra, never-persisted blank entry
+  // through as a "reorder".
+  function handleReorderModules(reordered: MockModule[]) {
     if (
-      !book ||
-      !modulesData ||
       !isValidReorder(
         reordered.map((module) => module.id),
-        modulesData.map((module) => module.id),
+        modules.map((module) => module.id),
       )
     ) {
       return;
     }
 
-    const previousModules = modulesData;
-    const reorderedModules = reordered.map((module) =>
-      modulesData.find((candidate) => candidate.id === module.id)!,
-    );
-
-    // Optimistic, unvalidated update (`false`) -- shows the dropped order
-    // immediately instead of waiting on the PATCH round-trip, matching how
-    // the drag itself already feels instant.
-    await mutateModules(reorderedModules, false);
-    setIsReordering(true);
-    setReorderError(null);
-
-    try {
-      await reorderModules(
-        book.id,
-        reorderedModules.map((module) => module.id),
-      );
-      await mutateModules();
-    } catch (err) {
-      // Reverts to the authoritative server order rather than leaving the
-      // optimistic (never-persisted) order on screen.
-      await mutateModules(previousModules, false);
-      setReorderError(
-        err instanceof Error ? err.message : "Something went wrong.",
-      );
-    } finally {
-      setIsReordering(false);
-    }
+    setModuleOrderDraft(reordered);
   }
 
   async function handleSubmit(values: BookFormValues) {
@@ -181,10 +177,21 @@ export default function EditBookPage() {
     setIsSubmitting(true);
 
     try {
+      // The reordered Module ids are only ever included when the user
+      // actually dragged something in this session -- otherwise `modules`
+      // stays absent from the body entirely, matching the endpoint's own
+      // "omitted field is left unchanged" contract (lib/books/validation.ts)
+      // and this page's existing no-drag save behavior.
+      const body: Record<string, unknown> = toBookWritableFields(values);
+
+      if (moduleOrderDraft) {
+        body.modules = moduleOrderDraft.map((module) => module.id);
+      }
+
       const response = await fetch(`/api/v1/books/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toBookWritableFields(values)),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -194,8 +201,19 @@ export default function EditBookPage() {
         );
       }
 
+      // Only relevant if a future change keeps the user on this page after
+      // a successful save instead of navigating away -- revalidates so the
+      // Modules panel reflects the now-persisted order rather than the
+      // (no-longer-authoritative) local draft.
+      if (moduleOrderDraft) {
+        await mutateModules();
+      }
+
       router.push("/admin/books");
     } catch (err) {
+      // The reordered draft (if any) is deliberately left in place here --
+      // a failed save must not discard the user's chosen order, only
+      // report the failure so they can retry.
       setSubmitError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
@@ -277,29 +295,22 @@ export default function EditBookPage() {
                 </Text>
               </Group>
             ) : (
-              <>
-                {reorderError && (
-                  <Alert color="red" mb="sm">
-                    {reorderError}
-                  </Alert>
-                )}
-                {/* Reorder is real (ANA-79): `onModulesChange` persists a
-                    drop through the Book.modules reorder API and reverts to
-                    the authoritative server order on failure -- see
-                    handleReorderModules. Add still isn't persisted from
-                    this panel (ANA-70 scope boundary -- see
-                    modules-panel.tsx); handleReorderModules leaves it
-                    exactly as inert as before. Delete is real (ANA-77):
-                    `onDeleteModule` persists it through the Module DELETE
-                    API and revalidates this page's own Modules SWR data on
-                    success. */}
-                <ModulesPanel
-                  modules={modules}
-                  onModulesChange={handleReorderModules}
-                  disabled={isReordering}
-                  onDeleteModule={handleDeleteModule}
-                />
-              </>
+              // Reorder is a local draft only (ANA-79): `onModulesChange`
+              // just updates `moduleOrderDraft`, with no network request --
+              // Save changes (the Book form's own submit, above) is what
+              // persists the final order, bundled into that same PATCH.
+              // Add still isn't persisted from this panel (ANA-70 scope
+              // boundary -- see modules-panel.tsx); handleReorderModules'
+              // same-set validation leaves it exactly as inert as before.
+              // Delete is real and immediate (ANA-77, unchanged):
+              // `onDeleteModule` persists it through the Module DELETE API
+              // and revalidates this page's own Modules SWR data on
+              // success.
+              <ModulesPanel
+                modules={modules}
+                onModulesChange={handleReorderModules}
+                onDeleteModule={handleDeleteModule}
+              />
             )}
           </Box>
         </Flex>
