@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Alert, Button, Group, Text, Textarea } from "@mantine/core";
 import { Plus, X } from "lucide-react";
 
@@ -8,12 +8,20 @@ import type {
   TextDirection,
   WorkspaceModuleEntry,
 } from "./import-source-types";
+import { deleteModule } from "./modules-client";
+import { translateArabicToEnglish } from "./translate-client";
 import { FontSizeControl } from "./font-size-control";
 import { LearningMaterialModuleCard } from "./learning-material-module-card";
 import { TextDirectionControl } from "./text-direction-control";
 import styles from "./saved-source-view.module.css";
 
+const TEMPORARY_DELETE_CONFIRM_DESCRIPTION =
+  "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.";
+
 export interface SavedSourceViewProps {
+  /** The Book this workspace belongs to -- needed to call the Module
+   * DELETE API for a persisted entry (ANA-77). */
+  bookId: string;
   /** The persisted Source's draft text (ANA-71/ANA-72) -- editable; Save
    * Changes persists it back to the Source record when it changed. */
   content: string;
@@ -22,7 +30,19 @@ export interface SavedSourceViewProps {
    * Modules first followed by any created from a Source Text selection in
    * this modal session (ANA-72). */
   entries: WorkspaceModuleEntry[];
-  onEntriesChange: (entries: WorkspaceModuleEntry[]) => void;
+  /** Accepts a plain array like a normal controlled-value setter, or a
+   * functional updater `(current) => next` -- the real caller (the Import
+   * Source modal) passes its own `useState` setter directly, so this
+   * component can rely on the functional form to apply a result (e.g. a
+   * finished Translate request, see `handleTranslateEntry`) against
+   * whatever `entries` looks like *at that moment*, not a stale value
+   * captured before an earlier `await` (PR review, blocking -- ANA-77). */
+  onEntriesChange: Dispatch<SetStateAction<WorkspaceModuleEntry[]>>;
+  /** Called once a persisted Module's delete request succeeds, so the
+   * caller can revalidate its own Modules/Materials SWR caches (ANA-77) --
+   * never called for a local-only (unsaved, `moduleId === null`) delete,
+   * since nothing was persisted to revalidate. */
+  onModuleDeleted?: () => void | Promise<void>;
   onRemove: () => void;
   /** True while the DELETE request is in flight -- disables the button and
    * shows a loading state. */
@@ -54,10 +74,12 @@ export interface SavedSourceViewProps {
 // still create a Module from a passage), the right panel lists every
 // persisted Module alongside its Learning Material, editable in place.
 export function SavedSourceView({
+  bookId,
   content,
   onContentChange,
   entries,
   onEntriesChange,
+  onModuleDeleted,
   onRemove,
   isRemoving,
   removeError,
@@ -71,6 +93,12 @@ export function SavedSourceView({
 }: SavedSourceViewProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [hasSelection, setHasSelection] = useState(false);
+  // Set to the entry currently being deleted through the Module DELETE API
+  // -- disables every card's delete action while it's in flight, mirroring
+  // `isSaving` (ANA-77). A local-only (unsaved) delete never sets this: it
+  // has nothing to await.
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function handleSelect() {
     const el = textareaRef.current;
@@ -128,6 +156,76 @@ export function SavedSourceView({
     onEntriesChange(
       entries.map((entry) =>
         entry.key === key ? { ...entry, material: value } : entry,
+      ),
+    );
+  }
+
+  // Deletes a single Module card (ANA-77) -- called only after the card's
+  // own confirmation dialog has already been accepted. `entry.moduleId` is
+  // read at call time, so a temporary entry already promoted to a real
+  // Module mid partial-Save (see import-source-modal.tsx's
+  // handleSaveWorkspace) is correctly treated as persisted here, never
+  // locally orphaned. Removes the entry through a functional update
+  // against the *current* `entries` when the request settles, same
+  // reasoning as `handleTranslateEntry` -- the workspace stays editable
+  // while a persisted delete is in flight, so any other card's concurrent
+  // edit must survive it resolving late, not get reverted by a stale
+  // array.
+  async function handleDeleteEntry(entry: WorkspaceModuleEntry) {
+    setDeleteError(null);
+
+    if (!entry.moduleId) {
+      onEntriesChange((current) =>
+        current.filter((candidate) => candidate.key !== entry.key),
+      );
+      return;
+    }
+
+    setDeletingKey(entry.key);
+
+    try {
+      await deleteModule(bookId, entry.moduleId);
+      onEntriesChange((current) =>
+        current.filter((candidate) => candidate.key !== entry.key),
+      );
+      await onModuleDeleted?.();
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setDeletingKey(null);
+    }
+  }
+
+  // Translates a single card's Arabic draft to English (ANA-77) -- reads
+  // the *current* `entry.material.ar` at call time, so an edit made after
+  // the request started never gets clobbered: only `material.en` is
+  // replaced. Applies the result through a functional update against
+  // whichever `entries` is current *when the request resolves*, not the
+  // `entries` snapshot captured here before the `await` -- the workspace
+  // stays fully editable while translation is in flight, so a concurrent
+  // edit/reorder/delete to a *different* card (or even a further edit to
+  // this same card's Arabic draft) must survive this resolving late,
+  // instead of being silently reverted by a stale array (PR review,
+  // blocking).
+  async function handleTranslateEntry(key: string) {
+    const entry = entries.find((candidate) => candidate.key === key);
+
+    if (!entry) {
+      return;
+    }
+
+    const translated = await translateArabicToEnglish(entry.material.ar);
+
+    onEntriesChange((current) =>
+      current.map((candidate) =>
+        candidate.key === key
+          ? {
+              ...candidate,
+              material: { ...candidate.material, en: translated },
+            }
+          : candidate,
       ),
     );
   }
@@ -229,6 +327,14 @@ export function SavedSourceView({
                     // as the Create-from-PDF card, but persisted Module
                     // reordering is out of scope for this workspace
                     // (ANA-75).
+                    onDelete={() => handleDeleteEntry(entry)}
+                    deleteConfirmDescription={
+                      entry.moduleId
+                        ? undefined
+                        : TEMPORARY_DELETE_CONFIRM_DESCRIPTION
+                    }
+                    deleteDisabled={isSaving || deletingKey !== null}
+                    onTranslate={() => handleTranslateEntry(entry.key)}
                   />
                 ))}
               </div>
@@ -240,6 +346,11 @@ export function SavedSourceView({
       {removeError && (
         <Alert color="red" mx="md" mb="sm">
           {removeError}
+        </Alert>
+      )}
+      {deleteError && (
+        <Alert color="red" mx="md" mb="sm">
+          {deleteError}
         </Alert>
       )}
       {saveError && (

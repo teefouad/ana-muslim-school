@@ -15,6 +15,7 @@ const {
   requestOcrMock,
   useMediaQueryMock,
   createModuleMock,
+  deleteModuleMock,
   createSourceMock,
   deleteSourceMock,
   updateSourceMock,
@@ -27,6 +28,7 @@ const {
   requestOcrMock: vi.fn(),
   useMediaQueryMock: vi.fn(),
   createModuleMock: vi.fn(),
+  deleteModuleMock: vi.fn(),
   createSourceMock: vi.fn(),
   deleteSourceMock: vi.fn(),
   updateSourceMock: vi.fn(),
@@ -55,6 +57,7 @@ vi.mock("./ocr-client", () => ({
 
 vi.mock("./modules-client", () => ({
   createModule: createModuleMock,
+  deleteModule: deleteModuleMock,
 }));
 
 vi.mock("./sources-client", () => ({
@@ -884,6 +887,144 @@ describe("ImportSourceModal", () => {
         ar: "source",
         en: "",
       });
+    });
+
+    it("does not orphan an already-persisted Module through a local-only delete when its own Material POST fails in the same Save Changes attempt (PR review, blocking)", async () => {
+      // Owner review (blocking): a new workspace entry's `moduleId` used to
+      // stay `null` until its Material POST *also* succeeded -- so if the
+      // Module POST succeeded but the Material POST then failed, the
+      // now-editable-again card still looked "unsaved" (`moduleId: null`)
+      // to SavedSourceView's delete decision. Deleting it at that point
+      // removed it from the workspace locally, with no DELETE request,
+      // silently orphaning the Module that already exists under the Book.
+      // The fix promotes `moduleId` the instant the Module POST succeeds
+      // (see handleSaveWorkspace's step 3), before its Material is even
+      // attempted -- this drives that exact sequence end-to-end and
+      // asserts Delete goes through the real Module DELETE API instead.
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (1)")).toBeInTheDocument();
+
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      createMaterialMock.mockRejectedValueOnce(new Error("Network error"));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createModuleMock).toHaveBeenCalledTimes(1);
+
+      // The Module was created before its own Material failed -- deleting
+      // this card now must call the Module DELETE API, never remove it
+      // locally.
+      deleteModuleMock.mockResolvedValueOnce(undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() =>
+        expect(deleteModuleMock).toHaveBeenCalledWith("book-1", "created-1"),
+      );
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: "Module 1" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it("retrying after a partial failure still PATCHes a further edit to an already-succeeded new Module's Material, instead of silently dropping it (PR review, blocking)", async () => {
+      // Regression test for the owner's second re-review (blocking):
+      // step 2's earlier fix excluded every `createdModuleKeys` entry
+      // outright, which also wrongly excluded an entry from a *previous*
+      // attempt whose Module+Material had already succeeded -- so once
+      // Module A's Material succeeded, it could never be PATCHed again on
+      // any later retry, silently dropping a real edit made to it. This
+      // drives: A's Module+Material succeed, B's Material fails, the user
+      // edits A's already-persisted Material, then retries -- A must be
+      // PATCHed with the edit, B's still-missing Material must be created,
+      // and neither Module is re-created.
+      mockExistingSource({ content: "Some source text" });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      textarea.setSelectionRange(5, 11);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+
+      createModuleMock
+        .mockResolvedValueOnce(moduleFixture("created-A"))
+        .mockResolvedValueOnce(moduleFixture("created-B"));
+      createMaterialMock
+        .mockResolvedValueOnce({
+          id: "material-A",
+          bookId: "book-1",
+          moduleId: "created-A",
+          content: { ar: "Some", en: "" },
+        })
+        .mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+
+      // Edit Module A's now-persisted Learning Material before retrying --
+      // its draft is non-empty ("Some", seeded from the Source Text
+      // selection), so jsdom can place a cursor in it, unlike a genuinely
+      // empty Lexical document (see the other tests in this file for the
+      // same constraint).
+      // The Markdown editor is loaded via `next/dynamic({ ssr: false })`
+      // and mounts asynchronously -- wait for both cards' toolbars before
+      // indexing into `findMaterialEditors()`'s result, since `findAllByRole`
+      // itself resolves as soon as *any* match exists (the Source Text
+      // `<textarea>` always has `role="textbox"`), not once every expected
+      // editor has actually mounted.
+      await vi.waitFor(async () =>
+        expect(await screen.findAllByRole("toolbar")).toHaveLength(2),
+      );
+      const editors = await findMaterialEditors();
+      const user = userEvent.setup();
+      await user.click(editors[0]);
+      await user.type(editors[0], "!");
+      expect(await screen.findByText("Some!")).toBeInTheDocument();
+
+      createModuleMock.mockClear();
+      createMaterialMock.mockClear();
+      updateMaterialMock.mockClear();
+      updateMaterialMock.mockResolvedValueOnce({
+        id: "material-A",
+        bookId: "book-1",
+        moduleId: "created-A",
+        content: { ar: "Some!", en: "" },
+      });
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-B",
+        bookId: "book-1",
+        moduleId: "created-B",
+        content: { ar: "source", en: "" },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(updateMaterialMock).toHaveBeenCalledWith("material-A", {
+          ar: "Some!",
+          en: "",
+        }),
+      );
+      expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-B", {
+        ar: "source",
+        en: "",
+      });
+      expect(createModuleMock).not.toHaveBeenCalled();
     });
 
     it("sends the selected Source text as the new Module's Material, never as part of the Module's own draft payload (PR review)", async () => {

@@ -1,0 +1,39 @@
+import { NextResponse } from "next/server";
+
+import { requireBooksPermission } from "@/lib/auth/require-books-permission";
+import { translateArabicToEnglishService } from "@/lib/ai/translate-service";
+import { serviceErrorResponse } from "@/lib/http/error-response";
+import { parseJsonObject } from "@/lib/http/parse-json-object";
+
+/**
+ * Translates a Module's Arabic Learning Material draft to English (ANA-77).
+ * The narrow REST boundary for ANA-74's server-only
+ * `translateArabicToEnglish()` -- treated as a Books authoring action, so it
+ * requires `books.update` like every other Source/Module/Material mutation
+ * (see lib/auth/require-books-permission.ts). Never persists anything
+ * itself; the caller applies the returned text to its own draft state.
+ */
+export async function POST(request: Request) {
+  const auth = await requireBooksPermission("update");
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const body = await parseJsonObject(request);
+
+  if (!body.ok) {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
+  const result = await translateArabicToEnglishService(body.value);
+
+  if (!result.ok) {
+    return serviceErrorResponse(result.error);
+  }
+
+  return NextResponse.json({ data: result.value });
+}

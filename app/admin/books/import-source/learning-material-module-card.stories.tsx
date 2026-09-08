@@ -72,3 +72,46 @@ export const Disabled: Story = {
     disabled: true,
   },
 };
+
+// Delete and Translate wired up (ANA-77): Delete opens this card's own
+// confirmation dialog before calling `onDelete`; Translate is enabled since
+// the Arabic draft is non-empty, and English is empty so it would translate
+// immediately without a replace-confirmation.
+export const WithActions: Story = {
+  args: {
+    material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
+    onDelete: () => {},
+    onTranslate: async () => {},
+  },
+};
+
+// Non-empty English content makes Translate destructive -- clicking it
+// opens a "Replace English translation?" confirmation before calling
+// `onTranslate` (ANA-77).
+export const TranslateReplacesExistingEnglish: Story = {
+  args: {
+    material: {
+      ar: "## الدرس\n\nملخص الدرس هنا.",
+      en: "## Lesson\n\nThe lesson summary goes here.",
+    },
+    onTranslate: async () => {},
+  },
+};
+
+export const TranslateDisabledForEmptyArabic: Story = {
+  args: {
+    material: { ar: "", en: "" },
+    onTranslate: async () => {},
+  },
+};
+
+// A temporary, unsaved Module (Create-from-PDF, or a not-yet-saved View
+// source text entry) gets different delete-confirmation copy (ANA-77).
+export const TemporaryModuleDeleteConfirmation: Story = {
+  args: {
+    material: { ar: "Not yet saved.", en: "" },
+    onDelete: () => {},
+    deleteConfirmDescription:
+      "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.",
+  },
+};

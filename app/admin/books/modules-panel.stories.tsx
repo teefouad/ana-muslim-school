@@ -82,3 +82,13 @@ export const ManyModulesOverflow: Story = {
     modules: MANY_MODULES,
   },
 };
+
+// Edit Book's real, API-backed Modules (ANA-77): Delete shows a
+// confirmation dialog and calls `onDeleteModule` instead of removing the
+// row locally.
+export const PersistedDelete: Story = {
+  args: {
+    modules: SAMPLE_MODULES,
+    onDeleteModule: async () => {},
+  },
+};

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getBookByIdServiceMock,
-  anyMaterialReferencesModuleMock,
+  deleteMaterialsByModuleMock,
   anyQuestionExistsMock,
   createModuleInRepoMock,
   deleteModuleByIdMock,
@@ -12,7 +12,7 @@ const {
   updateModuleByIdMock,
 } = vi.hoisted(() => ({
   getBookByIdServiceMock: vi.fn(),
-  anyMaterialReferencesModuleMock: vi.fn(),
+  deleteMaterialsByModuleMock: vi.fn(),
   anyQuestionExistsMock: vi.fn(),
   createModuleInRepoMock: vi.fn(),
   deleteModuleByIdMock: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("@/lib/books/books-service", () => ({
 }));
 
 vi.mock("@/lib/materials/materials-repository", () => ({
-  anyMaterialReferencesModule: anyMaterialReferencesModuleMock,
+  deleteMaterialsByModule: deleteMaterialsByModuleMock,
 }));
 
 vi.mock("@/lib/questions/questions-repository", () => ({
@@ -304,7 +304,7 @@ describe("deleteModuleService", () => {
     expect(deleteModuleByIdMock).not.toHaveBeenCalled();
   });
 
-  it("returns conflict when a material still references the module", async () => {
+  it("deletes any referencing Materials before deleting the module, rather than blocking on them (ANA-77)", async () => {
     getBookByIdServiceMock.mockResolvedValueOnce({
       ok: true,
       value: validBook,
@@ -314,32 +314,6 @@ describe("deleteModuleService", () => {
       lessons: [],
     });
     anyQuestionExistsMock.mockResolvedValueOnce(false);
-    anyMaterialReferencesModuleMock.mockResolvedValueOnce(true);
-
-    const result = await deleteModuleService(
-      "book-1",
-      "module-1",
-      "a@example.com",
-    );
-
-    expect(result).toEqual({
-      ok: false,
-      error: expect.objectContaining({ code: "conflict" }),
-    });
-    expect(deleteModuleByIdMock).not.toHaveBeenCalled();
-  });
-
-  it("deletes the module when it has no lessons, questions, or referencing materials", async () => {
-    getBookByIdServiceMock.mockResolvedValueOnce({
-      ok: true,
-      value: validBook,
-    });
-    getModuleByIdFromRepoMock.mockResolvedValueOnce({
-      ...validModule,
-      lessons: [],
-    });
-    anyQuestionExistsMock.mockResolvedValueOnce(false);
-    anyMaterialReferencesModuleMock.mockResolvedValueOnce(false);
     deleteModuleByIdMock.mockResolvedValueOnce(true);
 
     const result = await deleteModuleService(
@@ -348,11 +322,36 @@ describe("deleteModuleService", () => {
       "a@example.com",
     );
 
+    expect(deleteMaterialsByModuleMock).toHaveBeenCalledWith(
+      "book-1",
+      "module-1",
+    );
     expect(deleteModuleByIdMock).toHaveBeenCalledWith(
       "book-1",
       "module-1",
       "a@example.com",
     );
+    expect(result).toEqual({ ok: true, value: undefined });
+  });
+
+  it("deletes the module when it has no lessons or questions, and nothing references it", async () => {
+    getBookByIdServiceMock.mockResolvedValueOnce({
+      ok: true,
+      value: validBook,
+    });
+    getModuleByIdFromRepoMock.mockResolvedValueOnce({
+      ...validModule,
+      lessons: [],
+    });
+    anyQuestionExistsMock.mockResolvedValueOnce(false);
+    deleteModuleByIdMock.mockResolvedValueOnce(true);
+
+    const result = await deleteModuleService(
+      "book-1",
+      "module-1",
+      "a@example.com",
+    );
+
     expect(result).toEqual({ ok: true, value: undefined });
   });
 });

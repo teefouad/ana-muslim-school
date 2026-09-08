@@ -44,7 +44,7 @@ const {
   upsertMaterialById,
   deleteMaterialById,
   deleteAllMaterialsForBook,
-  anyMaterialReferencesModule,
+  deleteMaterialsByModule,
 } = await import("./materials-repository");
 
 function setUpFirestoreMocks() {
@@ -299,21 +299,23 @@ describe("deleteAllMaterialsForBook", () => {
   });
 });
 
-describe("anyMaterialReferencesModule", () => {
-  it("queries by bookId AND moduleId with a limit of 1", async () => {
-    whereGetMock.mockResolvedValueOnce({ empty: false });
+describe("deleteMaterialsByModule", () => {
+  it("queries by bookId AND moduleId and batch-deletes every matching ref", async () => {
+    const refs = [{ id: "doc-1" }, { id: "doc-2" }];
+    whereGetMock.mockResolvedValueOnce({ docs: refs.map((ref) => ({ ref })) });
 
-    const result = await anyMaterialReferencesModule("book-1", "module-1");
+    await deleteMaterialsByModule("book-1", "module-1");
 
     expect(whereMock).toHaveBeenCalledWith("bookId", "==", "book-1");
     expect(whereMock).toHaveBeenCalledWith("moduleId", "==", "module-1");
-    expect(limitMock).toHaveBeenCalledWith(1);
-    expect(result).toBe(true);
+    expect(deleteRefsInBatchesMock).toHaveBeenCalledWith(FIRESTORE, refs);
   });
 
-  it("returns false when no Material references the module", async () => {
-    whereGetMock.mockResolvedValueOnce({ empty: true });
+  it("deletes nothing when no Material references the module", async () => {
+    whereGetMock.mockResolvedValueOnce({ docs: [] });
 
-    expect(await anyMaterialReferencesModule("book-1", "module-1")).toBe(false);
+    await deleteMaterialsByModule("book-1", "module-1");
+
+    expect(deleteRefsInBatchesMock).toHaveBeenCalledWith(FIRESTORE, []);
   });
 });

@@ -64,6 +64,7 @@ const meta = {
     onModulesChange: () => {},
     onBack: () => {},
     backDisabled: false,
+    createdModuleIds: new Set(),
     onFinish: () => {},
     isFinishing: false,
     finishError: null,
@@ -108,5 +109,9 @@ export const PartialFailureBackDisabled: Story = {
     modules: SAMPLE_MODULES,
     finishError: "Could not create Module 2. Please try again.",
     backDisabled: true,
+    // Module 1 is the one already persisted in this partial attempt -- its
+    // own Delete action stays disabled so a local-only delete can never
+    // orphan it (ANA-77).
+    createdModuleIds: new Set(["module-1"]),
   },
 };
