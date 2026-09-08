@@ -128,11 +128,24 @@ export function ImportSourceModal({
   // Source is created doesn't flip the modal over to the saved-source view
   // mid-retry.
   const [sourceId, setSourceId] = useState<string | null>(null);
-  // Temporary Module ids whose Learning Material has already been
-  // persisted in this modal session -- a retry skips these too.
-  const [materializedModuleIds, setMaterializedModuleIds] = useState<
-    Set<string>
-  >(new Set());
+  // Retry-safety bookkeeping for each temporary Module's Material, mirroring
+  // the saved-Source workspace's own `materialDocIdByModuleId`/
+  // `savedMaterialContentByModuleId` (see handleSaveWorkspace) -- keyed by
+  // the *temporary* Module id here, since every entry in `modules` is new
+  // to this Finish session (there's no pre-existing-vs-new distinction like
+  // the workspace's `entry.moduleId` gives it). A one-shot "already
+  // materialized" flag (the previous design) would permanently skip a
+  // Module on every later retry, silently dropping an edit made to its
+  // Learning Material *after* its Material already succeeded but a
+  // *different* write in the same attempt failed (PR review, blocking) --
+  // tracking the persisted Material id plus its last-saved content instead
+  // lets a retry PATCH a real change instead of skipping it outright.
+  const [materialDocIdByTempModuleId, setMaterialDocIdByTempModuleId] =
+    useState<Record<string, string>>({});
+  const [
+    materializedMaterialContentByTempModuleId,
+    setMaterializedMaterialContentByTempModuleId,
+  ] = useState<Record<string, TranslatableString>>({});
   const [isFinishing, setIsFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [isRemovingSource, setIsRemovingSource] = useState(false);
@@ -152,9 +165,9 @@ export function ImportSourceModal({
     WorkspaceModuleEntry[]
   >([]);
   // Retry-safety bookkeeping for Save Changes, mirroring handleFinish's
-  // createdModuleIds/moduleIdMap/materializedModuleIds below -- each is
-  // updated the moment its own write succeeds so a retry after a partial
-  // failure only re-sends what didn't yet land.
+  // createdModuleIds/moduleIdMap/materialDocIdByTempModuleId above -- each
+  // is updated the moment its own write succeeds so a retry after a
+  // partial failure only re-sends what didn't yet land.
   const [savedWorkspaceSourceContent, setSavedWorkspaceSourceContent] =
     useState("");
   const [materialDocIdByModuleId, setMaterialDocIdByModuleId] = useState<
@@ -339,7 +352,8 @@ export function ImportSourceModal({
     setCreatedModuleIds(new Set());
     setModuleIdMap({});
     setSourceId(null);
-    setMaterializedModuleIds(new Set());
+    setMaterialDocIdByTempModuleId({});
+    setMaterializedMaterialContentByTempModuleId({});
     setIsFinishing(false);
     setFinishError(null);
     setIsRemovingSource(false);
@@ -472,7 +486,10 @@ export function ImportSourceModal({
     // operation finishes.
     const created = new Set(createdModuleIds);
     const idMap = { ...moduleIdMap };
-    const materialized = new Set(materializedModuleIds);
+    const materialDocIds = { ...materialDocIdByTempModuleId };
+    const materializedContents = {
+      ...materializedMaterialContentByTempModuleId,
+    };
 
     try {
       // Sequential, not Promise.all: Modules must be created in the current
@@ -512,15 +529,40 @@ export function ImportSourceModal({
       }
 
       // Same order as the Modules loop above, each attached to its
-      // Module's real persisted id -- never the temporary one.
+      // Module's real persisted id -- never the temporary one. PATCH when
+      // this Module's Material already exists (from an earlier attempt in
+      // this Finish session) and its draft actually changed since then,
+      // otherwise create it -- the same diff-based pattern
+      // handleSaveWorkspace uses, so an edit made to an already-succeeded
+      // Module's Learning Material after a *different* Module's Material
+      // fails is PATCHed on retry instead of silently skipped (PR review,
+      // blocking).
       for (const tempModule of modules) {
-        if (materialized.has(tempModule.id)) {
-          continue;
+        const existingMaterialId = materialDocIds[tempModule.id];
+
+        if (existingMaterialId) {
+          const original =
+            materializedContents[tempModule.id] ?? EMPTY_MATERIAL;
+
+          if (materialsEqual(tempModule.material, original)) {
+            continue;
+          }
+
+          await updateMaterial(existingMaterialId, tempModule.material);
+        } else {
+          const createdMaterial = await createMaterial(
+            bookId,
+            idMap[tempModule.id],
+            tempModule.material,
+          );
+          materialDocIds[tempModule.id] = createdMaterial.id;
+          setMaterialDocIdByTempModuleId({ ...materialDocIds });
         }
 
-        await createMaterial(bookId, idMap[tempModule.id], tempModule.material);
-        materialized.add(tempModule.id);
-        setMaterializedModuleIds(new Set(materialized));
+        materializedContents[tempModule.id] = tempModule.material;
+        setMaterializedMaterialContentByTempModuleId({
+          ...materializedContents,
+        });
       }
 
       onModulesCreated?.();

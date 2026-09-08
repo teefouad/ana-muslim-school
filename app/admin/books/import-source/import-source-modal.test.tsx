@@ -1577,6 +1577,68 @@ describe("ImportSourceModal", () => {
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(createSourceMock).not.toHaveBeenCalled();
     });
+
+    it("retrying after a partial Material failure PATCHes an edit made to an already-succeeded Module's Learning Material, instead of silently dropping it (PR review, blocking)", async () => {
+      // Reproduces: A's Module/Material succeed, B's Material fails, the
+      // modal stays open and editable again, the user edits A's Learning
+      // Material, then retries -- A must be PATCHed with the new content,
+      // not skipped outright because it was already "materialized" once.
+      await reachBuildModulesWithTwoModules();
+      createModuleMock
+        .mockResolvedValueOnce(moduleFixture("created-1"))
+        .mockResolvedValueOnce(moduleFixture("created-2"));
+      createMaterialMock
+        .mockResolvedValueOnce({
+          id: "material-1",
+          bookId: "book-1",
+          moduleId: "created-1",
+          content: { ar: "Some ", en: "" },
+        })
+        .mockRejectedValueOnce(new Error("Network error"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+      expect(await screen.findByText("Network error")).toBeInTheDocument();
+      expect(createMaterialMock).toHaveBeenCalledTimes(2);
+
+      // The modal stays open and editable after the partial failure --
+      // edit Module A's (already-succeeded) Learning Material.
+      const editors = await findMaterialEditors();
+      const user = userEvent.setup();
+      await user.click(editors[0]);
+      await user.type(editors[0], "!");
+
+      createModuleMock.mockClear();
+      createSourceMock.mockClear();
+      createMaterialMock.mockClear();
+      createMaterialMock.mockResolvedValueOnce({
+        id: "material-2",
+        bookId: "book-1",
+        moduleId: "created-2",
+        content: { ar: "source", en: "" },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      await vi.waitFor(() =>
+        expect(updateMaterialMock).toHaveBeenCalledTimes(1),
+      );
+      // MDXEditor trims the seeded trailing space from "Some " once it
+      // round-trips through the editor (typing into it re-serializes the
+      // Markdown) -- "Some!" is the genuine post-edit value, not "Some !".
+      expect(updateMaterialMock).toHaveBeenCalledWith("material-1", {
+        ar: "Some!",
+        en: "",
+      });
+      // B's still-missing Material is created (never re-created for A), and
+      // neither Module nor the Source is duplicated.
+      expect(createMaterialMock).toHaveBeenCalledTimes(1);
+      expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-2", {
+        ar: "source",
+        en: "",
+      });
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createSourceMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("Dirty state and close guard (ANA-75)", () => {
