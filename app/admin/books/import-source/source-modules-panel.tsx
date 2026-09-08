@@ -199,7 +199,7 @@ export function SourceModulesPanel<T>({
                 />
               );
             }}
-            renderOverlay={(item, index) => (
+            renderOverlay={(item, index, width) => (
               <LearningMaterialModuleCard
                 testId={`module-card-overlay-${getKey(item)}`}
                 index={index}
@@ -207,6 +207,22 @@ export function SourceModulesPanel<T>({
                 onMaterialChange={() => {}}
                 fontScale={fontScale}
                 disabled
+                // Always collapsed and never interactive (ANA-80) -- this
+                // is a fresh mount on every drag, so without forcing it
+                // collapsed here it would fall back to its own default
+                // `expanded: true` and show the Markdown editor mid-drag
+                // regardless of whether the real card being dragged was
+                // collapsed. `onDelete`/`onTranslate` are wired (as
+                // no-ops, already inert via `disabled`) purely so the
+                // preview reserves the exact same header layout as every
+                // real row -- `SourceModulesPanel` always wires both.
+                forceCollapsed
+                onDelete={() => {}}
+                onTranslate={async () => {}}
+                style={{
+                  pointerEvents: "none",
+                  ...(width != null ? { width } : {}),
+                }}
               />
             )}
           />

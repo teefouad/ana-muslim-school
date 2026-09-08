@@ -12,15 +12,30 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  /* No left/vertical padding or gap of its own (ANA-80) -- dnd-kit's drag
+     listeners only ever attach to `.grip`, so any spacing left here would
+     be a dead strip nothing can drag from. The header's old `10px 12px`
+     inset and `8px` gap to the title are reproduced below entirely through
+     `.grip`'s and `.titleButton`'s own padding instead (matching
+     item-list.module.css's identical `.row`/`.grip`/`.content` fix). */
+  padding-right: 12px;
 }
 
 .grip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  color: #a3a3a3;
+  justify-content: center;
   flex-shrink: 0;
+  /* Stretches to the header's full height regardless of what ends up
+     being its tallest child, so there's never a vertical dead strip
+     above/below the icon. */
+  align-self: stretch;
+  /* Reproduces the header's old `10px` vertical inset, `12px` left inset,
+     and `8px` gap to the title -- all as this element's own padding, so
+     the whole padded area immediately around the grip is real hit target
+     instead of dead space on the header. */
+  padding: 10px 8px 10px 12px;
+  color: #a3a3a3;
 }
 
 /* Only applied when `drag` is actually passed (see the component's
@@ -40,13 +55,20 @@
   cursor: grabbing;
 }
 
+/* The collapse/expand click target: fills the entire non-action title
+   region between the grip and the actions/language switcher (ANA-80),
+   not just the label glyphs -- `flex: 1 1 auto` replaces the old fixed-
+   width button plus a separate `.spacer` div. Reproduces the header's old
+   `10px` vertical inset as this element's own padding (`.grip` already
+   supplies the gap to its left), matching item-list.module.css's
+   `.content`. */
 .titleButton {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0;
+  padding: 10px 0;
   border: none;
   background: none;
   color: inherit;
@@ -55,10 +77,6 @@
   font-weight: 500;
   text-align: start;
   cursor: pointer;
-}
-
-.spacer {
-  flex: 1 1 auto;
 }
 
 /* Delete, AI Assistant, and Translate: hidden at rest, revealed together on

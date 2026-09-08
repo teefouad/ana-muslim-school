@@ -53,14 +53,19 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
   background-color: #171717;
   border: 1px solid #262626;
   border-radius: 12px;
   color: #ededed;
   font-size: 14px;
   transition: background-color 120ms ease;
+  /* The row itself carries no padding/gap of its own (ANA-80) -- dnd-kit's
+     drag listeners are only ever attached to `.grip`, so any spacing left
+     on this outer element would be a dead strip nothing can drag from. The
+     row's old `10px 12px` inset and `8px` inter-child gap are reproduced
+     below entirely through each child's own padding/margin instead, so the
+     full visible padded area around the grip is part of its own hit box. */
+  padding-right: 12px;
 }
 
 .row:hover {
@@ -74,7 +79,18 @@
 .grip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  /* Stretches to the row's full height regardless of what ends up being
+     the row's tallest child (e.g. the actions group), so there's never a
+     vertical dead strip above/below the icon the way there was when only
+     the 16px icon itself carried the drag listeners. */
+  align-self: stretch;
+  /* Reproduces the row's old `10px` vertical inset, `12px` left inset, and
+     `8px` gap to `.content` -- all as this element's own padding, so the
+     whole padded area immediately around the grip is real hit target
+     instead of dead space on the row. */
+  padding: 10px 8px 10px 12px;
   color: #a3a3a3;
   cursor: grab;
   /* Prevents the browser's own touch-scroll gesture from competing with
@@ -89,12 +105,25 @@
 .content {
   flex: 1 1 auto;
   min-width: 0;
+  /* Reproduces the row's old `10px` vertical inset for this child -- see
+     `.grip`'s comment above; `.grip` already supplies the gap to its left. */
+  padding: 10px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Only the non-sortable path (`showGrip: false`) needs this -- there's no
+   grip there to own the row's old left inset. */
+.contentNoGrip {
+  padding-left: 12px;
+}
+
 .actions {
+  flex-shrink: 0;
+  /* Reproduces the row's old `8px` gap between `.content` and the actions
+     group -- only ever rendered when the group itself renders. */
+  margin-left: 8px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
