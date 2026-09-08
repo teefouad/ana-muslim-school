@@ -2,28 +2,31 @@
 
 import { Alert, Button, Group, Text } from "@mantine/core";
 import { ArrowLeft } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-import type { TempModule, TextDirection } from "./import-source-types";
+import type { TranslatableString } from "@/lib/learning-content/translatable-string";
+import type { TempModule } from "./import-source-types";
 import { FontSizeControl } from "./font-size-control";
-import { LearningMaterialCard } from "./learning-material-card";
-import { TextDirectionControl } from "./text-direction-control";
+import { LearningMaterialModuleCard } from "./learning-material-module-card";
+import { SortableList } from "@/components/ui/sortable-list";
 import styles from "./learning-material-view.module.css";
 
 export interface LearningMaterialViewProps {
   fileName: string;
   modules: TempModule[];
-  /** Temporary Learning Material Markdown, keyed by Module id. A Module
-   * with no entry here is treated as an empty Learning Material. Never
-   * persisted -- this whole screen is UI-only (ANA-69); wiring it to
-   * `/api/v1/materials` is explicitly deferred to a follow-up card. */
-  learningMaterials: Record<string, string>;
+  onModulesChange: (modules: TempModule[]) => void;
+  /** Each temporary Module's bilingual Learning Material draft (ANA-75),
+   * keyed by Module id. A Module with no entry here is treated as an empty
+   * `{ ar: "", en: "" }` draft. Never persisted -- this whole screen is
+   * UI-only (ANA-69); wiring it to `/api/v1/materials` is deferred to
+   * Finish. */
+  learningMaterials: Record<string, TranslatableString>;
   onLearningMaterialsChange: (
-    learningMaterials: Record<string, string>,
+    learningMaterials: Record<string, TranslatableString>,
   ) => void;
   fontScale: number;
   onFontScaleChange: (value: number) => void;
-  direction: TextDirection;
-  onDirectionChange: (value: TextDirection) => void;
   onBack: () => void;
   /** Creates every temporary Module for the current Book through the
    * existing Module API, in order (ANA-70). */
@@ -44,28 +47,76 @@ export interface LearningMaterialViewProps {
   backDisabled: boolean;
 }
 
+const EMPTY_MATERIAL: TranslatableString = { ar: "", en: "" };
+
+function SortableLearningMaterialCard({
+  module,
+  index,
+  material,
+  onMaterialChange,
+  fontScale,
+  disabled,
+}: {
+  module: TempModule;
+  index: number;
+  material: TranslatableString;
+  onMaterialChange: (value: TranslatableString) => void;
+  fontScale: number;
+  disabled: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: module.id, disabled });
+
+  return (
+    <LearningMaterialModuleCard
+      testId={`learning-material-card-${module.id}`}
+      index={index}
+      material={material}
+      onMaterialChange={onMaterialChange}
+      fontScale={fontScale}
+      disabled={disabled}
+      drag={{
+        attributes,
+        listeners,
+        setNodeRef,
+        style: { transform: CSS.Transform.toString(transform), transition },
+        isDragging,
+      }}
+    />
+  );
+}
+
 // Step 5, the Learning Material step in the Import Source modal (ANA-69).
 // Reached from the Module-building step's "Create Learning Material"
-// button. Renders the temporary Modules (already built in the previous
-// step) in their current order, each with its source text as read-only
-// reference alongside the School Markdown editor for its Learning
-// Material -- all of it kept in modal/client state only.
+// button. Renders the same shared Module-card shell as the saved-Source
+// workspace (LearningMaterialModuleCard, ANA-75) for each temporary Module,
+// still fully draggable/reorderable here (unlike the saved-Source
+// workspace, where reordering stays out of scope) -- kept in client/modal
+// state only until Finish persists it.
 export function LearningMaterialView({
   fileName,
   modules,
+  onModulesChange,
   learningMaterials,
   onLearningMaterialsChange,
   fontScale,
   onFontScaleChange,
-  direction,
-  onDirectionChange,
   onBack,
   onFinish,
   isFinishing,
   finishError,
   backDisabled,
 }: LearningMaterialViewProps) {
-  function handleLearningMaterialChange(moduleId: string, value: string) {
+  function handleLearningMaterialChange(
+    moduleId: string,
+    value: TranslatableString,
+  ) {
     onLearningMaterialsChange({ ...learningMaterials, [moduleId]: value });
   }
 
@@ -83,28 +134,38 @@ export function LearningMaterialView({
         </div>
         <Group gap="sm">
           <FontSizeControl value={fontScale} onChange={onFontScaleChange} />
-          <TextDirectionControl
-            value={direction}
-            onChange={onDirectionChange}
-          />
         </Group>
       </div>
 
       <div className={styles.body}>
-        {modules.map((module, index) => (
-          <LearningMaterialCard
-            key={module.id}
-            module={module}
-            index={index}
-            learningMaterial={learningMaterials[module.id] ?? ""}
-            onLearningMaterialChange={(value) =>
-              handleLearningMaterialChange(module.id, value)
-            }
-            direction={direction}
-            fontScale={fontScale}
-            disabled={isFinishing}
-          />
-        ))}
+        <SortableList<TempModule>
+          items={modules}
+          getId={(module) => module.id}
+          onReorder={onModulesChange}
+          renderItem={(module, index) => (
+            <SortableLearningMaterialCard
+              key={module.id}
+              module={module}
+              index={index}
+              material={learningMaterials[module.id] ?? EMPTY_MATERIAL}
+              onMaterialChange={(value) =>
+                handleLearningMaterialChange(module.id, value)
+              }
+              fontScale={fontScale}
+              disabled={isFinishing}
+            />
+          )}
+          renderOverlay={(module, index) => (
+            <LearningMaterialModuleCard
+              testId={`learning-material-card-overlay-${module.id}`}
+              index={index}
+              material={learningMaterials[module.id] ?? EMPTY_MATERIAL}
+              onMaterialChange={() => {}}
+              fontScale={fontScale}
+              disabled
+            />
+          )}
+        />
       </div>
 
       {finishError && (

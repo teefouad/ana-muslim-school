@@ -6,6 +6,7 @@ import { getAdminFirestore } from "@/lib/firebase/admin";
 import { deleteRefsInBatches } from "@/lib/firestore/delete-refs-in-batches";
 import {
   isValidMaterialDocument,
+  normalizeMaterialContent,
   type Material,
   type MaterialWritableFields,
 } from "./types";
@@ -24,7 +25,7 @@ function parseMaterialDocument(doc: DocumentSnapshot): Material | null {
       id: doc.id,
       bookId: data.bookId,
       moduleId: data.moduleId,
-      content: data.content,
+      content: normalizeMaterialContent(data.content),
     };
   } catch {
     return null;

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type Ref,
   useImperativeHandle,
@@ -178,6 +179,32 @@ export default function MarkdownEditorCore({
     setMarkdown: (value) => editorRef.current?.setMarkdown(value),
   }));
 
+  // Without `fillHeight`, MDXEditor's own contenteditable only sizes to its
+  // content -- the min-height set on `.mdxeditor-root-contenteditable` (see
+  // markdown-editor.module.css) leaves empty space below short content that
+  // belongs to that wrapper `<div>`, not to the contenteditable itself, so a
+  // click there lands on an unfocusable plain element instead (ANA-75). This
+  // catches any click inside the bordered editor that didn't already land on
+  // the toolbar or directly inside the contenteditable, and focuses the
+  // editor with the cursor placed at the end of its content -- matching
+  // where a click below the last line would intuitively place it.
+  function handleBodyClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if (disabled) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+
+    if (
+      target.closest('[role="toolbar"]') ||
+      target.closest("[contenteditable]")
+    ) {
+      return;
+    }
+
+    editorRef.current?.focus(undefined, { defaultSelection: "rootEnd" });
+  }
+
   return (
     <div
       dir={dir}
@@ -188,6 +215,7 @@ export default function MarkdownEditorCore({
       ]
         .filter(Boolean)
         .join(" ")}
+      onClick={handleBodyClick}
     >
       <MDXEditor
         ref={editorRef}

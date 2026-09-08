@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import useSWR, { SWRConfig, useSWRConfig } from "swr";
 
 import { fetchJson } from "../fetch-json";
+import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 
 const {
   usePdfDocumentMock,
@@ -191,7 +192,7 @@ describe("ImportSourceModal", () => {
       Promise.resolve({ id, bookId: "book-1", content }),
     );
     createMaterialMock.mockImplementation(
-      (bookId: string, moduleId: string, content: string) =>
+      (bookId: string, moduleId: string, content: TranslatableString) =>
         Promise.resolve({
           id: `material-${createMaterialMock.mock.calls.length}`,
           bookId,
@@ -199,8 +200,14 @@ describe("ImportSourceModal", () => {
           content,
         }),
     );
-    updateMaterialMock.mockImplementation((id: string, content: string) =>
-      Promise.resolve({ id, bookId: "book-1", moduleId: "module-1", content }),
+    updateMaterialMock.mockImplementation(
+      (id: string, content: TranslatableString) =>
+        Promise.resolve({
+          id,
+          bookId: "book-1",
+          moduleId: "module-1",
+          content,
+        }),
     );
   });
 
@@ -262,6 +269,49 @@ describe("ImportSourceModal", () => {
     ).toBeInTheDocument();
   });
 
+  describe("Modal title (ANA-75)", () => {
+    it("titles the modal Create from PDF for the upload/OCR/new-import workflow", async () => {
+      renderModal();
+
+      expect(
+        await screen.findByRole("dialog", { name: "Create from PDF" }),
+      ).toBeInTheDocument();
+    });
+
+    it("titles the modal Source Text for the saved-Source workspace", async () => {
+      mockExistingSource();
+      renderModal();
+
+      expect(
+        await screen.findByRole("dialog", { name: "Source Text" }),
+      ).toBeInTheDocument();
+    });
+
+    it("switches the title back to Create from PDF once the saved Source is removed", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByRole("dialog", { name: "Source Text" });
+
+      (fetch as ReturnType<typeof vi.fn>).mockImplementationOnce((input) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/sources?bookId=")) {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        throw new Error(`Unhandled fetch in test: ${url}`);
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Select Another PDF" }),
+      );
+      await screen.findByRole("dialog", { name: "Remove attached source?" });
+      fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
+
+      expect(
+        await screen.findByRole("dialog", { name: "Create from PDF" }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("shows an error instead of silently falling back to the upload flow when the Source lookup fails", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ error: "Sources are unavailable." }, 500),
@@ -287,7 +337,11 @@ describe("ImportSourceModal", () => {
   }: {
     content?: string;
     modules?: { id: string }[];
-    materials?: { id: string; moduleId: string; content: string }[];
+    materials?: {
+      id: string;
+      moduleId: string;
+      content: TranslatableString;
+    }[];
   } = {}) {
     (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
       const url = String(input);
@@ -433,7 +487,40 @@ describe("ImportSourceModal", () => {
   });
 
   describe("Select Another PDF (removes the saved Source)", () => {
-    it("calls DELETE /api/v1/sources/{sourceId} and returns to the upload flow on success", async () => {
+    it("confirms before removing -- Select Another PDF does not DELETE immediately (ANA-75)", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Select Another PDF" }),
+      );
+
+      expect(
+        await screen.findByRole("dialog", { name: "Remove attached source?" }),
+      ).toBeInTheDocument();
+      expect(deleteSourceMock).not.toHaveBeenCalled();
+    });
+
+    it("canceling the confirmation performs no mutation and keeps the workspace open (ANA-75)", async () => {
+      mockExistingSource();
+      renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Select Another PDF" }),
+      );
+      await screen.findByRole("dialog", { name: "Remove attached source?" });
+      fireEvent.click(screen.getByRole("button", { name: "Keep source" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Remove attached source?" }),
+      ).not.toBeInTheDocument();
+      expect(deleteSourceMock).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Source text")).toBeInTheDocument();
+    });
+
+    it("calls DELETE /api/v1/sources/{sourceId} and returns to the upload flow once Remove source is confirmed", async () => {
       mockExistingSource();
       renderModal();
       await screen.findByLabelText("Source text");
@@ -451,6 +538,8 @@ describe("ImportSourceModal", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Select Another PDF" }),
       );
+      await screen.findByRole("dialog", { name: "Remove attached source?" });
+      fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
 
       expect(
         await screen.findByRole("button", { name: "Choose a PDF to import" }),
@@ -467,6 +556,8 @@ describe("ImportSourceModal", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Select Another PDF" }),
       );
+      await screen.findByRole("dialog", { name: "Remove attached source?" });
+      fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
 
       expect(await screen.findByText("Cannot delete.")).toBeInTheDocument();
       expect(screen.getByLabelText("Source text")).toHaveValue("Saved text");
@@ -480,6 +571,8 @@ describe("ImportSourceModal", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Select Another PDF" }),
       );
+      await screen.findByRole("dialog", { name: "Remove attached source?" });
+      fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
 
       await vi.waitFor(() => expect(deleteSourceMock).toHaveBeenCalled());
       expect(createModuleMock).not.toHaveBeenCalled();
@@ -493,7 +586,11 @@ describe("ImportSourceModal", () => {
       mockExistingSource({
         modules: [{ id: "module-1" }, { id: "module-2" }],
         materials: [
-          { id: "material-1", moduleId: "module-1", content: "Module 1 md" },
+          {
+            id: "material-1",
+            moduleId: "module-1",
+            content: { ar: "Module 1 md", en: "" },
+          },
         ],
       });
       renderModal();
@@ -582,7 +679,11 @@ describe("ImportSourceModal", () => {
       mockExistingSource({
         modules: [{ id: "module-1" }],
         materials: [
-          { id: "material-1", moduleId: "module-1", content: "Original" },
+          {
+            id: "material-1",
+            moduleId: "module-1",
+            content: { ar: "Original", en: "" },
+          },
         ],
       });
       renderModal();
@@ -595,10 +696,10 @@ describe("ImportSourceModal", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
       await vi.waitFor(() =>
-        expect(updateMaterialMock).toHaveBeenCalledWith(
-          "material-1",
-          "Original!",
-        ),
+        expect(updateMaterialMock).toHaveBeenCalledWith("material-1", {
+          ar: "Original!",
+          en: "",
+        }),
       );
       expect(createMaterialMock).not.toHaveBeenCalled();
     });
@@ -607,7 +708,11 @@ describe("ImportSourceModal", () => {
       mockExistingSource({
         modules: [{ id: "module-1" }],
         materials: [
-          { id: "material-1", moduleId: "module-1", content: "Original" },
+          {
+            id: "material-1",
+            moduleId: "module-1",
+            content: { ar: "Original", en: "" },
+          },
         ],
       });
       renderModal();
@@ -637,11 +742,10 @@ describe("ImportSourceModal", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
       await vi.waitFor(() =>
-        expect(createMaterialMock).toHaveBeenCalledWith(
-          "book-1",
-          "created-1",
-          "Some",
-        ),
+        expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-1", {
+          ar: "Some",
+          en: "",
+        }),
       );
       expect(createModuleMock).toHaveBeenCalledWith("book-1", {
         title: { ar: "", en: "" },
@@ -674,7 +778,7 @@ describe("ImportSourceModal", () => {
         id: "material-1",
         bookId: "book-1",
         moduleId: "created-1",
-        content: "Some",
+        content: { ar: "Some", en: "" },
       });
 
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -683,11 +787,10 @@ describe("ImportSourceModal", () => {
         expect(createMaterialMock).toHaveBeenCalledTimes(1),
       );
       expect(createModuleMock).not.toHaveBeenCalled();
-      expect(createMaterialMock).toHaveBeenCalledWith(
-        "book-1",
-        "created-1",
-        "Some",
-      );
+      expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-1", {
+        ar: "Some",
+        en: "",
+      });
     });
 
     it("does not re-POST an already-succeeded new Module's Material -- across two new Modules, only the one that actually failed is retried (PR review, blocking)", async () => {
@@ -742,7 +845,7 @@ describe("ImportSourceModal", () => {
           id: "material-A",
           bookId: "book-1",
           moduleId: "created-A",
-          content: "Some",
+          content: { ar: "Some", en: "" },
         })
         .mockRejectedValueOnce(new Error("Network error"));
 
@@ -753,7 +856,7 @@ describe("ImportSourceModal", () => {
         1,
         "book-1",
         "created-A",
-        "Some",
+        { ar: "Some", en: "" },
       );
 
       createModuleMock.mockClear();
@@ -763,7 +866,7 @@ describe("ImportSourceModal", () => {
         id: "material-B",
         bookId: "book-1",
         moduleId: "created-B",
-        content: "source",
+        content: { ar: "source", en: "" },
       });
 
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -777,11 +880,10 @@ describe("ImportSourceModal", () => {
       // created.
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(updateMaterialMock).not.toHaveBeenCalled();
-      expect(createMaterialMock).toHaveBeenCalledWith(
-        "book-1",
-        "created-B",
-        "source",
-      );
+      expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-B", {
+        ar: "source",
+        en: "",
+      });
     });
 
     it("sends the selected Source text as the new Module's Material, never as part of the Module's own draft payload (PR review)", async () => {
@@ -802,11 +904,10 @@ describe("ImportSourceModal", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
       await vi.waitFor(() =>
-        expect(createMaterialMock).toHaveBeenCalledWith(
-          "book-1",
-          "created-1",
-          "Some",
-        ),
+        expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-1", {
+          ar: "Some",
+          en: "",
+        }),
       );
       for (const call of createModuleMock.mock.calls) {
         expect(JSON.stringify(call)).not.toContain("Some");
@@ -840,13 +941,13 @@ describe("ImportSourceModal", () => {
         1,
         "book-1",
         "created-1",
-        "Some",
+        { ar: "Some", en: "" },
       );
       expect(createMaterialMock).toHaveBeenNthCalledWith(
         2,
         "book-1",
         "created-2",
-        "source",
+        { ar: "source", en: "" },
       );
     });
   });
@@ -891,10 +992,16 @@ describe("ImportSourceModal", () => {
     await selectFile();
     expect(screen.getByText("book.pdf")).toBeInTheDocument();
 
-    // Closing resets state immediately (resetState() runs before onClose),
-    // so the dialog's own content already reflects the picker again while
-    // Mantine's exit transition is still fading it out.
+    // A PDF has been selected, so this close is guarded by the discard
+    // confirmation (ANA-75) -- Escape opens it instead of closing directly.
     fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Discard changes" }),
+    );
+
+    // Discarding resets state immediately (resetState() runs before
+    // onClose), so the dialog's own content already reflects the picker
+    // again while Mantine's exit transition is still fading it out.
     expect(
       await screen.findByRole("button", { name: "Choose a PDF to import" }),
     ).toBeInTheDocument();
@@ -953,10 +1060,49 @@ describe("ImportSourceModal", () => {
       screen.getByRole("button", { name: "Back to page selection" }),
     );
 
+    // A reviewed OCR result exists, so this confirms first (ANA-75) --
+    // Confirming preserves the selected PDF and the page-selection choices.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Return to page selection" }),
+    );
+
     expect(screen.getByText("book.pdf")).toBeInTheDocument();
     expect(
       screen.getByRole("checkbox", { name: "Select page 1" }),
     ).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("canceling Back to page selection keeps the reviewed OCR result in place (ANA-75)", async () => {
+    requestOcrUploadUrlMock.mockResolvedValue({
+      uploadUrl: "https://storage/signed",
+      objectPath: "tmp/ocr-uploads/user-1/book.pdf",
+    });
+    uploadPdfToStorageMock.mockResolvedValue(undefined);
+    requestOcrMock.mockResolvedValue({
+      model: "mistral-ocr-latest",
+      pagesProcessed: 1,
+      docSizeBytes: 100,
+      pages: [{ pageNumber: 1, markdown: "# Hello" }],
+    });
+
+    renderModal();
+    await selectFile();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
+    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    await screen.findByRole("button", { name: "Create Modules" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to page selection" }),
+    );
+    await screen.findByRole("dialog", { name: "Return to page selection?" });
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+    expect(
+      screen.queryByRole("dialog", { name: "Return to page selection?" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Extracted text for page 1")).toHaveValue(
+      "# Hello",
+    );
   });
 
   it("Create Modules advances to the Module builder using edited OCR Markdown", async () => {
@@ -1032,10 +1178,14 @@ describe("ImportSourceModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
     expect(screen.getByText("Modules (1)")).toBeInTheDocument();
 
-    // Back to review, back to page selection, choose a different file.
+    // Back to review, back to page selection (confirming the discard,
+    // ANA-75), choose a different file.
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Back to page selection" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Return to page selection" }),
     );
     fireEvent.click(
       screen.getByRole("button", { name: "Choose a different file" }),
@@ -1316,13 +1466,13 @@ describe("ImportSourceModal", () => {
         1,
         "book-1",
         "created-1",
-        "",
+        { ar: "", en: "" },
       );
       expect(createMaterialMock).toHaveBeenNthCalledWith(
         2,
         "book-1",
         "created-2",
-        "",
+        { ar: "", en: "" },
       );
       // "created-N" (the module fixture ids returned by createModuleMock) are
       // the only moduleId values ever passed -- never a temporary Module id
@@ -1349,7 +1499,7 @@ describe("ImportSourceModal", () => {
         id: "material-1",
         bookId: "book-1",
         moduleId: "created-1",
-        content: "",
+        content: { ar: "", en: "" },
       });
       createMaterialMock.mockRejectedValueOnce(new Error("Network error"));
 
@@ -1366,7 +1516,7 @@ describe("ImportSourceModal", () => {
         id: "material-2",
         bookId: "book-1",
         moduleId: "created-2",
-        content: "",
+        content: { ar: "", en: "" },
       });
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
@@ -1374,11 +1524,10 @@ describe("ImportSourceModal", () => {
       await vi.waitFor(() =>
         expect(createMaterialMock).toHaveBeenCalledTimes(1),
       );
-      expect(createMaterialMock).toHaveBeenCalledWith(
-        "book-1",
-        "created-2",
-        "",
-      );
+      expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-2", {
+        ar: "",
+        en: "",
+      });
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(createSourceMock).not.toHaveBeenCalled();
     });
@@ -1393,7 +1542,8 @@ describe("ImportSourceModal", () => {
 
     expect(screen.getByText("book.pdf")).toBeInTheDocument();
     expect(screen.getByText("1 module created")).toBeInTheDocument();
-    expect(await screen.findByText("Some")).toBeInTheDocument();
+    expect(await screen.findByText("Module 1")).toBeInTheDocument();
+    await screen.findByRole("toolbar");
   });
 
   it("Back to Modules returns to the Module builder, preserving the temporary Modules", async () => {
@@ -1419,7 +1569,9 @@ describe("ImportSourceModal", () => {
     // this modal's actual empty starting state. This instead exercises
     // the modal-level plumbing: the same Module set (not e.g. an emptied
     // or duplicated one) is what comes back after a Back -> forward round
-    // trip.
+    // trip -- observable here via the Module count and its card rendering,
+    // since the unified Module card (ANA-75) no longer shows the raw
+    // source-text excerpt each temporary Module was created from.
     await reachBuildModulesWithOneModule();
     fireEvent.click(
       screen.getByRole("button", { name: "Create Learning Material" }),
@@ -1432,7 +1584,8 @@ describe("ImportSourceModal", () => {
     );
 
     expect(screen.getByText("1 module created")).toBeInTheDocument();
-    expect(await screen.findByText("Some")).toBeInTheDocument();
+    expect(await screen.findByText("Module 1")).toBeInTheDocument();
+    await screen.findByRole("toolbar");
   });
 
   it("makes no API/network requests from the Learning Material step", async () => {
@@ -1447,5 +1600,146 @@ describe("ImportSourceModal", () => {
 
     expect(fetch).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  describe("Dirty state and close guard (ANA-75)", () => {
+    it("closes immediately, without confirmation, when the untouched initial PDF picker is closed", async () => {
+      const { onClose } = renderModal();
+      await screen.findByRole("button", { name: "Choose a PDF to import" });
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes immediately, without confirmation, when the clean saved-Source workspace is closed", async () => {
+      mockExistingSource();
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks closing a dirty saved-Source workspace and offers Discard changes / Keep editing", async () => {
+      mockExistingSource();
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Your changes have not been saved and will be lost."),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("Keep editing closes only the confirmation and preserves the edited workspace", async () => {
+      mockExistingSource();
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+      await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Source text")).toHaveValue("Edited text");
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("Discard changes resets the modal session and closes it", async () => {
+      mockExistingSource();
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+      await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("a successful Save changes clears the dirty state, so closing right after does not warn", async () => {
+      mockExistingSource();
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it("blocks closing once a Create-from-PDF workflow has started (a PDF was selected)", async () => {
+      const { onClose } = renderModal();
+      await selectFile();
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("does not allow closing/discarding to race an in-flight Save request", async () => {
+      mockExistingSource();
+      let resolveUpdate: (value: unknown) => void = () => {};
+      updateSourceMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+      );
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      // The in-flight save blocks the close attempt entirely -- neither the
+      // discard confirmation nor onClose fires while it's still pending.
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      resolveUpdate({
+        id: "source-1",
+        bookId: "book-1",
+        content: "Edited text",
+      });
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
   });
 });

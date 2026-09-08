@@ -78,6 +78,14 @@ export default function EditBookPage() {
   // reflect this before the modal has ever been opened. Shares the modal's
   // own Source-by-bookId SWR cache entry (same key) so opening the modal
   // right after doesn't re-fetch.
+  //
+  // `sourceData` (rather than a separate loading/error flag) is also what
+  // decides whether the Source action button renders at all (ANA-75):
+  // while the lookup is pending or has failed, SWR leaves `data` at
+  // `undefined` (there's no earlier successful fetch to fall back to), so
+  // gating the button on `sourceData` being present keeps it hidden for
+  // both cases instead of guessing "Create from PDF" and flashing to "View
+  // source text" once the real answer arrives.
   const { data: sourceData } = useSWR<{ data: Source[] }>(
     book ? `/api/v1/sources?bookId=${encodeURIComponent(book.id)}` : null,
     fetchJson,
@@ -122,20 +130,21 @@ export default function EditBookPage() {
       <Group justify="space-between" wrap="wrap" gap="sm">
         <Title order={2}>Edit Book</Title>
         <Group gap="sm">
-          <Button
-            variant="default"
-            disabled={!book}
-            onClick={() => setImportSourceOpened(true)}
-            leftSection={
-              hasSource ? (
-                <Eye size={16} aria-hidden="true" />
-              ) : (
-                <Upload size={16} aria-hidden="true" />
-              )
-            }
-          >
-            {hasSource ? "View source text" : "Create from PDF"}
-          </Button>
+          {book && sourceData && (
+            <Button
+              variant="default"
+              onClick={() => setImportSourceOpened(true)}
+              leftSection={
+                hasSource ? (
+                  <Eye size={16} aria-hidden="true" />
+                ) : (
+                  <Upload size={16} aria-hidden="true" />
+                )
+              }
+            >
+              {hasSource ? "View source text" : "Create from PDF"}
+            </Button>
+          )}
           <Button
             type="submit"
             form={BOOK_FORM_ID}

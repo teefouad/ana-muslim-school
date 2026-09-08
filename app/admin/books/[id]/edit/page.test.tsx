@@ -172,7 +172,7 @@ describe("EditBookPage", () => {
     const saveChanges = await screen.findByRole("button", {
       name: "Save changes",
     });
-    const importSource = screen.getByRole("button", {
+    const importSource = await screen.findByRole("button", {
       name: "Create from PDF",
     });
     expect(importSource).toBeEnabled();
@@ -181,6 +181,83 @@ describe("EditBookPage", () => {
     // "Immediately next to" -- adjacent header buttons in the same action
     // group, not separated by unrelated content.
     expect(importSource.nextElementSibling).toBe(saveChanges);
+  });
+
+  it("hides the Source action button until its own Source lookup resolves (ANA-75)", async () => {
+    let resolveSources: (response: Response) => void = () => {};
+    const sourcesPromise = new Promise<Response>((resolve) => {
+      resolveSources = resolve;
+    });
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+
+        if (method === "GET" && url === "/api/v1/books/book-1") {
+          return Promise.resolve(jsonResponse({ data: buildBookFixture() }));
+        }
+        if (method === "GET" && url === "/api/v1/books/book-1/modules") {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+          return sourcesPromise;
+        }
+        throw new Error(`Unhandled fetch: ${method} ${url}`);
+      },
+    );
+    renderPage();
+
+    // The Book itself (and the always-present Save changes button) load
+    // independently of the Source lookup, which is still pending here.
+    await screen.findByRole("button", { name: "Save changes" });
+    expect(
+      screen.queryByRole("button", { name: "Create from PDF" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View source text" }),
+    ).not.toBeInTheDocument();
+
+    resolveSources(jsonResponse({ data: [] }));
+
+    expect(
+      await screen.findByRole("button", { name: "Create from PDF" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the Source action button hidden if the Source lookup fails, instead of guessing Create from PDF (ANA-75)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+
+        if (method === "GET" && url === "/api/v1/books/book-1") {
+          return Promise.resolve(jsonResponse({ data: buildBookFixture() }));
+        }
+        if (method === "GET" && url === "/api/v1/books/book-1/modules") {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+          return Promise.resolve(
+            jsonResponse({ error: "Sources are unavailable." }, 500),
+          );
+        }
+        throw new Error(`Unhandled fetch: ${method} ${url}`);
+      },
+    );
+    renderPage();
+
+    await screen.findByRole("button", { name: "Save changes" });
+    // Lets the failed Source lookup's rejection propagate into SWR's error
+    // state -- there's no visible error banner at this page level to
+    // `findBy` on instead (see module-list.test.tsx for the same pattern).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      screen.queryByRole("button", { name: "Create from PDF" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View source text" }),
+    ).not.toBeInTheDocument();
   });
 
   it("labels the header button View source text when the Book already has a saved Source", async () => {

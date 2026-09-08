@@ -14,7 +14,7 @@ const SAMPLE_MODULES: TempModule[] = [
 
 function LearningMaterialViewDemo(props: LearningMaterialViewProps) {
   const [fontScale, setFontScale] = useState(props.fontScale);
-  const [direction, setDirection] = useState(props.direction);
+  const [modules, setModules] = useState(props.modules);
   const [learningMaterials, setLearningMaterials] = useState(
     props.learningMaterials,
   );
@@ -24,8 +24,8 @@ function LearningMaterialViewDemo(props: LearningMaterialViewProps) {
       {...props}
       fontScale={fontScale}
       onFontScaleChange={setFontScale}
-      direction={direction}
-      onDirectionChange={setDirection}
+      modules={modules}
+      onModulesChange={setModules}
       learningMaterials={learningMaterials}
       onLearningMaterialsChange={setLearningMaterials}
     />
@@ -39,12 +39,11 @@ const meta = {
   args: {
     fileName: "the-sealed-nectar.pdf",
     modules: SAMPLE_MODULES,
+    onModulesChange: () => {},
     learningMaterials: {},
     onLearningMaterialsChange: () => {},
     fontScale: 100,
-    direction: "rtl" as const,
     onFontScaleChange: () => {},
-    onDirectionChange: () => {},
     onBack: () => {},
     onFinish: () => {},
     isFinishing: false,
@@ -66,7 +65,7 @@ export const Default: Story = {};
 export const WithLearningMaterial: Story = {
   args: {
     learningMaterials: {
-      "module-1": "## الدرس الأول\n\nملخص الدرس الأول.",
+      "module-1": { ar: "## الدرس الأول\n\nملخص الدرس الأول.", en: "" },
     },
   },
 };

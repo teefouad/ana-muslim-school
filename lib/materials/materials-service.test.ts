@@ -60,11 +60,21 @@ describe("listMaterialsService", () => {
 
   it("forwards a given bookId to the repository's filtered query", async () => {
     listMaterialsMock.mockResolvedValueOnce([
-      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+      {
+        id: "doc-1",
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "a", en: "" },
+      },
     ]);
 
     expect(await listMaterialsService("book-1")).toEqual([
-      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+      {
+        id: "doc-1",
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "a", en: "" },
+      },
     ]);
     expect(listMaterialsMock).toHaveBeenCalledWith("book-1");
   });
@@ -79,13 +89,24 @@ describe("createMaterialService", () => {
     expect(createMaterialMock).not.toHaveBeenCalled();
   });
 
+  it("rejects a legacy plain-string content on write -- new writes must use the translatable shape (ANA-75)", async () => {
+    const result = await createMaterialService({
+      bookId: "book-1",
+      moduleId: "module-1",
+      content: "not translatable",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(createMaterialMock).not.toHaveBeenCalled();
+  });
+
   it("rejects when bookId does not exist", async () => {
     bookExistsMock.mockResolvedValueOnce(false);
 
     const result = await createMaterialService({
       bookId: "ghost",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     expect(bookExistsMock).toHaveBeenCalledWith("ghost");
@@ -101,7 +122,7 @@ describe("createMaterialService", () => {
     const result = await createMaterialService({
       bookId: "book-1",
       moduleId: "module-from-another-book",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     expect(moduleExistsMock).toHaveBeenCalledWith(
@@ -119,20 +140,20 @@ describe("createMaterialService", () => {
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     const result = await createMaterialService({
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     expect(result.ok).toBe(true);
     expect(createMaterialMock).toHaveBeenCalledWith({
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
   });
 });
@@ -154,7 +175,9 @@ describe("updateMaterialService", () => {
   it("returns not-found before parsing the body when the Material doesn't exist", async () => {
     getMaterialByIdMock.mockResolvedValueOnce(null);
 
-    const result = await updateMaterialService("missing", { content: "y" });
+    const result = await updateMaterialService("missing", {
+      content: { ar: "y", en: "" },
+    });
 
     expect(result).toEqual({
       ok: false,
@@ -168,21 +191,21 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "old",
+      content: { ar: "old", en: "" },
     });
     updateMaterialByIdMock.mockResolvedValueOnce({
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "new",
+      content: { ar: "new", en: "" },
     });
 
-    await updateMaterialService("doc-1", { content: "new" });
+    await updateMaterialService("doc-1", { content: { ar: "new", en: "" } });
 
     expect(bookExistsMock).not.toHaveBeenCalled();
     expect(moduleExistsMock).not.toHaveBeenCalled();
     expect(updateMaterialByIdMock).toHaveBeenCalledWith("doc-1", {
-      content: "new",
+      content: { ar: "new", en: "" },
     });
   });
 
@@ -191,7 +214,7 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "current-book",
       moduleId: "old-module",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
     bookExistsMock.mockResolvedValueOnce(true);
     moduleExistsMock.mockResolvedValueOnce(true);
@@ -199,7 +222,7 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "current-book",
       moduleId: "new-module",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     await updateMaterialService("doc-1", { moduleId: "new-module" });
@@ -213,7 +236,7 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "old-book",
       moduleId: "current-module",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
     bookExistsMock.mockResolvedValueOnce(true);
     moduleExistsMock.mockResolvedValueOnce(true);
@@ -221,7 +244,7 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "new-book",
       moduleId: "current-module",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     await updateMaterialService("doc-1", { bookId: "new-book" });
@@ -235,7 +258,7 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
     bookExistsMock.mockResolvedValueOnce(true);
     moduleExistsMock.mockResolvedValueOnce(false);
@@ -253,7 +276,7 @@ describe("updateMaterialService", () => {
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     const result = await updateMaterialService("doc-1", {});
@@ -277,7 +300,7 @@ describe("upsertMaterialService", () => {
     const result = await upsertMaterialService("doc-1", {
       bookId: "ghost",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     expect(result.ok).toBe(false);
@@ -291,19 +314,19 @@ describe("upsertMaterialService", () => {
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     const result = await upsertMaterialService("doc-1", {
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
 
     expect(upsertMaterialByIdMock).toHaveBeenCalledWith("doc-1", {
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "" },
     });
     expect(result.ok).toBe(true);
   });

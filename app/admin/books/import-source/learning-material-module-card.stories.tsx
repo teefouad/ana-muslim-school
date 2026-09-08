@@ -1,0 +1,74 @@
+import { useState } from "react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+
+import {
+  LearningMaterialModuleCard,
+  type LearningMaterialModuleCardProps,
+} from "./learning-material-module-card";
+
+function LearningMaterialModuleCardDemo(
+  props: LearningMaterialModuleCardProps,
+) {
+  const [material, setMaterial] = useState(props.material);
+
+  return (
+    <LearningMaterialModuleCard
+      {...props}
+      material={material}
+      onMaterialChange={setMaterial}
+    />
+  );
+}
+
+const meta = {
+  title: "Books/ImportSource/LearningMaterialModuleCard",
+  component: LearningMaterialModuleCard,
+  tags: ["autodocs"],
+  args: {
+    testId: "module-card-0",
+    index: 0,
+    material: { ar: "", en: "" },
+    onMaterialChange: () => {},
+    fontScale: 100,
+  },
+  render: (args) => (
+    <div style={{ width: 720 }}>
+      <LearningMaterialModuleCardDemo {...args} />
+    </div>
+  ),
+} satisfies Meta<typeof LearningMaterialModuleCard>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+// The shared Module-card shell used in both the Create-from-PDF Learning
+// Material step and the saved-Source ("View source text") workspace
+// (ANA-75) -- same header (drag handle, title, delete affordance, language
+// switcher, AI Assistant) and body (the School MarkdownEditor) in both
+// places, so they can never independently drift apart again.
+export const Empty: Story = {};
+
+export const WithLearningMaterial: Story = {
+  args: {
+    material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
+  },
+};
+
+// Switching the language switcher to English shows the English draft, kept
+// entirely independent from the Arabic one (ANA-75) -- both survive a
+// language switch, unlike the single-string editor this replaced.
+export const BilingualContent: Story = {
+  args: {
+    material: {
+      ar: "## الدرس\n\nملخص الدرس هنا.",
+      en: "## Lesson\n\nThe lesson summary goes here.",
+    },
+  },
+};
+
+export const Disabled: Story = {
+  args: {
+    material: { ar: "Frozen while Save Changes is in flight.", en: "" },
+    disabled: true,
+  },
+};

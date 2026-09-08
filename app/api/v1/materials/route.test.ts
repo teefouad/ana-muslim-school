@@ -85,7 +85,12 @@ describe("GET /api/v1/materials", () => {
   it("forwards a `bookId` query param as a Book filter", async () => {
     allow();
     listMaterialsServiceMock.mockResolvedValueOnce([
-      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "x" },
+      {
+        id: "doc-1",
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "x", en: "" },
+      },
     ]);
 
     const response = await GET(listRequest("?bookId=book-1"));
@@ -93,7 +98,12 @@ describe("GET /api/v1/materials", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       data: [
-        { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "x" },
+        {
+          id: "doc-1",
+          bookId: "book-1",
+          moduleId: "module-1",
+          content: { ar: "x", en: "" },
+        },
       ],
     });
     expect(listMaterialsServiceMock).toHaveBeenCalledWith("book-1");
@@ -115,7 +125,11 @@ describe("POST /api/v1/materials", () => {
     deny();
 
     const response = await POST(
-      jsonRequest({ bookId: "book-1", moduleId: "module-1", content: "x" }),
+      jsonRequest({
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "x", en: "" },
+      }),
     );
 
     expect(response.status).toBe(403);
@@ -140,12 +154,16 @@ describe("POST /api/v1/materials", () => {
         id: "auto-id",
         bookId: "book-1",
         moduleId: "module-1",
-        content: "x",
+        content: { ar: "x", en: "" },
       },
     });
 
     const response = await POST(
-      jsonRequest({ bookId: "book-1", moduleId: "module-1", content: "x" }),
+      jsonRequest({
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "x", en: "" },
+      }),
     );
 
     expect(response.status).toBe(201);
@@ -154,7 +172,7 @@ describe("POST /api/v1/materials", () => {
         id: "auto-id",
         bookId: "book-1",
         moduleId: "module-1",
-        content: "x",
+        content: { ar: "x", en: "" },
       },
     });
   });

@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import type { TempModule } from "./import-source-types";
 import { LearningMaterialView } from "./learning-material-view";
 
@@ -12,18 +13,21 @@ const SAMPLE_MODULES: TempModule[] = [
   { id: "module-2", text: "Second module source text" },
 ];
 
+function moduleHeader(name: string) {
+  return screen.getByText(name).closest("[aria-expanded]") as HTMLElement;
+}
+
 function renderView(
   overrides: Partial<React.ComponentProps<typeof LearningMaterialView>> = {},
 ) {
   const props: React.ComponentProps<typeof LearningMaterialView> = {
     fileName: "book.pdf",
     modules: SAMPLE_MODULES,
+    onModulesChange: vi.fn(),
     learningMaterials: {},
     onLearningMaterialsChange: vi.fn(),
     fontScale: 100,
     onFontScaleChange: vi.fn(),
-    direction: "rtl",
-    onDirectionChange: vi.fn(),
     onBack: vi.fn(),
     onFinish: vi.fn(),
     isFinishing: false,
@@ -58,18 +62,24 @@ describe("LearningMaterialView", () => {
   it("renders each Module in order, labeled Module 1, Module 2, ...", () => {
     renderView();
 
-    const headers = screen.getAllByRole("button", { name: /^Module \d$/ });
-    expect(headers.map((header) => header.textContent)).toEqual([
-      "Module 1",
-      "Module 2",
-    ]);
+    expect(moduleHeader("Module 1")).toBeInTheDocument();
+    expect(moduleHeader("Module 2")).toBeInTheDocument();
   });
 
-  it("renders each Module's source text read-only", () => {
+  it("exposes a drag handle, delete affordance, language switcher, and AI Assistant for every Module (ANA-75)", () => {
     renderView();
 
-    expect(screen.getByText("First module source text")).toBeInTheDocument();
-    expect(screen.getByText("Second module source text")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Module 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Module 2" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("radio", { name: "Arabic" })).toHaveLength(2);
+    expect(screen.getAllByRole("radio", { name: "English" })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "AI Assistant" }),
+    ).toHaveLength(2);
   });
 
   it("initializes each Module's Learning Material empty", async () => {
@@ -89,7 +99,10 @@ describe("LearningMaterialView", () => {
     // from-empty case here.
     const onLearningMaterialsChange = vi.fn();
     renderView({
-      learningMaterials: { "module-1": "Keep me", "module-2": "Existing" },
+      learningMaterials: {
+        "module-1": { ar: "Keep me", en: "" },
+        "module-2": { ar: "Existing", en: "" },
+      },
       onLearningMaterialsChange,
     });
 
@@ -99,8 +112,8 @@ describe("LearningMaterialView", () => {
     await user.type(editors[1], "!");
 
     expect(onLearningMaterialsChange).toHaveBeenLastCalledWith({
-      "module-1": "Keep me",
-      "module-2": "Existing!",
+      "module-1": { ar: "Keep me", en: "" },
+      "module-2": { ar: "Existing!", en: "" },
     });
   });
 
@@ -114,9 +127,10 @@ describe("LearningMaterialView", () => {
     // .test.tsx's own tests, which only ever type onto existing content).
     function Harness() {
       const [visible, setVisible] = useState(true);
+      const [modules, setModules] = useState(SAMPLE_MODULES);
       const [learningMaterials, setLearningMaterials] = useState<
-        Record<string, string>
-      >({ "module-1": "Existing" });
+        Record<string, TranslatableString>
+      >({ "module-1": { ar: "Existing", en: "" } });
 
       if (!visible) {
         return (
@@ -129,13 +143,12 @@ describe("LearningMaterialView", () => {
       return (
         <LearningMaterialView
           fileName="book.pdf"
-          modules={SAMPLE_MODULES}
+          modules={modules}
+          onModulesChange={setModules}
           learningMaterials={learningMaterials}
           onLearningMaterialsChange={setLearningMaterials}
           fontScale={100}
           onFontScaleChange={() => {}}
-          direction="rtl"
-          onDirectionChange={() => {}}
           onBack={() => setVisible(false)}
           onFinish={() => {}}
           isFinishing={false}

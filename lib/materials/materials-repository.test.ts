@@ -75,7 +75,11 @@ beforeEach(() => {
 
 describe("createMaterial", () => {
   it("creates a Material document with an auto-generated id and no audit fields", async () => {
-    const fields = { bookId: "book-1", moduleId: "module-1", content: "x" };
+    const fields = {
+      bookId: "book-1",
+      moduleId: "module-1",
+      content: { ar: "x", en: "" },
+    };
 
     const material = await createMaterial(fields);
 
@@ -96,14 +100,37 @@ describe("getMaterialById", () => {
     docGetMock.mockResolvedValueOnce({
       exists: true,
       id: "doc-1",
-      data: () => ({ bookId: "book-1", moduleId: "module-1", content: "x" }),
+      data: () => ({
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "x", en: "y" },
+      }),
     });
 
     expect(await getMaterialById("doc-1")).toEqual({
       id: "doc-1",
       bookId: "book-1",
       moduleId: "module-1",
-      content: "x",
+      content: { ar: "x", en: "y" },
+    });
+  });
+
+  it("normalizes a legacy plain-string content into { ar, en } on read (ANA-75)", async () => {
+    docGetMock.mockResolvedValueOnce({
+      exists: true,
+      id: "doc-1",
+      data: () => ({
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: "Legacy content",
+      }),
+    });
+
+    expect(await getMaterialById("doc-1")).toEqual({
+      id: "doc-1",
+      bookId: "book-1",
+      moduleId: "module-1",
+      content: { ar: "Legacy content", en: "" },
     });
   });
 
@@ -116,10 +143,20 @@ describe("getMaterialById", () => {
 
     expect(await getMaterialById("doc-1")).toBeNull();
   });
+
+  it("fails closed when content is neither a string nor a translatable object", async () => {
+    docGetMock.mockResolvedValueOnce({
+      exists: true,
+      id: "doc-1",
+      data: () => ({ bookId: "book-1", moduleId: "module-1", content: 42 }),
+    });
+
+    expect(await getMaterialById("doc-1")).toBeNull();
+  });
 });
 
 describe("listMaterials", () => {
-  it("maps every document, dropping malformed ones", async () => {
+  it("maps every document, dropping malformed ones, and normalizes legacy string content", async () => {
     getMock.mockResolvedValueOnce({
       docs: [
         {
@@ -127,15 +164,34 @@ describe("listMaterials", () => {
           data: () => ({
             bookId: "book-1",
             moduleId: "module-1",
-            content: "a",
+            content: { ar: "a", en: "" },
           }),
         },
-        { id: "doc-2", data: () => ({ bookId: "book-1" }) },
+        {
+          id: "doc-2",
+          data: () => ({
+            bookId: "book-1",
+            moduleId: "module-2",
+            content: "Legacy",
+          }),
+        },
+        { id: "doc-3", data: () => ({ bookId: "book-1" }) },
       ],
     });
 
     expect(await listMaterials()).toEqual([
-      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+      {
+        id: "doc-1",
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "a", en: "" },
+      },
+      {
+        id: "doc-2",
+        bookId: "book-1",
+        moduleId: "module-2",
+        content: { ar: "Legacy", en: "" },
+      },
     ]);
     expect(whereMock).not.toHaveBeenCalled();
   });
@@ -148,14 +204,19 @@ describe("listMaterials", () => {
           data: () => ({
             bookId: "book-1",
             moduleId: "module-1",
-            content: "a",
+            content: { ar: "a", en: "" },
           }),
         },
       ],
     });
 
     expect(await listMaterials("book-1")).toEqual([
-      { id: "doc-1", bookId: "book-1", moduleId: "module-1", content: "a" },
+      {
+        id: "doc-1",
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "a", en: "" },
+      },
     ]);
     expect(whereMock).toHaveBeenCalledWith("bookId", "==", "book-1");
     expect(getMock).not.toHaveBeenCalled();
@@ -166,7 +227,9 @@ describe("updateMaterialById", () => {
   it("returns null and writes nothing when no document exists", async () => {
     docGetMock.mockResolvedValueOnce({ exists: false });
 
-    expect(await updateMaterialById("missing", { content: "y" })).toBeNull();
+    expect(
+      await updateMaterialById("missing", { content: { ar: "y", en: "" } }),
+    ).toBeNull();
     expect(docUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -174,18 +237,28 @@ describe("updateMaterialById", () => {
     docGetMock.mockResolvedValueOnce({ exists: true }).mockResolvedValueOnce({
       exists: true,
       id: "doc-1",
-      data: () => ({ bookId: "book-1", moduleId: "module-1", content: "y" }),
+      data: () => ({
+        bookId: "book-1",
+        moduleId: "module-1",
+        content: { ar: "y", en: "" },
+      }),
     });
 
-    await updateMaterialById("doc-1", { content: "y" });
+    await updateMaterialById("doc-1", { content: { ar: "y", en: "" } });
 
-    expect(docUpdateMock).toHaveBeenCalledWith({ content: "y" });
+    expect(docUpdateMock).toHaveBeenCalledWith({
+      content: { ar: "y", en: "" },
+    });
   });
 });
 
 describe("upsertMaterialById", () => {
   it("fully replaces the document via `.set` without merge, regardless of prior existence", async () => {
-    const fields = { bookId: "book-1", moduleId: "module-1", content: "z" };
+    const fields = {
+      bookId: "book-1",
+      moduleId: "module-1",
+      content: { ar: "z", en: "" },
+    };
 
     const material = await upsertMaterialById("doc-1", fields);
 

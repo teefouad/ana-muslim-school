@@ -169,6 +169,49 @@ test("fillHeight applies MDXEditor's own full-height layout, without disturbing 
   expect(boldButton).toBeEnabled();
 });
 
+test("focuses the editor when empty body whitespace is clicked, not just the first line (ANA-75)", async () => {
+  const user = userEvent.setup();
+  const { container } = renderWithProvider(
+    <MarkdownEditor markdown="Hello" onChange={vi.fn()} />,
+  );
+
+  const editable = await screen.findByRole("textbox");
+  expect(editable).not.toHaveFocus();
+
+  const body = container.querySelector(".mdxeditor-root-contenteditable");
+  expect(body).not.toBeNull();
+  await user.click(body as HTMLElement);
+
+  expect(editable).toHaveFocus();
+});
+
+test("does not focus a disabled editor when its empty body is clicked (ANA-75)", async () => {
+  const user = userEvent.setup();
+  const { container } = renderWithProvider(
+    <MarkdownEditor markdown="Hello" onChange={vi.fn()} disabled />,
+  );
+
+  const editable = await screen.findByRole("textbox");
+  const body = container.querySelector(".mdxeditor-root-contenteditable");
+  await user.click(body as HTMLElement);
+
+  expect(editable).not.toHaveFocus();
+});
+
+test("still lets a direct toolbar click through the body focus fix (ANA-75)", async () => {
+  const user = userEvent.setup();
+  renderWithProvider(<MarkdownEditor markdown="Hello" onChange={vi.fn()} />);
+
+  const editable = await screen.findByRole("textbox");
+  await user.click(editable);
+  selectFirstCharacters(editable, 5);
+  await user.click(await screen.findByRole("button", { name: "Heading 1" }));
+
+  expect(
+    await screen.findByRole("heading", { level: 1, name: "Hello" }),
+  ).toBeInTheDocument();
+});
+
 test("returns empty strings when there is no selection", async () => {
   const ref = createRef<MarkdownEditorHandle>();
   renderWithProvider(

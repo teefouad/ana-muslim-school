@@ -1,6 +1,7 @@
 import { isValidDocId } from "@/lib/firestore/is-valid-doc-id";
 import { hasOnlyAllowedKeys } from "@/lib/http/has-only-allowed-keys";
 import { fail, ok, type ParseResult } from "@/lib/http/parse-result";
+import { parseTranslatableString } from "@/lib/learning-content/translatable-string";
 import type { MaterialWritableFields } from "./types";
 
 const WRITABLE_KEYS = ["bookId", "moduleId", "content"] as const;
@@ -24,14 +25,16 @@ export function parseMaterialWritableInput(
     return fail("`moduleId` must be a valid document id.");
   }
 
-  if (typeof body.content !== "string") {
-    return fail("`content` must be a string.");
+  const content = parseTranslatableString(body.content);
+
+  if (!content) {
+    return fail("`content` must be a translatable string ({ ar, en }).");
   }
 
   return ok({
     bookId: body.bookId,
     moduleId: body.moduleId,
-    content: body.content,
+    content,
   });
 }
 
@@ -64,10 +67,12 @@ export function parseMaterialPatchInput(
   }
 
   if ("content" in body) {
-    if (typeof body.content !== "string") {
-      return fail("`content` must be a string.");
+    const content = parseTranslatableString(body.content);
+
+    if (!content) {
+      return fail("`content` must be a translatable string ({ ar, en }).");
     }
-    result.content = body.content;
+    result.content = content;
   }
 
   return ok(result);
