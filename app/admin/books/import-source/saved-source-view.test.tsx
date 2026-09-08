@@ -2,7 +2,7 @@ import { useState } from "react";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceModuleEntry } from "./import-source-types";
 
@@ -185,7 +185,7 @@ describe("SavedSourceView", () => {
     expect(screen.getByText("Module 2")).toBeInTheDocument();
   });
 
-  it("exposes a drag handle (decorative), delete affordance, language switcher, AI Assistant, and Translate for every Module (ANA-75/ANA-77)", () => {
+  it("exposes a drag handle, delete affordance, language switcher, AI Assistant, and Translate for every Module (ANA-77/ANA-79)", () => {
     renderView({ entries: SAMPLE_ENTRIES });
 
     expect(
@@ -548,6 +548,99 @@ describe("SavedSourceView", () => {
       expect(
         screen.getByRole("button", { name: "Delete Module 1" }),
       ).toBeDisabled();
+    });
+  });
+
+  describe("Reorder (ANA-79)", () => {
+    // Same technique as source-modules-panel.test.tsx -- dnd-kit's keyboard
+    // coordinate math needs real-ish rects, keyed by the shared panel's own
+    // testid scheme.
+    function stubItemRects(order: string[], itemHeight = 60) {
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+        function (this: Element) {
+          const container = this.closest('[data-testid^="module-card-"]');
+          const id = container
+            ?.getAttribute("data-testid")
+            ?.replace("module-card-", "");
+          const index = id ? order.indexOf(id) : -1;
+          const top = index === -1 ? 0 : index * itemHeight;
+          return {
+            top,
+            bottom: top + itemHeight,
+            left: 0,
+            right: 300,
+            width: 300,
+            height: itemHeight,
+            x: 0,
+            y: top,
+            toJSON() {},
+          } as DOMRect;
+        },
+      );
+    }
+
+    // The spy above is created fresh per test, on the shared
+    // `Element.prototype` -- restore it after each test so the mocked
+    // geometry can't leak into unrelated tests in this file (Copilot
+    // review).
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("reorders persisted Modules via keyboard drag and reports the full new order", async () => {
+      stubItemRects(["module-1", "module-2"]);
+      const onEntriesChange = vi.fn();
+      renderView({ entries: SAMPLE_ENTRIES, onEntriesChange });
+
+      const card = screen.getByTestId("module-card-module-1");
+      const handle = card.querySelector('span[role="button"]') as HTMLElement;
+      expect(handle).toBeTruthy();
+
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      expect(onEntriesChange).toHaveBeenCalledWith([
+        SAMPLE_ENTRIES[1],
+        SAMPLE_ENTRIES[0],
+      ]);
+    });
+
+    it("reorders a mix of persisted and temporary (unsaved) Modules relative to each other", async () => {
+      const mixedEntries: WorkspaceModuleEntry[] = [
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "First", en: "" },
+        },
+        { key: "temp-1", moduleId: null, material: { ar: "Draft", en: "" } },
+      ];
+      stubItemRects(["module-1", "temp-1"]);
+      const onEntriesChange = vi.fn();
+      renderView({ entries: mixedEntries, onEntriesChange });
+
+      const card = screen.getByTestId("module-card-module-1");
+      const handle = card.querySelector('span[role="button"]') as HTMLElement;
+
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      expect(onEntriesChange).toHaveBeenCalledWith([
+        mixedEntries[1],
+        mixedEntries[0],
+      ]);
+    });
+
+    it("does not attach drag listeners while Save changes is in flight", () => {
+      renderView({ entries: SAMPLE_ENTRIES, isSaving: true });
+
+      const card = screen.getByTestId("module-card-module-1");
+      expect(card.querySelector('span[role="button"]')).toBeNull();
     });
   });
 

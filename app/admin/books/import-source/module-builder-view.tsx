@@ -8,17 +8,14 @@ import {
   type SetStateAction,
 } from "react";
 import { Alert, Button, Group, Text } from "@mantine/core";
-import { ArrowLeft, Plus } from "lucide-react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { ArrowLeft } from "lucide-react";
 
-import { SortableList } from "@/components/ui/sortable-list";
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule, TextDirection } from "./import-source-types";
 import { DocumentSummary } from "./document-summary";
 import { FontSizeControl } from "./font-size-control";
-import { LearningMaterialModuleCard } from "./learning-material-module-card";
+import { SourceModulesPanel } from "./source-modules-panel";
 import { TextDirectionControl } from "./text-direction-control";
 import { translateArabicToEnglish } from "./translate-client";
 import styles from "./module-builder-view.module.css";
@@ -73,68 +70,6 @@ export interface ModuleBuilderViewProps {
   /** Set when Finish fails; cleared on the next attempt. The modal stays
    * open so the user can retry without losing progress. */
   finishError: string | null;
-}
-
-const EMPTY_MATERIAL: TranslatableString = { ar: "", en: "" };
-
-function SortableModuleCard({
-  module,
-  index,
-  onMaterialChange,
-  fontScale,
-  disabled,
-  reorderDisabled,
-  onDelete,
-  deleteDisabled,
-  onTranslate,
-}: {
-  module: TempModule;
-  index: number;
-  onMaterialChange: (value: TranslatableString) => void;
-  fontScale: number;
-  disabled: boolean;
-  reorderDisabled: boolean;
-  onDelete: () => void;
-  deleteDisabled: boolean;
-  onTranslate: () => Promise<void>;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: module.id, disabled: reorderDisabled });
-
-  return (
-    <LearningMaterialModuleCard
-      testId={`module-card-${module.id}`}
-      index={index}
-      material={module.material}
-      onMaterialChange={onMaterialChange}
-      fontScale={fontScale}
-      disabled={disabled}
-      drag={
-        reorderDisabled
-          ? undefined
-          : {
-              attributes,
-              listeners,
-              setNodeRef,
-              style: {
-                transform: CSS.Transform.toString(transform),
-                transition,
-              },
-              isDragging,
-            }
-      }
-      onDelete={onDelete}
-      deleteConfirmDescription={TEMPORARY_DELETE_CONFIRM_DESCRIPTION}
-      deleteDisabled={deleteDisabled}
-      onTranslate={onTranslate}
-    />
-  );
 }
 
 // Step 4, and now the *final* editing step, of the Import Source modal
@@ -311,75 +246,24 @@ export function ModuleBuilderView({
           </div>
         </div>
 
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <Text size="sm" fw={500}>
-              Modules{modules.length > 0 ? ` (${modules.length})` : ""}
-            </Text>
-            <Button
-              size="xs"
-              leftSection={<Plus size={14} aria-hidden="true" />}
-              // Also locked while Finish is in flight (PR review, ANA-75):
-              // Finish operates on the `modules` snapshot it was invoked
-              // with, so a Module created mid-request would show a draft
-              // that was never actually part of that Finish attempt and
-              // then vanishes once it succeeds and resets the modal.
-              disabled={!canCreateModule || isFinishing}
-              // Clicking a button starts with a mousedown, whose default
-              // browser behavior both collapses the current text selection
-              // and shifts focus away from the source `<pre>` -- either one
-              // alone clears `selectedText` before this button's own
-              // onClick can run. Preventing that default keeps the
-              // selection (and focus) intact through the click.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={handleCreateModule}
-            >
-              Create Module
-            </Button>
-          </div>
-          <div className={styles.panelBody}>
-            {modules.length === 0 ? (
-              <p className={styles.emptyState}>
-                Select text on the left and click &ldquo;Create Module&rdquo; to
-                get started.
-              </p>
-            ) : (
-              <SortableList<TempModule>
-                items={modules}
-                getId={(module) => module.id}
-                onReorder={onModulesChange}
-                renderItem={(module, index) => (
-                  <SortableModuleCard
-                    key={module.id}
-                    module={module}
-                    index={index}
-                    onMaterialChange={(value) =>
-                      handleModuleMaterialChange(module.id, value)
-                    }
-                    fontScale={fontScale}
-                    disabled={isFinishing}
-                    reorderDisabled={reorderDisabled}
-                    onDelete={() => handleDeleteModule(module.id)}
-                    deleteDisabled={
-                      isFinishing || createdModuleIds.has(module.id)
-                    }
-                    onTranslate={() => handleTranslateModule(module.id)}
-                  />
-                )}
-                renderOverlay={(module, index) => (
-                  <LearningMaterialModuleCard
-                    testId={`module-card-overlay-${module.id}`}
-                    index={index}
-                    material={module.material ?? EMPTY_MATERIAL}
-                    onMaterialChange={() => {}}
-                    fontScale={fontScale}
-                    disabled
-                  />
-                )}
-              />
-            )}
-          </div>
-        </div>
+        <SourceModulesPanel<TempModule>
+          items={modules}
+          getKey={(module) => module.id}
+          getMaterial={(module) => module.material}
+          onMaterialChange={handleModuleMaterialChange}
+          onReorder={onModulesChange}
+          fontScale={fontScale}
+          disabled={isFinishing}
+          reorderDisabled={reorderDisabled}
+          canCreateModule={canCreateModule}
+          onCreateModule={handleCreateModule}
+          onDeleteItem={handleDeleteModule}
+          getDeleteConfirmDescription={() =>
+            TEMPORARY_DELETE_CONFIRM_DESCRIPTION
+          }
+          isDeleteDisabled={(id) => isFinishing || createdModuleIds.has(id)}
+          onTranslateItem={handleTranslateModule}
+        />
       </div>
 
       {finishError && (

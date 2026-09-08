@@ -16,6 +16,7 @@ const {
   useMediaQueryMock,
   createModuleMock,
   deleteModuleMock,
+  reorderModulesMock,
   createSourceMock,
   deleteSourceMock,
   updateSourceMock,
@@ -29,6 +30,7 @@ const {
   useMediaQueryMock: vi.fn(),
   createModuleMock: vi.fn(),
   deleteModuleMock: vi.fn(),
+  reorderModulesMock: vi.fn(),
   createSourceMock: vi.fn(),
   deleteSourceMock: vi.fn(),
   updateSourceMock: vi.fn(),
@@ -58,6 +60,7 @@ vi.mock("./ocr-client", () => ({
 vi.mock("./modules-client", () => ({
   createModule: createModuleMock,
   deleteModule: deleteModuleMock,
+  reorderModules: reorderModulesMock,
 }));
 
 vi.mock("./sources-client", () => ({
@@ -189,6 +192,9 @@ describe("ImportSourceModal", () => {
     );
     createSourceMock.mockImplementation((bookId: string, content: string) =>
       Promise.resolve({ id: "source-1", bookId, content }),
+    );
+    reorderModulesMock.mockImplementation((bookId: string, order: string[]) =>
+      Promise.resolve({ id: bookId, modules: order }),
     );
     deleteSourceMock.mockResolvedValue(undefined);
     updateSourceMock.mockImplementation((id: string, content: string) =>
@@ -1093,6 +1099,159 @@ describe("ImportSourceModal", () => {
     });
   });
 
+  describe("Persisting Module order on Save changes (ANA-79)", () => {
+    // Same technique as saved-source-view.test.tsx's own reorder tests --
+    // dnd-kit's keyboard coordinate math needs real-ish rects, keyed by the
+    // shared SourceModulesPanel's testid scheme.
+    function stubItemRects(order: string[], itemHeight = 60) {
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+        function (this: Element) {
+          const container = this.closest('[data-testid^="module-card-"]');
+          const id = container
+            ?.getAttribute("data-testid")
+            ?.replace("module-card-", "");
+          const index = id ? order.indexOf(id) : -1;
+          const top = index === -1 ? 0 : index * itemHeight;
+          return {
+            top,
+            bottom: top + itemHeight,
+            left: 0,
+            right: 300,
+            width: 300,
+            height: itemHeight,
+            x: 0,
+            y: top,
+            toJSON() {},
+          } as DOMRect;
+        },
+      );
+    }
+
+    // The spy above is created fresh per test, on the shared
+    // `Element.prototype` -- restore it after each test so the mocked
+    // geometry can't leak into unrelated tests in this file (Copilot
+    // review).
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    async function dragFirstCardDown() {
+      const card = screen.getByTestId("module-card-module-1");
+      const handle = card.querySelector('span[role="button"]') as HTMLElement;
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+    }
+
+    it("persists the dragged order for already-persisted Modules, and no other Modules writes", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      renderModal();
+      await screen.findByLabelText("Source text");
+      stubItemRects(["module-1", "module-2"]);
+
+      await dragFirstCardDown();
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(reorderModulesMock).toHaveBeenCalledWith("book-1", [
+          "module-2",
+          "module-1",
+        ]),
+      );
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).not.toHaveBeenCalled();
+    });
+
+    it("does not send a reorder PATCH when the displayed order was never changed", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(deleteSourceMock).not.toHaveBeenCalled());
+      expect(reorderModulesMock).not.toHaveBeenCalled();
+    });
+
+    it("resolves a new (temporary) Module's real id before persisting the final order, appended after an existing Module", async () => {
+      // No drag needed to exercise id resolution here: the new temporary
+      // Module extends the displayed order past what was last persisted
+      // (`savedWorkspaceModuleOrder`, seeded from the one existing Module),
+      // so Save changes must still send a reorder PATCH -- with the new
+      // Module's *real*, server-returned id, not its temporary client key.
+      mockExistingSource({
+        modules: [{ id: "module-1" }],
+        content: "Some source text",
+      });
+      renderModal();
+      const textarea = (await screen.findByLabelText(
+        "Source text",
+      )) as HTMLTextAreaElement;
+      textarea.setSelectionRange(0, 4);
+      fireEvent.select(textarea);
+      fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+
+      createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(reorderModulesMock).toHaveBeenCalledWith("book-1", [
+          "module-1",
+          "created-1",
+        ]),
+      );
+    });
+
+    it("keeps the modal open, preserves the chosen order, and does not duplicate already-succeeded writes when the reorder PATCH itself fails; a retry succeeds", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+      stubItemRects(["module-1", "module-2"]);
+      await dragFirstCardDown();
+
+      reorderModulesMock.mockRejectedValueOnce(
+        new Error("`modules` must be a reorder of the exact current set."),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(
+        await screen.findByText(
+          "`modules` must be a reorder of the exact current set.",
+        ),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+      // The dragged order is still what's displayed -- Module 2's card is
+      // now first.
+      const cardsAfterFailure = screen.getAllByTestId(
+        /^module-card-(?!overlay-)/,
+      );
+      expect(cardsAfterFailure[0]).toHaveAttribute(
+        "data-testid",
+        "module-card-module-2",
+      );
+
+      reorderModulesMock.mockClear();
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(reorderModulesMock).toHaveBeenCalledWith("book-1", [
+        "module-2",
+        "module-1",
+      ]);
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("moves to the PDF viewer once a file is selected", async () => {
     renderModal();
 
@@ -1827,6 +1986,110 @@ describe("ImportSourceModal", () => {
         screen.getByText("Your changes have not been saved and will be lost."),
       ).toBeInTheDocument();
       expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("blocks closing after a reorder-only change (no content/Material edit), and Save changes clears it (ANA-79, PR review)", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      const restoreRects = vi
+        .spyOn(Element.prototype, "getBoundingClientRect")
+        .mockImplementation(function (this: Element) {
+          const container = this.closest('[data-testid^="module-card-"]');
+          const id = container
+            ?.getAttribute("data-testid")
+            ?.replace("module-card-", "");
+          const order = ["module-1", "module-2"];
+          const index = id ? order.indexOf(id) : -1;
+          const top = index === -1 ? 0 : index * 60;
+          return {
+            top,
+            bottom: top + 60,
+            left: 0,
+            right: 300,
+            width: 300,
+            height: 60,
+            x: 0,
+            y: top,
+            toJSON() {},
+          } as DOMRect;
+        });
+      const card = screen.getByTestId("module-card-module-1");
+      const handle = card.querySelector('span[role="button"]') as HTMLElement;
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      restoreRects.mockRestore();
+    });
+
+    it("does not treat an already-persisted Delete as an unsaved reorder -- the close guard stays clear (ANA-79, PR review)", async () => {
+      let currentModuleIds = ["module-1", "module-2"];
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation((input) => {
+        const url = String(input);
+
+        if (url.startsWith("/api/v1/sources?bookId=")) {
+          return Promise.resolve(
+            jsonResponse({
+              data: [
+                { id: "source-1", bookId: "book-1", content: "Saved text" },
+              ],
+            }),
+          );
+        }
+        if (url === "/api/v1/books/book-1/modules") {
+          return Promise.resolve(
+            jsonResponse({
+              data: currentModuleIds.map((id) => moduleFixture(id)),
+            }),
+          );
+        }
+        if (url.startsWith("/api/v1/materials?bookId=")) {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        throw new Error(`Unhandled fetch in test: ${url}`);
+      });
+      deleteModuleMock.mockImplementationOnce(async () => {
+        currentModuleIds = currentModuleIds.filter((id) => id !== "module-1");
+      });
+
+      const { onClose } = renderModal();
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() =>
+        expect(deleteModuleMock).toHaveBeenCalledWith("book-1", "module-1"),
+      );
+      await vi.waitFor(() =>
+        expect(screen.getByText("Modules (1)")).toBeInTheDocument(),
+      );
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it("Keep editing closes only the confirmation and preserves the edited workspace", async () => {

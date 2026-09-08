@@ -450,6 +450,210 @@ describe("EditBookPage", () => {
       ).toBeInTheDocument();
     });
 
+    describe("Reorder (ANA-79)", () => {
+      // Same technique as modules-panel.test.tsx/item-list.test.tsx's own
+      // keyboard-drag tests -- dnd-kit's keyboard coordinate math needs
+      // real-ish rects, keyed by ItemList's own testid scheme.
+      function stubItemRects(order: string[], itemHeight = 60) {
+        const spy = vi
+          .spyOn(Element.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: Element) {
+            const container = this.closest('[data-testid^="list-item-"]');
+            const id = container
+              ?.getAttribute("data-testid")
+              ?.replace("list-item-", "");
+            const index = id ? order.indexOf(id) : -1;
+            const top = index === -1 ? 0 : index * itemHeight;
+            return {
+              top,
+              bottom: top + itemHeight,
+              left: 0,
+              right: 300,
+              width: 300,
+              height: itemHeight,
+              x: 0,
+              y: top,
+              toJSON() {},
+            } as DOMRect;
+          });
+        return spy;
+      }
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      async function dragFirstModuleDown() {
+        const grip = document.querySelector(
+          '[data-testid="list-item-module-1"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+      }
+
+      it("reorders locally with no network request, and keeps reordering freely", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        stubItemRects(["module-1", "module-2"]);
+        await dragFirstModuleDown();
+
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[أب]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["ب", "أ"]);
+        });
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, init]) => init?.method === "PATCH",
+          ),
+        ).toBe(false);
+
+        // Not disabled/frozen by the reorder itself -- dragging again keeps
+        // working (module-2 is now first, so this drags it back down).
+        stubItemRects(["module-2", "module-1"]);
+        const secondGrip = document.querySelector(
+          '[data-testid="list-item-module-2"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        secondGrip.focus();
+        fireEvent.keyDown(secondGrip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(secondGrip, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(secondGrip, { code: "Space", key: " " });
+
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[أب]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["أ", "ب"]);
+        });
+      });
+
+      it("includes the reordered Module ids in the same Book PATCH as the form's other fields, only when Save changes is clicked", async () => {
+        let patchBody: Record<string, unknown> | null = null;
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+          ],
+          onPatch: (body) => {
+            patchBody = body as Record<string, unknown>;
+            return { status: 200, body: { data: buildBookFixture() } };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        stubItemRects(["module-1", "module-2"]);
+        await dragFirstModuleDown();
+
+        // The reorder alone makes no request yet.
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, init]) => init?.method === "PATCH",
+          ),
+        ).toBe(false);
+
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        await vi.waitFor(() => expect(patchBody).not.toBeNull());
+        expect(patchBody).toMatchObject({ modules: ["module-2", "module-1"] });
+        // The rest of the form's fields are still sent in the same request.
+        expect(patchBody).toHaveProperty("title");
+      });
+
+      it("keeps the reordered draft visible and shows the form's save error when the PATCH fails", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+          ],
+          onPatch: () => ({
+            status: 400,
+            body: { error: "Something went wrong." },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        stubItemRects(["module-1", "module-2"]);
+        await dragFirstModuleDown();
+
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        expect(
+          await screen.findByText("Something went wrong."),
+        ).toBeInTheDocument();
+        // The dragged order is still what's displayed -- Save failing must
+        // not discard the user's chosen order.
+        const items = await screen.findAllByText(/^[أب]$/);
+        expect(items.map((el) => el.textContent)).toEqual(["ب", "أ"]);
+        expect(pushMock).not.toHaveBeenCalled();
+      });
+
+      it("revalidates the Modules list after a successful save that included a reorder", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+          ],
+          onPatch: () => ({ status: 200, body: { data: buildBookFixture() } }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        stubItemRects(["module-1", "module-2"]);
+        await dragFirstModuleDown();
+
+        const modulesGetCallsBefore = (
+          fetch as ReturnType<typeof vi.fn>
+        ).mock.calls.filter(
+          ([url, init]) =>
+            String(url) === "/api/v1/books/book-1/modules" &&
+            (init?.method ?? "GET") === "GET",
+        ).length;
+
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        await vi.waitFor(() =>
+          expect(pushMock).toHaveBeenCalledWith("/admin/books"),
+        );
+        const modulesGetCallsAfter = (
+          fetch as ReturnType<typeof vi.fn>
+        ).mock.calls.filter(
+          ([url, init]) =>
+            String(url) === "/api/v1/books/book-1/modules" &&
+            (init?.method ?? "GET") === "GET",
+        ).length;
+        expect(modulesGetCallsAfter).toBeGreaterThan(modulesGetCallsBefore);
+      });
+
+      it("does not persist Add module's local-only blank entry as a reorder, and leaves the displayed order unchanged", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+
+        expect(screen.getByText("أ")).toBeInTheDocument();
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, init]) => init?.method === "PATCH",
+          ),
+        ).toBe(false);
+      });
+    });
+
     describe("Delete (ANA-77)", () => {
       it("shows a confirmation, then DELETEs the Module and refreshes the list without a page reload", async () => {
         setupFetch(buildBookFixture(), {
