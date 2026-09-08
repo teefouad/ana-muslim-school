@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -63,6 +64,60 @@ function renderView(
 function selectText(textarea: HTMLTextAreaElement, start: number, end: number) {
   textarea.setSelectionRange(start, end);
   fireEvent.select(textarea);
+}
+
+// `onEntriesChange` now accepts either a plain array or a functional
+// updater (see SavedSourceViewProps -- ANA-77, PR review) -- this resolves
+// a mock's last call against a known "current" array either way, so
+// assertions don't need to care which form the component under test used.
+function applyLastEntriesUpdate(
+  onEntriesChange: ReturnType<typeof vi.fn>,
+  current: WorkspaceModuleEntry[],
+): WorkspaceModuleEntry[] {
+  const arg = onEntriesChange.mock.calls.at(-1)?.[0];
+  return typeof arg === "function" ? arg(current) : arg;
+}
+
+// A stateful wrapper for scenarios that need `entries` to genuinely persist
+// across renders -- e.g. verifying a concurrent edit to one card survives a
+// *different* card's in-flight Translate/Delete request resolving later
+// (PR review, blocking). `renderView`'s plain `vi.fn()` mock can't model
+// this: it never feeds a result back into `entries`.
+function renderStatefulView(
+  overrides: Partial<React.ComponentProps<typeof SavedSourceView>> & {
+    entries: WorkspaceModuleEntry[];
+  },
+) {
+  function Wrapper() {
+    const [entries, setEntries] = useState(overrides.entries);
+
+    return (
+      <SavedSourceView
+        bookId="book-1"
+        content="Saved source text"
+        onContentChange={vi.fn()}
+        onRemove={vi.fn()}
+        isRemoving={false}
+        removeError={null}
+        onSave={vi.fn()}
+        isSaving={false}
+        saveError={null}
+        fontScale={100}
+        onFontScaleChange={vi.fn()}
+        direction="rtl"
+        onDirectionChange={vi.fn()}
+        {...overrides}
+        entries={entries}
+        onEntriesChange={setEntries}
+      />
+    );
+  }
+
+  render(
+    <MantineProvider>
+      <Wrapper />
+    </MantineProvider>,
+  );
 }
 
 // The Source Text panel's plain <textarea> also has an implicit
@@ -422,7 +477,9 @@ describe("SavedSourceView", () => {
       await vi.waitFor(() =>
         expect(deleteModuleMock).toHaveBeenCalledWith("book-1", "module-1"),
       );
-      expect(onEntriesChange).toHaveBeenCalledWith([SAMPLE_ENTRIES[1]]);
+      expect(applyLastEntriesUpdate(onEntriesChange, SAMPLE_ENTRIES)).toEqual([
+        SAMPLE_ENTRIES[1],
+      ]);
       expect(onModuleDeleted).toHaveBeenCalledTimes(1);
     });
 
@@ -436,7 +493,9 @@ describe("SavedSourceView", () => {
       fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
       fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
 
-      expect(onEntriesChange).toHaveBeenCalledWith([]);
+      expect(applyLastEntriesUpdate(onEntriesChange, unsavedEntries)).toEqual(
+        [],
+      );
       expect(deleteModuleMock).not.toHaveBeenCalled();
     });
 
@@ -507,7 +566,7 @@ describe("SavedSourceView", () => {
           "First material",
         ),
       );
-      expect(onEntriesChange).toHaveBeenCalledWith([
+      expect(applyLastEntriesUpdate(onEntriesChange, SAMPLE_ENTRIES)).toEqual([
         {
           key: "module-1",
           moduleId: "module-1",
@@ -515,6 +574,59 @@ describe("SavedSourceView", () => {
         },
         SAMPLE_ENTRIES[1],
       ]);
+    });
+
+    it("applies its result against the latest entries when it resolves, preserving a concurrent edit made to a different card while it was in flight (PR review, blocking)", async () => {
+      let resolveTranslate: (value: string) => void = () => {};
+      translateArabicToEnglishMock.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveTranslate = resolve;
+          }),
+      );
+      const entries: WorkspaceModuleEntry[] = [
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "Arabic one", en: "" },
+        },
+        {
+          key: "module-2",
+          moduleId: "module-2",
+          material: { ar: "Arabic two", en: "" },
+        },
+      ];
+      renderStatefulView({ entries });
+
+      // Start translating Module 1.
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Translate to English" })[0],
+      );
+      await vi.waitFor(() =>
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("Arabic one"),
+      );
+
+      // While that request is still pending, edit Module 2's own Learning
+      // Material -- a real state update the workspace must not lose.
+      const editors = await findMaterialEditors();
+      const user = userEvent.setup();
+      await user.click(editors[1]);
+      await user.type(editors[1], "!");
+      expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
+
+      // Now let Module 1's translation resolve.
+      resolveTranslate("Translated one");
+
+      // Module 1 switches to English, showing the translation...
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("radio", { name: "English" })[0],
+        ).toBeChecked(),
+      );
+      expect(await screen.findByText("Translated one")).toBeInTheDocument();
+      // ...and Module 2's concurrent edit is still there, not reverted by
+      // the translation applying against a stale snapshot of `entries`.
+      expect(screen.getByText("Arabic two!")).toBeInTheDocument();
     });
 
     it("requires confirmation before replacing non-empty English content", () => {

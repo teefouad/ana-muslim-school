@@ -612,9 +612,14 @@ export function ImportSourceModal({
       // 2. Learning Material edits for Modules that already existed when
       // this workspace opened -- PATCH when a Material already exists,
       // otherwise create one, but only when the draft actually changed
-      // (an untouched empty Module stays without a Material).
+      // (an untouched empty Module stays without a Material). Explicitly
+      // excludes any entry created in *this* Save session (`createdModuleKeys`)
+      // even though its `moduleId` is already promoted by the time this
+      // runs on a retry (see step 3) -- that one always goes through step
+      // 4 below instead, which always writes its Material once (even an
+      // empty one) rather than diffing against a baseline.
       for (const entry of workspaceEntries) {
-        if (!entry.moduleId) {
+        if (!entry.moduleId || createdModuleKeys.has(entry.key)) {
           continue;
         }
 
@@ -646,6 +651,14 @@ export function ImportSourceModal({
       // 3. Every Module created from a Source Text selection in this
       // session -- sequential and in order, since each POST atomically
       // appends to `Book.modules` (same reasoning as handleFinish).
+      // `entry.moduleId` is promoted to the real persisted id the instant
+      // its own Module POST succeeds, *before* step 4 attempts that
+      // Module's Material -- so a Delete click racing a later failure in
+      // step 4 (e.g. this entry's own Material POST throws, or a
+      // different entry's does) always sees a real `moduleId` and goes
+      // through the Module DELETE API instead of removing the entry
+      // locally and orphaning the Module that already exists under the
+      // Book (PR review, blocking).
       for (const entry of workspaceEntries) {
         if (entry.moduleId || createdModuleKeys.has(entry.key)) {
           continue;
@@ -659,23 +672,33 @@ export function ImportSourceModal({
         idMap[entry.key] = persistedModule.id;
         setCreatedWorkspaceModuleKeys(new Set(createdModuleKeys));
         setWorkspaceModuleIdMap({ ...idMap });
+        setWorkspaceEntries((current) =>
+          current.map((candidate) =>
+            candidate.key === entry.key
+              ? { ...candidate, moduleId: persistedModule.id }
+              : candidate,
+          ),
+        );
       }
 
       // 4. Each new Module's Learning Material, attached to its real
       // persisted id -- always created (even an intentionally empty one),
       // unlike step 2's existing Modules, which only write on a real
-      // change. Guarded by `materialDocIds` (the same map step 2 uses)
-      // rather than a separate one-shot "already materialized" flag: a
-      // flag would permanently skip this entry on every future Save
-      // Changes, silently dropping an edit made after this Material
-      // succeeds but a *different* write in the same attempt fails (PR
-      // review, blocking). Once created, the entry is promoted to look
-      // exactly like an originally-persisted Module (`moduleId` set,
-      // recorded in `materialDocIds`/`savedMaterialContents`) so step 2
-      // picks up any further edit to it on the next attempt via the same
-      // diff-based PATCH, instead of this step ever touching it again.
+      // change. Selected via `createdModuleKeys` (this session's own
+      // "newly created" set) rather than `entry.moduleId` presence, since
+      // step 3 above already promoted that for every entry in this loop.
+      // Guarded by `materialDocIds` (the same map step 2 uses) rather than
+      // a separate one-shot "already materialized" flag: a flag would
+      // permanently skip this entry on every future Save Changes, silently
+      // dropping an edit made after this Material succeeds but a
+      // *different* write in the same attempt fails (PR review, blocking).
+      // Once its Material is created, the entry looks exactly like an
+      // originally-persisted Module (recorded in
+      // `materialDocIds`/`savedMaterialContents`, `createdModuleKeys` still
+      // holds its key) so step 2 explicitly keeps skipping it and this step
+      // never touches it again.
       for (const entry of workspaceEntries) {
-        if (entry.moduleId) {
+        if (!createdModuleKeys.has(entry.key)) {
           continue;
         }
 
@@ -694,13 +717,6 @@ export function ImportSourceModal({
         savedMaterialContents[realModuleId] = entry.material;
         setMaterialDocIdByModuleId({ ...materialDocIds });
         setSavedMaterialContentByModuleId({ ...savedMaterialContents });
-        setWorkspaceEntries((current) =>
-          current.map((candidate) =>
-            candidate.key === entry.key
-              ? { ...candidate, moduleId: realModuleId }
-              : candidate,
-          ),
-        );
       }
 
       // Every write succeeded -- revalidate everything this screen could

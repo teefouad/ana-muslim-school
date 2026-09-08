@@ -130,9 +130,24 @@ export function LearningMaterialModuleCard({
 
   async function handleConfirmDelete() {
     setIsDeleting(true);
-    await onDelete?.();
-    setIsDeleting(false);
-    setPendingAction(null);
+
+    try {
+      await onDelete?.();
+    } catch {
+      // The owning view is responsible for surfacing a delete failure
+      // itself (e.g. an Alert next to the list) -- this dialog only needs
+      // to stop blocking, not duplicate that error. Swallowing here also
+      // keeps a rejecting `onDelete` from becoming an unhandled promise
+      // rejection, since `ConfirmDialog` fires `onConfirm` without
+      // awaiting it (PR review).
+    } finally {
+      // Always runs, even if `onDelete` throws -- otherwise a rejection
+      // would leave `isDeleting` stuck true, permanently blocking
+      // Cancel/Escape via `ConfirmDialog`'s `isConfirming` prop (PR
+      // review, Copilot).
+      setIsDeleting(false);
+      setPendingAction(null);
+    }
   }
 
   async function runTranslate() {
@@ -219,17 +234,23 @@ export function LearningMaterialModuleCard({
         {/* Delete, AI Assistant, and Translate: hidden at rest, revealed
             together on header hover/focus-within (ANA-77) -- always
             immediately to the left of the language switcher, which is
-            never part of this hover-hidden group. */}
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          className={styles.actionButton}
-          aria-label={`Delete Module ${index + 1}`}
-          disabled={disabled || deleteDisabled}
-          onClick={handleDeleteClick}
-        >
-          <Trash2 size={14} aria-hidden="true" />
-        </ActionIcon>
+            never part of this hover-hidden group. Delete/Translate only
+            render when the caller actually wired them -- an omitted
+            handler hides the affordance entirely rather than rendering a
+            button that silently does nothing when clicked (PR review,
+            Copilot). */}
+        {onDelete && (
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            className={styles.actionButton}
+            aria-label={`Delete Module ${index + 1}`}
+            disabled={disabled || deleteDisabled}
+            onClick={handleDeleteClick}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </ActionIcon>
+        )}
         {/* UI-only affordance (ANA-75): no AI instructions dialog opens and
             no request is made from this card yet -- wiring the actual AI
             service (see ANA-74) to this button is a later card. */}
@@ -241,16 +262,18 @@ export function LearningMaterialModuleCard({
         >
           <Sparkles size={16} aria-hidden="true" />
         </ActionIcon>
-        <ActionIcon
-          variant="subtle"
-          className={styles.actionButton}
-          aria-label="Translate to English"
-          disabled={isTranslateDisabled}
-          loading={isTranslating}
-          onClick={handleTranslateClick}
-        >
-          <Languages size={16} aria-hidden="true" />
-        </ActionIcon>
+        {onTranslate && (
+          <ActionIcon
+            variant="subtle"
+            className={styles.actionButton}
+            aria-label="Translate to English"
+            disabled={isTranslateDisabled}
+            loading={isTranslating}
+            onClick={handleTranslateClick}
+          >
+            <Languages size={16} aria-hidden="true" />
+          </ActionIcon>
+        )}
         <LanguageSwitcher
           languages={LANGUAGES}
           value={activeLanguage}

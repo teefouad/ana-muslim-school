@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Alert, Button, Group, Text, Textarea } from "@mantine/core";
 import { Plus, X } from "lucide-react";
 
@@ -30,7 +30,14 @@ export interface SavedSourceViewProps {
    * Modules first followed by any created from a Source Text selection in
    * this modal session (ANA-72). */
   entries: WorkspaceModuleEntry[];
-  onEntriesChange: (entries: WorkspaceModuleEntry[]) => void;
+  /** Accepts a plain array like a normal controlled-value setter, or a
+   * functional updater `(current) => next` -- the real caller (the Import
+   * Source modal) passes its own `useState` setter directly, so this
+   * component can rely on the functional form to apply a result (e.g. a
+   * finished Translate request, see `handleTranslateEntry`) against
+   * whatever `entries` looks like *at that moment*, not a stale value
+   * captured before an earlier `await` (PR review, blocking -- ANA-77). */
+  onEntriesChange: Dispatch<SetStateAction<WorkspaceModuleEntry[]>>;
   /** Called once a persisted Module's delete request succeeds, so the
    * caller can revalidate its own Modules/Materials SWR caches (ANA-77) --
    * never called for a local-only (unsaved, `moduleId === null`) delete,
@@ -158,13 +165,18 @@ export function SavedSourceView({
   // read at call time, so a temporary entry already promoted to a real
   // Module mid partial-Save (see import-source-modal.tsx's
   // handleSaveWorkspace) is correctly treated as persisted here, never
-  // locally orphaned.
+  // locally orphaned. Removes the entry through a functional update
+  // against the *current* `entries` when the request settles, same
+  // reasoning as `handleTranslateEntry` -- the workspace stays editable
+  // while a persisted delete is in flight, so any other card's concurrent
+  // edit must survive it resolving late, not get reverted by a stale
+  // array.
   async function handleDeleteEntry(entry: WorkspaceModuleEntry) {
     setDeleteError(null);
 
     if (!entry.moduleId) {
-      onEntriesChange(
-        entries.filter((candidate) => candidate.key !== entry.key),
+      onEntriesChange((current) =>
+        current.filter((candidate) => candidate.key !== entry.key),
       );
       return;
     }
@@ -173,8 +185,8 @@ export function SavedSourceView({
 
     try {
       await deleteModule(bookId, entry.moduleId);
-      onEntriesChange(
-        entries.filter((candidate) => candidate.key !== entry.key),
+      onEntriesChange((current) =>
+        current.filter((candidate) => candidate.key !== entry.key),
       );
       await onModuleDeleted?.();
     } catch (err) {
@@ -189,7 +201,14 @@ export function SavedSourceView({
   // Translates a single card's Arabic draft to English (ANA-77) -- reads
   // the *current* `entry.material.ar` at call time, so an edit made after
   // the request started never gets clobbered: only `material.en` is
-  // replaced.
+  // replaced. Applies the result through a functional update against
+  // whichever `entries` is current *when the request resolves*, not the
+  // `entries` snapshot captured here before the `await` -- the workspace
+  // stays fully editable while translation is in flight, so a concurrent
+  // edit/reorder/delete to a *different* card (or even a further edit to
+  // this same card's Arabic draft) must survive this resolving late,
+  // instead of being silently reverted by a stale array (PR review,
+  // blocking).
   async function handleTranslateEntry(key: string) {
     const entry = entries.find((candidate) => candidate.key === key);
 
@@ -199,8 +218,8 @@ export function SavedSourceView({
 
     const translated = await translateArabicToEnglish(entry.material.ar);
 
-    onEntriesChange(
-      entries.map((candidate) =>
+    onEntriesChange((current) =>
+      current.map((candidate) =>
         candidate.key === key
           ? {
               ...candidate,

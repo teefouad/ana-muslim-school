@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { Alert, Button, Group, Text } from "@mantine/core";
 import { ArrowLeft, Plus } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -29,7 +35,14 @@ export interface ModuleBuilderViewProps {
   direction: TextDirection;
   onDirectionChange: (value: TextDirection) => void;
   modules: TempModule[];
-  onModulesChange: (modules: TempModule[]) => void;
+  /** Accepts a plain array like a normal controlled-value setter, or a
+   * functional updater `(current) => next` -- the real caller (the Import
+   * Source modal) passes its own `useState` setter directly, so this
+   * component can rely on the functional form to apply a result (e.g. a
+   * finished Translate request, see `handleTranslateModule`) against
+   * whatever `modules` looks like *at that moment*, not a stale value
+   * captured before an earlier `await` (PR review, blocking -- ANA-77). */
+  onModulesChange: Dispatch<SetStateAction<TempModule[]>>;
   onBack: () => void;
   /** True once at least one temporary Module has already been persisted in
    * the current Finish session (a partial failure) -- disables Back so the
@@ -233,7 +246,13 @@ export function ModuleBuilderView({
   // Translates a single card's Arabic draft to English (ANA-77) -- reads
   // the *current* Module's `material.ar` at call time, so an edit made
   // after the request started never gets clobbered: only `material.en` is
-  // replaced.
+  // replaced. Applies the result through a functional update against
+  // whichever `modules` is current *when the request resolves*, not the
+  // `modules` snapshot captured here before the `await` -- the builder
+  // stays fully editable (add/delete/reorder/edit) while translation is in
+  // flight, so a concurrent change to a *different* temporary Module must
+  // survive this resolving late, instead of being silently reverted by a
+  // stale array (PR review, blocking).
   async function handleTranslateModule(moduleId: string) {
     const targetModule = modules.find((module) => module.id === moduleId);
 
@@ -243,8 +262,8 @@ export function ModuleBuilderView({
 
     const translated = await translateArabicToEnglish(targetModule.material.ar);
 
-    onModulesChange(
-      modules.map((module) =>
+    onModulesChange((current) =>
+      current.map((module) =>
         module.id === moduleId
           ? { ...module, material: { ...module.material, en: translated } }
           : module,

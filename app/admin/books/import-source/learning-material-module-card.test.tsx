@@ -16,6 +16,12 @@ function renderCard(
     material: { ar: "", en: "" },
     onMaterialChange: vi.fn(),
     fontScale: 100,
+    // Every real caller wires both of these (ANA-77) -- tests that need to
+    // verify the omitted-prop behavior itself pass `onDelete: undefined` /
+    // `onTranslate: undefined` explicitly (see "hides Delete/Translate
+    // when their handlers are omitted" below).
+    onDelete: vi.fn(),
+    onTranslate: vi.fn(),
     ...overrides,
   };
 
@@ -199,6 +205,22 @@ describe("LearningMaterialModuleCard", () => {
     vi.unstubAllGlobals();
   });
 
+  it("hides Delete/Translate when their handlers are omitted, instead of rendering a no-op button (PR review, Copilot)", () => {
+    renderCard({ onDelete: undefined, onTranslate: undefined });
+
+    expect(
+      screen.queryByRole("button", { name: "Delete Module 1" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Translate to English" }),
+    ).not.toBeInTheDocument();
+    // AI Assistant is unaffected -- it's always inert regardless of props
+    // (ANA-75).
+    expect(
+      screen.getByRole("button", { name: "AI Assistant" }),
+    ).toBeInTheDocument();
+  });
+
   describe("Delete", () => {
     it("shows a confirmation dialog instead of deleting immediately", () => {
       const onDelete = vi.fn();
@@ -257,6 +279,26 @@ describe("LearningMaterialModuleCard", () => {
       expect(
         screen.getByRole("button", { name: "Delete Module 1" }),
       ).toBeDisabled();
+    });
+
+    it("still closes the dialog and unblocks Cancel/Escape when onDelete rejects, without an unhandled rejection (PR review, Copilot)", async () => {
+      const onDelete = vi.fn().mockRejectedValue(new Error("boom"));
+      renderCard({ onDelete });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Delete module?" }),
+        ).not.toBeInTheDocument(),
+      );
+      // The dialog is gone and the delete affordance is clickable again --
+      // proof `isDeleting` didn't get stuck true.
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      expect(
+        screen.getByRole("dialog", { name: "Delete module?" }),
+      ).toBeInTheDocument();
     });
   });
 

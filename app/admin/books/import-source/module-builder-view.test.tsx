@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   act,
   createEvent,
@@ -91,6 +92,59 @@ function renderView(
   );
 
   return props;
+}
+
+// `onModulesChange` now accepts either a plain array or a functional
+// updater (see ModuleBuilderViewProps -- ANA-77, PR review) -- this
+// resolves a mock's last call against a known "current" array either way.
+function applyLastModulesUpdate(
+  onModulesChange: ReturnType<typeof vi.fn>,
+  current: TempModule[],
+): TempModule[] {
+  const arg = onModulesChange.mock.calls.at(-1)?.[0];
+  return typeof arg === "function" ? arg(current) : arg;
+}
+
+// A stateful wrapper for scenarios that need `modules` to genuinely persist
+// across renders -- e.g. verifying a concurrent edit to one temporary
+// Module survives a *different* Module's in-flight Translate request
+// resolving later (PR review, blocking). `renderView`'s plain `vi.fn()`
+// mock can't model this: it never feeds a result back into `modules`.
+function renderStatefulView(
+  overrides: Partial<React.ComponentProps<typeof ModuleBuilderView>> & {
+    modules: TempModule[];
+  },
+) {
+  function Wrapper() {
+    const [modules, setModules] = useState(overrides.modules);
+
+    return (
+      <ModuleBuilderView
+        fileName="book.pdf"
+        ocrResult={SAMPLE_RESULT}
+        editedMarkdown={{ 1: "First page text", 2: "Second page text" }}
+        fontScale={100}
+        onFontScaleChange={vi.fn()}
+        direction="rtl"
+        onDirectionChange={vi.fn()}
+        onBack={vi.fn()}
+        backDisabled={false}
+        createdModuleIds={new Set()}
+        onFinish={vi.fn()}
+        isFinishing={false}
+        finishError={null}
+        {...overrides}
+        modules={modules}
+        onModulesChange={setModules}
+      />
+    );
+  }
+
+  render(
+    <MantineProvider>
+      <Wrapper />
+    </MantineProvider>,
+  );
 }
 
 describe("ModuleBuilderView", () => {
@@ -416,10 +470,55 @@ describe("ModuleBuilderView", () => {
       await vi.waitFor(() =>
         expect(translateArabicToEnglishMock).toHaveBeenCalledWith("First"),
       );
-      expect(onModulesChange).toHaveBeenCalledWith([
+      expect(applyLastModulesUpdate(onModulesChange, modules)).toEqual([
         { id: "module-1", material: { ar: "First", en: "Translated text" } },
         modules[1],
       ]);
+    });
+
+    it("applies its result against the latest modules when it resolves, preserving a concurrent edit made to a different card while it was in flight (PR review, blocking)", async () => {
+      let resolveTranslate: (value: string) => void = () => {};
+      translateArabicToEnglishMock.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveTranslate = resolve;
+          }),
+      );
+      const modules: TempModule[] = [
+        { id: "module-1", material: { ar: "Arabic one", en: "" } },
+        { id: "module-2", material: { ar: "Arabic two", en: "" } },
+      ];
+      renderStatefulView({ modules });
+
+      // Start translating Module 1.
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Translate to English" })[0],
+      );
+      await vi.waitFor(() =>
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("Arabic one"),
+      );
+
+      // While that request is still pending, edit Module 2's own Learning
+      // Material -- a real state update the builder must not lose.
+      const editors = await screen.findAllByRole("textbox");
+      const user = userEvent.setup();
+      await user.click(editors[1]);
+      await user.type(editors[1], "!");
+      expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
+
+      // Now let Module 1's translation resolve.
+      resolveTranslate("Translated one");
+
+      // Module 1 switches to English, showing the translation...
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("radio", { name: "English" })[0],
+        ).toBeChecked(),
+      );
+      expect(await screen.findByText("Translated one")).toBeInTheDocument();
+      // ...and Module 2's concurrent edit is still there, not reverted by
+      // the translation applying against a stale snapshot of `modules`.
+      expect(screen.getByText("Arabic two!")).toBeInTheDocument();
     });
 
     it("requires confirmation before replacing non-empty English content", () => {
