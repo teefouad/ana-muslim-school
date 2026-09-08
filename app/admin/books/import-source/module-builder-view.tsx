@@ -247,7 +247,12 @@ export function ModuleBuilderView({
             <Button
               size="xs"
               leftSection={<Plus size={14} aria-hidden="true" />}
-              disabled={!canCreateModule}
+              // Also locked while Finish is in flight (PR review, ANA-75):
+              // Finish operates on the `modules` snapshot it was invoked
+              // with, so a Module created mid-request would show a draft
+              // that was never actually part of that Finish attempt and
+              // then vanishes once it succeeds and resets the modal.
+              disabled={!canCreateModule || isFinishing}
               // Clicking a button starts with a mousedown, whose default
               // browser behavior both collapses the current text selection
               // and shifts focus away from the source `<pre>` -- either one
@@ -318,7 +323,10 @@ export function ModuleBuilderView({
           variant="default"
           leftSection={<ArrowLeft size={16} aria-hidden="true" />}
           onClick={onBack}
-          disabled={backDisabled}
+          // Also locked while Finish is in flight (PR review, ANA-75): Back
+          // would otherwise move the workflow to OCR review while a request
+          // Finish already started is still running.
+          disabled={isFinishing || backDisabled}
         >
           Back
         </Button>

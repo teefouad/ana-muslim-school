@@ -200,6 +200,28 @@ describe("ModuleBuilderView", () => {
     expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
   });
 
+  it("disables Back while Finish is in flight, even when backDisabled is false (PR review, ANA-75)", () => {
+    // Back would otherwise move the workflow to OCR review while a Finish
+    // request already started is still running.
+    renderView({ isFinishing: true, backDisabled: false });
+
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+  });
+
+  it("disables Create Module while Finish is in flight, even with a valid selection (PR review, ANA-75)", () => {
+    // Finish operates on the `modules` snapshot it was invoked with -- a
+    // Module created mid-request would show a draft that was never part of
+    // that Finish attempt and then vanishes once it succeeds and resets
+    // the modal.
+    renderView({ isFinishing: true });
+    const source = screen.getByText(/First page text/);
+    selectFirstCharacters(source, 5);
+
+    expect(
+      screen.getByRole("button", { name: "Create Module" }),
+    ).toBeDisabled();
+  });
+
   it("renders the Modules count and each Module as the shared Module card, defaulting to its Arabic draft", async () => {
     const modules: TempModule[] = [
       { id: "module-1", material: { ar: "أول", en: "First" } },
