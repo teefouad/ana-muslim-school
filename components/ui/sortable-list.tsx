@@ -8,6 +8,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  useDndContext,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -47,9 +48,39 @@ export interface SortableListProps<T> {
   renderItem: (item: T, index: number) => ReactNode;
   /** The floating preview shown under the cursor/touch point while
    * dragging, portaled outside the scrolling list via dnd-kit's
-   * DragOverlay so it isn't clipped by an `overflow` container. */
-  renderOverlay: (item: T, index: number) => ReactNode;
+   * DragOverlay so it isn't clipped by an `overflow` container. `width` is
+   * the dragged row's own measured width at the moment the drag started
+   * (`null` if dnd-kit couldn't measure it) -- a portaled overlay has no
+   * container of its own to inherit a width from, so without this it
+   * stretches to fill `document.body` instead of matching the resting row
+   * (ANA-80). Pass it through as an explicit inline `width` on the
+   * overlay's root so its layout can't drift from the idle row's. */
+  renderOverlay: (item: T, index: number, width: number | null) => ReactNode;
   className?: string;
+}
+
+// Reads the active row's own measured width reactively from `DndContext`
+// (rather than a snapshot taken in `onDragStart`) and passes it through to
+// `renderOverlay`. `activeNodeRect` is populated by dnd-kit's own layout
+// effect once it has actually measured the dragged node, which runs *after*
+// `onDragStart` fires -- capturing `event.active.rect.current.initial`
+// inside that callback instead would always read the ref's unmeasured
+// `null` starting value (confirmed against `@dnd-kit/core`'s own source:
+// `DragOverlay` reads this same reactive value for its own positioning,
+// rather than the `onDragStart` event, for the same reason). Rendered
+// inside `DragOverlay`'s own children, which -- and thus this component
+// too -- are already descendants of the `DndContext` this hook reads.
+function OverlayContent<T>({
+  item,
+  index,
+  renderOverlay,
+}: {
+  item: T;
+  index: number;
+  renderOverlay: SortableListProps<T>["renderOverlay"];
+}) {
+  const { activeNodeRect } = useDndContext();
+  return <>{renderOverlay(item, index, activeNodeRect?.width ?? null)}</>;
 }
 
 // The shared drag-sensor/DndContext/SortableContext/DragOverlay wiring for
@@ -149,9 +180,13 @@ export function SortableList<T>({
         typeof document !== "undefined" &&
           createPortal(
             <DragOverlay>
-              {activeIndex !== -1
-                ? renderOverlay(items[activeIndex], activeIndex)
-                : null}
+              {activeIndex !== -1 ? (
+                <OverlayContent
+                  item={items[activeIndex]}
+                  index={activeIndex}
+                  renderOverlay={renderOverlay}
+                />
+              ) : null}
             </DragOverlay>,
             document.body,
           )

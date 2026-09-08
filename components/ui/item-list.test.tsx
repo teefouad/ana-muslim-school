@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 
 import { ItemList } from "./item-list";
+import styles from "./item-list.module.css";
 
 interface DemoItem {
   id: string;
@@ -289,6 +290,144 @@ describe("ItemList", () => {
 
     const rows = screen.getAllByTestId("list-item-a");
     expect(rows).toHaveLength(2);
+  });
+
+  describe("drag hit area and overlay fidelity (ANA-80)", () => {
+    // Finds the floating DragOverlay's copy of a row by its rendered text,
+    // as distinct from the idle (now opacity:0) original still sitting
+    // inside the list -- same technique as sortable-list.test.tsx's own
+    // "portals the drag overlay to document.body" regression test.
+    function overlayRowFor(text: string, container: HTMLElement) {
+      const match = screen
+        .getAllByText(text)
+        .map((el) => el.closest(`.${CSS.escape(styles.row)}`))
+        .find((el): el is Element => Boolean(el) && !container.contains(el));
+
+      return match as HTMLElement;
+    }
+
+    test("the grip's own padding -- not the row's -- carries the drag hit area, so dnd-kit's listeners cover the full visible grip region instead of just the 16px icon", () => {
+      renderList();
+
+      const grip = document.querySelector(
+        '[data-testid="list-item-a"] [aria-hidden="true"]',
+      ) as HTMLElement;
+      const row = grip.closest(`.${CSS.escape(styles.row)}`) as HTMLElement;
+      const content = row.querySelector(
+        `.${CSS.escape(styles.content)}`,
+      ) as HTMLElement;
+
+      expect(grip.classList.contains(styles.grip)).toBe(true);
+      // `.contentNoGrip` (the row's left inset, reassigned to `.content`)
+      // only applies on the non-sortable path below, where there's no grip
+      // to own that space instead -- confirming the grip is the one
+      // carrying it here.
+      expect(content.classList.contains(styles.contentNoGrip)).toBe(false);
+    });
+
+    test("the non-sortable row (no grip) keeps its own left inset on .content instead of leaving it stranded on the grip", () => {
+      renderList({ sortable: false });
+
+      const row = screen.getByTestId("list-item-a");
+      const content = row.querySelector(
+        `.${CSS.escape(styles.content)}`,
+      ) as HTMLElement;
+
+      expect(content.classList.contains(styles.contentNoGrip)).toBe(true);
+    });
+
+    test("action buttons stay outside the grip and never start a drag when clicked", () => {
+      const onReorder = vi.fn();
+      const onEditItem = vi.fn();
+      renderList({
+        onReorder,
+        onEditItem,
+        getEditLabel: (item) => `Edit ${item.label}`,
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit Alpha" }));
+
+      expect(onEditItem).toHaveBeenCalledTimes(1);
+      expect(onReorder).not.toHaveBeenCalled();
+    });
+
+    test("the drag overlay reuses the exact same row/grip classes as the idle row, rendered as a div rather than a stray li outside the list", () => {
+      const { container } = renderList();
+      stubItemRects(["a", "b"]);
+
+      const grip = document.querySelector(
+        '[data-testid="list-item-a"] [aria-hidden="true"]',
+      ) as HTMLElement;
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      const overlayRow = overlayRowFor("Alpha", container);
+      expect(overlayRow).toBeTruthy();
+      expect(overlayRow.tagName).toBe("DIV");
+      expect(overlayRow.classList.contains(styles.row)).toBe(true);
+      expect(
+        overlayRow.querySelector(`.${CSS.escape(styles.grip)}`),
+      ).toBeTruthy();
+
+      fireEvent.keyDown(grip, { code: "Escape", key: "Escape" });
+    });
+
+    test("the drag overlay reserves the same disabled actions slot as the idle row when edit/delete are wired, instead of a narrower preview", () => {
+      const onEditItem = vi.fn();
+      const onDeleteItem = vi.fn();
+      const { container } = renderList({
+        onEditItem,
+        getEditLabel: (item) => `Edit ${item.label}`,
+        onDeleteItem,
+        getDeleteLabel: (item) => `Remove ${item.label}`,
+      });
+      stubItemRects(["a", "b"]);
+
+      const grip = document.querySelector(
+        '[data-testid="list-item-a"] [aria-hidden="true"]',
+      ) as HTMLElement;
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      const overlayRow = overlayRowFor("Alpha", container);
+      const overlayEdit = overlayRow.querySelector(
+        'button[aria-label="Edit Alpha"]',
+      ) as HTMLButtonElement;
+      const overlayDelete = overlayRow.querySelector(
+        'button[aria-label="Remove Alpha"]',
+      ) as HTMLButtonElement;
+
+      expect(overlayEdit).toBeTruthy();
+      expect(overlayEdit).toBeDisabled();
+      expect(overlayDelete).toBeTruthy();
+      expect(overlayDelete).toBeDisabled();
+
+      // Reserved for layout only -- never wired to the caller's real
+      // handlers, so even a stray click can't act on the dragged item.
+      fireEvent.click(overlayEdit);
+      fireEvent.click(overlayDelete);
+      expect(onEditItem).not.toHaveBeenCalled();
+      expect(onDeleteItem).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(grip, { code: "Escape", key: "Escape" });
+    });
+
+    test("the drag overlay is pinned to the dragged row's own measured width instead of stretching to fill document.body", () => {
+      const { container } = renderList();
+      stubItemRects(["a", "b"], 60);
+
+      const grip = document.querySelector(
+        '[data-testid="list-item-a"] [aria-hidden="true"]',
+      ) as HTMLElement;
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      const overlayRow = overlayRowFor("Alpha", container);
+      // `stubItemRects` fixes every row's rect at `right: 300, width: 300`.
+      expect(overlayRow).toHaveStyle({ width: "300px" });
+
+      fireEvent.keyDown(grip, { code: "Escape", key: "Escape" });
+    });
   });
 
   test("uses list-item-{id} as the default row test id, or a caller-provided one", () => {

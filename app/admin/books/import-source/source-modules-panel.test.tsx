@@ -60,13 +60,13 @@ function renderPanel(
     ...overrides,
   };
 
-  render(
+  const { container } = render(
     <MantineProvider>
       <SourceModulesPanel<Item> {...props} />
     </MantineProvider>,
   );
 
-  return props;
+  return { ...props, container };
 }
 
 describe("SourceModulesPanel", () => {
@@ -227,5 +227,101 @@ describe("SourceModulesPanel", () => {
 
     const editors = await screen.findAllByRole("textbox");
     expect(editors[0]).toHaveAttribute("contenteditable", "false");
+  });
+
+  describe("drag overlay collapse and fidelity (ANA-80)", () => {
+    it("collapses an expanded card the instant its drag starts, and the overlay preview never shows its Markdown editor", async () => {
+      stubItemRects(["module-1", "module-2"]);
+      const { container } = renderPanel();
+
+      // Module 1 starts expanded (the default) -- confirm the editor is
+      // showing before dragging it.
+      await screen.findAllByRole("toolbar");
+
+      const handle = screen
+        .getByTestId("module-card-module-1")
+        .querySelector('span[role="button"]') as HTMLElement;
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      // The real card (now hidden via opacity while dragging) has
+      // collapsed -- its own Markdown editor/toolbar is gone.
+      const realCard = screen.getByTestId("module-card-module-1");
+      expect(
+        realCard.querySelector('[role="toolbar"]'),
+      ).not.toBeInTheDocument();
+
+      // The floating overlay preview is a second, separate mount of the
+      // same card -- it must also never show the editor, regardless of
+      // its own fresh `expanded` default.
+      const overlayCard = screen.getByTestId("module-card-overlay-module-1");
+      expect(container.contains(overlayCard)).toBe(false);
+      expect(
+        overlayCard.querySelector('[role="toolbar"]'),
+      ).not.toBeInTheDocument();
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "Escape", key: "Escape" });
+    });
+
+    it("keeps the card collapsed once the drag actually completes (a drop), instead of re-expanding it", async () => {
+      stubItemRects(["module-1", "module-2"]);
+      const onReorder = vi.fn();
+      renderPanel({ onReorder });
+      await screen.findAllByRole("toolbar");
+
+      const handle = screen
+        .getByTestId("module-card-module-1")
+        .querySelector('span[role="button"]') as HTMLElement;
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      // Confirms the drop actually completed (same mechanics as the
+      // existing "reorders items via keyboard drag" test above) -- so this
+      // is asserting the post-drop state, not a drag that silently never
+      // started.
+      expect(onReorder).toHaveBeenCalledWith([ITEMS[1], ITEMS[0]]);
+
+      // The overlay's drop animation (dnd-kit's own default `DragOverlay`
+      // exit transition) keeps its last content mounted for a moment even
+      // after the drop resolves -- wait it out rather than asserting
+      // against a false-positive duplicate.
+      await vi.waitFor(() => {
+        expect(
+          screen.getAllByRole("button", { name: "Module 1" }),
+        ).toHaveLength(1);
+      });
+      expect(
+        screen
+          .getByRole("button", { name: "Module 1" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
+    });
+
+    it("the overlay preview reserves Delete/Translate for every dragged card, since SourceModulesPanel always wires both", async () => {
+      stubItemRects(["module-1", "module-2"]);
+      renderPanel();
+      await screen.findAllByRole("toolbar");
+
+      const handle = screen
+        .getByTestId("module-card-module-1")
+        .querySelector('span[role="button"]') as HTMLElement;
+      handle.focus();
+      fireEvent.keyDown(handle, { code: "Space", key: " " });
+
+      const overlayCard = screen.getByTestId("module-card-overlay-module-1");
+      expect(
+        overlayCard.querySelector('[aria-label="Delete Module 1"]'),
+      ).toBeInTheDocument();
+      expect(
+        overlayCard.querySelector('[aria-label="Translate to English"]'),
+      ).toBeInTheDocument();
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(handle, { code: "Escape", key: "Escape" });
+    });
   });
 });

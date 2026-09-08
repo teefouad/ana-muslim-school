@@ -34,6 +34,49 @@ function renderCard(
   return props;
 }
 
+// Like `renderCard`, but exposes `rerender` for tests that need to change a
+// prop (e.g. `drag.isDragging`) on an already-mounted instance rather than
+// mounting a fresh one -- a fresh mount would never observe the transition
+// the collapse-on-drag-start behavior reacts to.
+function renderCardWithRerender(
+  overrides: Partial<
+    React.ComponentProps<typeof LearningMaterialModuleCard>
+  > = {},
+) {
+  const baseProps: React.ComponentProps<typeof LearningMaterialModuleCard> = {
+    testId: "module-card-0",
+    index: 0,
+    material: { ar: "", en: "" },
+    onMaterialChange: vi.fn(),
+    fontScale: 100,
+    onDelete: vi.fn(),
+    onTranslate: vi.fn(),
+  };
+
+  const result = render(
+    <MantineProvider>
+      <LearningMaterialModuleCard {...baseProps} {...overrides} />
+    </MantineProvider>,
+  );
+
+  return {
+    rerender: (
+      nextOverrides: Partial<
+        React.ComponentProps<typeof LearningMaterialModuleCard>
+      >,
+    ) =>
+      result.rerender(
+        <MantineProvider>
+          <LearningMaterialModuleCard
+            {...baseProps}
+            {...overrides}
+            {...nextOverrides}
+          />
+        </MantineProvider>,
+      ),
+  };
+}
+
 describe("LearningMaterialModuleCard", () => {
   it("labels the card with its 1-based Module index", () => {
     renderCard({ index: 2 });
@@ -563,5 +606,96 @@ describe("LearningMaterialModuleCard", () => {
     expect(grip).toHaveAttribute("aria-roledescription", "sortable");
     expect(grip).not.toHaveAttribute("aria-hidden");
     expect(grip.className).toMatch(/gripDraggable/);
+  });
+
+  describe("collapses on drag start (ANA-80)", () => {
+    function dragProp(isDragging: boolean) {
+      return {
+        attributes: {} as never,
+        listeners: {} as never,
+        setNodeRef: vi.fn(),
+        style: {},
+        isDragging,
+      };
+    }
+
+    it("collapses automatically once a drag starts, even if it was expanded", async () => {
+      const { rerender } = renderCardWithRerender({ drag: dragProp(false) });
+      await screen.findByRole("toolbar");
+
+      rerender({ drag: dragProp(true) });
+
+      expect(screen.getByRole("button", { name: "Module 1" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+    });
+
+    it("stays collapsed after the drag ends (drop or cancel), instead of re-expanding on its own", async () => {
+      const { rerender } = renderCardWithRerender({ drag: dragProp(false) });
+      await screen.findByRole("toolbar");
+
+      rerender({ drag: dragProp(true) });
+      rerender({ drag: dragProp(false) });
+
+      expect(screen.getByRole("button", { name: "Module 1" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+    });
+
+    it("leaves an already-collapsed card collapsed once a drag starts", () => {
+      const { rerender } = renderCardWithRerender({ drag: dragProp(false) });
+
+      fireEvent.click(screen.getByRole("button", { name: "Module 1" }));
+      expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+
+      rerender({ drag: dragProp(true) });
+
+      expect(screen.getByRole("button", { name: "Module 1" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    });
+  });
+
+  describe("forceCollapsed drag-overlay preview (ANA-80)", () => {
+    it("renders collapsed regardless of a fresh instance's own default state, and never shows the Markdown editor", () => {
+      renderCard({ forceCollapsed: true });
+
+      expect(screen.getByRole("button", { name: "Module 1" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+    });
+
+    it("ignores clicks on the title -- the preview is never interactive", () => {
+      renderCard({ forceCollapsed: true });
+
+      const title = screen.getByRole("button", { name: "Module 1" });
+      expect(title).toBeDisabled();
+
+      fireEvent.click(title);
+      expect(title).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+    });
+
+    it("still reserves Delete/AI Assistant/Translate and the language switcher in the header, matching the collapsed idle card's layout", () => {
+      renderCard({ forceCollapsed: true });
+
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "AI Assistant" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Translate to English" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Arabic" })).toBeInTheDocument();
+    });
   });
 });

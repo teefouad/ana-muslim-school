@@ -27,10 +27,12 @@ export interface ItemListProps<T> {
    * behavior instead of each caller re-implementing it. */
   renderItem: (item: T, index: number) => ReactNode;
   /** The floating preview shown under the cursor while dragging. Defaults
-   * to the drag grip plus `renderItem`'s own output, which is what most
-   * callers need -- only override this if a list needs a differently
-   * shaped preview. */
-  renderOverlay?: (item: T, index: number) => ReactNode;
+   * to the same `RowChrome` markup as the idle row (grip, `renderItem`'s
+   * own output, and a reserved-but-disabled actions slot when edit/delete
+   * are wired), pinned to the dragged row's own measured `width` -- which
+   * is what most callers need -- only override this if a list needs a
+   * differently shaped preview. */
+  renderOverlay?: (item: T, index: number, width: number | null) => ReactNode;
   /** Shown instead of the list when `items` is empty. */
   emptyState: ReactNode;
   /** Whether rows can be dragged to reorder. When false, drag behavior is
@@ -83,6 +85,10 @@ export interface ItemListProps<T> {
 }
 
 interface RowChromeProps {
+  /** "li" for a real row inside `SortableList`'s `<ul>`; "div" for the
+   * `DragOverlay` copy, which renders outside any list so a stray `<li>`
+   * would pick up the browser's own list-item styling (e.g. a bullet). */
+  component?: "li" | "div";
   testId: string;
   onClick?: () => void;
   showGrip: boolean;
@@ -109,6 +115,7 @@ interface RowChromeProps {
 // row -- including the edit/delete actions -- can never be mistaken for a
 // drag.
 function RowChrome({
+  component = "li",
   testId,
   onClick,
   showGrip,
@@ -128,10 +135,17 @@ function RowChrome({
 }: RowChromeProps) {
   const canEdit = Boolean(onEdit);
   const canDelete = Boolean(onDelete);
+  const contentClassName = [styles.content, !showGrip && styles.contentNoGrip]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <Box
-      component="li"
+      // Mantine's polymorphic `component` prop resolves to a single
+      // overload from a literal, not a `"li" | "div"` union -- both
+      // render identically at runtime regardless of which literal TS
+      // picks, so this narrows purely to satisfy that overload matching.
+      component={component as "li"}
       ref={liRef}
       data-testid={testId}
       style={style}
@@ -152,13 +166,13 @@ function RowChrome({
         <UnstyledButton
           type="button"
           onClick={onClick}
-          className={styles.content}
+          className={contentClassName}
           style={{ textAlign: "start" }}
         >
           {children}
         </UnstyledButton>
       ) : (
-        <Box className={styles.content}>{children}</Box>
+        <Box className={contentClassName}>{children}</Box>
       )}
 
       {(canEdit || canDelete) && (
@@ -195,18 +209,54 @@ function RowChrome({
   );
 }
 
-// Renders with the exact same classes as a resting `RowChrome` row (see
-// `.row`/`.grip`/`.content` in item-list.module.css) so the floating preview
-// under the cursor looks identical to the item's normal appearance instead
-// of a generically-styled Mantine surface.
-function DefaultOverlay({ children }: { children: ReactNode }) {
+// Reuses the exact same `RowChrome` markup as a resting row -- rendered as
+// a "div" instead of "li" since this is portaled outside any `<ul>` -- so
+// the floating preview under the cursor is structurally identical to the
+// item's normal appearance (same width/height/padding/grip placement/
+// reserved action slot), not an approximate re-implementation that can
+// drift from it (ANA-80's hard acceptance criterion). `editLabel`/
+// `deleteLabel` are passed through (with edit/delete forced disabled, and
+// pointer events off entirely) purely so the actions group renders and
+// reserves the same layout space as the idle row would -- this preview is
+// never actually interactive. `width` pins the row to the dragged item's
+// own measured width, since a portaled overlay has no container to
+// naturally inherit one from.
+function DefaultOverlay({
+  testId,
+  width,
+  editLabel,
+  onEdit,
+  deleteLabel,
+  onDelete,
+  children,
+}: {
+  testId: string;
+  width: number | null;
+  editLabel?: string;
+  onEdit?: () => void;
+  deleteLabel?: string;
+  onDelete?: () => void;
+  children: ReactNode;
+}) {
   return (
-    <Box className={styles.row}>
-      <span className={styles.grip} aria-hidden="true">
-        <GripVertical size={16} />
-      </span>
-      <Box className={styles.content}>{children}</Box>
-    </Box>
+    <RowChrome
+      component="div"
+      testId={testId}
+      showGrip
+      isDragging={false}
+      editLabel={editLabel}
+      onEdit={onEdit}
+      editDisabled
+      deleteLabel={deleteLabel}
+      onDelete={onDelete}
+      deleteDisabled
+      style={{
+        pointerEvents: "none",
+        ...(width != null ? { width } : {}),
+      }}
+    >
+      {children}
+    </RowChrome>
   );
 }
 
@@ -249,11 +299,20 @@ export function ItemList<T>({
     return getItemTestId ? getItemTestId(item, id) : `list-item-${id}`;
   }
 
-  function overlayFor(item: T, index: number) {
+  function overlayFor(item: T, index: number, width: number | null) {
     return renderOverlay ? (
-      renderOverlay(item, index)
+      renderOverlay(item, index, width)
     ) : (
-      <DefaultOverlay>{renderItem(item, index)}</DefaultOverlay>
+      <DefaultOverlay
+        testId={testIdFor(item)}
+        width={width}
+        editLabel={getEditLabel?.(item, index)}
+        onEdit={onEditItem ? () => {} : undefined}
+        deleteLabel={getDeleteLabel?.(item, index)}
+        onDelete={onDeleteItem ? () => {} : undefined}
+      >
+        {renderItem(item, index)}
+      </DefaultOverlay>
     );
   }
 
@@ -299,7 +358,7 @@ export function ItemList<T>({
               {renderItem(item, index)}
             </SortableRow>
           )}
-          renderOverlay={(item, index) => overlayFor(item, index)}
+          renderOverlay={(item, index, width) => overlayFor(item, index, width)}
         />
       ) : (
         <Box component="ul" className={styles.body}>

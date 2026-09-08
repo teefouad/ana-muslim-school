@@ -78,6 +78,19 @@ export interface LearningMaterialModuleCardProps {
    * and switches the active language to English once this resolves. Omit
    * to hide the translate affordance entirely. */
   onTranslate?: () => Promise<void>;
+  /** Renders this card as a non-interactive drag preview (ANA-80): always
+   * collapsed regardless of internal state, and the collapse toggle never
+   * responds to clicks. Used for `SortableList`'s `DragOverlay` copy, which
+   * mounts a fresh instance of this component on every drag -- without
+   * this, that fresh instance would default to its own `expanded: true`
+   * and show the Markdown editor mid-drag even when the real card being
+   * dragged was collapsed. */
+  forceCollapsed?: boolean;
+  /** Explicit inline style for the card's root element, merged under
+   * `drag.style` -- used by the drag overlay to pin its width to the
+   * dragged card's own measured size (ANA-80), since a portaled preview
+   * has no natural container width of its own to inherit. */
+  style?: CSSProperties;
 }
 
 type PendingAction = "delete" | "translate" | null;
@@ -106,6 +119,8 @@ export function LearningMaterialModuleCard({
   deleteConfirmDescription = DEFAULT_DELETE_CONFIRM_DESCRIPTION,
   deleteDisabled = false,
   onTranslate,
+  forceCollapsed = false,
+  style,
 }: LearningMaterialModuleCardProps) {
   const [expanded, setExpanded] = useState(true);
   // Every card defaults to Arabic (ANA-75) -- this School's primary content
@@ -120,7 +135,31 @@ export function LearningMaterialModuleCard({
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
 
+  // Collapses the card the instant a drag starts (ANA-80) -- an expanded
+  // card must never keep showing its Markdown editor while being dragged,
+  // and once collapsed this way it must stay collapsed after drop/cancel
+  // until the user explicitly re-expands it. Adjusting state directly
+  // during render on a prop change (rather than in a `useEffect`) is the
+  // pattern React itself recommends for this
+  // (https://react.dev/learn/you-might-not-need-an-effect#adjusting-state-based-on-a-prop-change)
+  // -- it also sidesteps this repo's `react-hooks/set-state-in-effect`
+  // lint rule, which flags any state update reachable from a `useEffect`.
+  const isDragging = Boolean(drag?.isDragging);
+  const [wasDragging, setWasDragging] = useState(isDragging);
+  if (isDragging !== wasDragging) {
+    setWasDragging(isDragging);
+    if (isDragging && expanded) {
+      setExpanded(false);
+    }
+  }
+
+  // Forced collapsed for the drag overlay's own fresh instance, which has
+  // no `drag` prop (and so never observes `isDragging` above) but must
+  // still never show the editor (ANA-80).
+  const effectiveExpanded = forceCollapsed ? false : expanded;
+
   function toggleExpanded() {
+    if (forceCollapsed) return;
     setExpanded((prev) => !prev);
   }
 
@@ -208,7 +247,7 @@ export function LearningMaterialModuleCard({
   return (
     <div
       ref={drag?.setNodeRef}
-      style={drag?.style}
+      style={{ ...style, ...drag?.style }}
       data-testid={testId}
       className={[styles.card, drag?.isDragging && styles.dragging]
         .filter(Boolean)
@@ -237,12 +276,12 @@ export function LearningMaterialModuleCard({
         <button
           type="button"
           className={styles.titleButton}
-          aria-expanded={expanded}
+          aria-expanded={effectiveExpanded}
+          disabled={forceCollapsed}
           onClick={toggleExpanded}
         >
           Module {index + 1}
         </button>
-        <div className={styles.spacer} />
         {/* Delete, AI Assistant, and Translate: hidden at rest, revealed
             together on header hover/focus-within (ANA-77) -- always
             immediately to the left of the language switcher, which is
@@ -299,7 +338,7 @@ export function LearningMaterialModuleCard({
           {translateError}
         </Alert>
       )}
-      {expanded && (
+      {effectiveExpanded && (
         <div className={styles.body}>
           <div
             data-testid={`${testId}-editor-scale`}
