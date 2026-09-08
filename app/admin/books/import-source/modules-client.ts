@@ -22,3 +22,20 @@ export async function createModule(
 
   return data;
 }
+
+/** Deletes a Module via `DELETE /api/v1/books/{bookId}/modules/{moduleId}`
+ * (ANA-77) -- the service layer cascades this to delete any Learning
+ * Material referencing the Module (still `409`s for Lessons/Questions); the
+ * client never orchestrates a separate Material delete itself. */
+export async function deleteModule(
+  bookId: string,
+  moduleId: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/books/${bookId}/modules/${moduleId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+}

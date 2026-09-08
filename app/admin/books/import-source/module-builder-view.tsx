@@ -14,7 +14,11 @@ import { DocumentSummary } from "./document-summary";
 import { FontSizeControl } from "./font-size-control";
 import { LearningMaterialModuleCard } from "./learning-material-module-card";
 import { TextDirectionControl } from "./text-direction-control";
+import { translateArabicToEnglish } from "./translate-client";
 import styles from "./module-builder-view.module.css";
+
+const TEMPORARY_DELETE_CONFIRM_DESCRIPTION =
+  "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.";
 
 export interface ModuleBuilderViewProps {
   fileName: string;
@@ -35,6 +39,12 @@ export interface ModuleBuilderViewProps {
    * partial Finish retry replays `modules` in its *current* order (ANA-75;
    * mirrors the old LearningMaterialView's `backDisabled`). */
   backDisabled: boolean;
+  /** Temporary Module ids already persisted through a partial Finish
+   * attempt in this modal session (ANA-77) -- disables that specific
+   * card's Delete action so a local-only delete can never orphan a Module
+   * that already exists under the Book (mirrors `backDisabled`'s own
+   * reasoning; see import-source-modal.tsx's `createdModuleIds`). */
+  createdModuleIds: Set<string>;
   /** Creates every temporary Module (and its Material) for the current Book
    * through the existing Module/Material APIs, in order, then persists the
    * reviewed Source -- this is the flow's only remaining editing screen, so
@@ -61,6 +71,9 @@ function SortableModuleCard({
   fontScale,
   disabled,
   reorderDisabled,
+  onDelete,
+  deleteDisabled,
+  onTranslate,
 }: {
   module: TempModule;
   index: number;
@@ -68,6 +81,9 @@ function SortableModuleCard({
   fontScale: number;
   disabled: boolean;
   reorderDisabled: boolean;
+  onDelete: () => void;
+  deleteDisabled: boolean;
+  onTranslate: () => Promise<void>;
 }) {
   const {
     attributes,
@@ -100,6 +116,10 @@ function SortableModuleCard({
               isDragging,
             }
       }
+      onDelete={onDelete}
+      deleteConfirmDescription={TEMPORARY_DELETE_CONFIRM_DESCRIPTION}
+      deleteDisabled={deleteDisabled}
+      onTranslate={onTranslate}
     />
   );
 }
@@ -124,6 +144,7 @@ export function ModuleBuilderView({
   onModulesChange,
   onBack,
   backDisabled,
+  createdModuleIds,
   onFinish,
   isFinishing,
   finishError,
@@ -195,6 +216,38 @@ export function ModuleBuilderView({
     onModulesChange(
       modules.map((module) =>
         module.id === moduleId ? { ...module, material } : module,
+      ),
+    );
+  }
+
+  // These temporary Modules never exist server-side before Finish runs, so
+  // deleting one is always a plain local removal -- no API call, and no
+  // partial-Finish bookkeeping to update (ANA-77). The orphan guard for a
+  // Module already persisted mid partial-Finish is `createdModuleIds`
+  // disabling that card's Delete action in the first place (see
+  // `deleteDisabled` below), not anything checked here.
+  function handleDeleteModule(moduleId: string) {
+    onModulesChange(modules.filter((module) => module.id !== moduleId));
+  }
+
+  // Translates a single card's Arabic draft to English (ANA-77) -- reads
+  // the *current* Module's `material.ar` at call time, so an edit made
+  // after the request started never gets clobbered: only `material.en` is
+  // replaced.
+  async function handleTranslateModule(moduleId: string) {
+    const targetModule = modules.find((module) => module.id === moduleId);
+
+    if (!targetModule) {
+      return;
+    }
+
+    const translated = await translateArabicToEnglish(targetModule.material.ar);
+
+    onModulesChange(
+      modules.map((module) =>
+        module.id === moduleId
+          ? { ...module, material: { ...module.material, en: translated } }
+          : module,
       ),
     );
   }
@@ -287,6 +340,11 @@ export function ModuleBuilderView({
                     fontScale={fontScale}
                     disabled={isFinishing}
                     reorderDisabled={reorderDisabled}
+                    onDelete={() => handleDeleteModule(module.id)}
+                    deleteDisabled={
+                      isFinishing || createdModuleIds.has(module.id)
+                    }
+                    onTranslate={() => handleTranslateModule(module.id)}
                   />
                 )}
                 renderOverlay={(module, index) => (

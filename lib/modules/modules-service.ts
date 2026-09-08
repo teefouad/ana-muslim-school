@@ -3,7 +3,7 @@ import "server-only";
 import { getBookByIdService } from "@/lib/books/books-service";
 import { isValidDocId } from "@/lib/firestore/is-valid-doc-id";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
-import { anyMaterialReferencesModule } from "@/lib/materials/materials-repository";
+import { deleteMaterialsByModule } from "@/lib/materials/materials-repository";
 import { anyQuestionExists } from "@/lib/questions/questions-repository";
 import {
   createModule as createModuleInRepo,
@@ -140,9 +140,13 @@ export async function updateModuleService(
 }
 
 /**
- * Deletes a Module. Fails with `409` if it still has Lessons, Questions, or
- * Materials referencing it -- unlike Book delete, Module delete never
- * cascades (see ANA-62).
+ * Deletes a Module. Fails with `409` if it still has Lessons or Questions --
+ * unlike Book delete, Module delete never cascades to those. Materials are
+ * the one exception (ANA-77 supersedes ANA-62's `409` rule for them only):
+ * since every Learning Material belongs to exactly one Module, blocking
+ * deletion on their presence would make Module delete unusable for the
+ * common Source-flow case, so any Material referencing this Module is
+ * deleted as part of this same operation instead.
  */
 export async function deleteModuleService(
   bookId: string,
@@ -173,9 +177,7 @@ export async function deleteModuleService(
     return fail("conflict", "Module still has Questions.");
   }
 
-  if (await anyMaterialReferencesModule(bookId, moduleId)) {
-    return fail("conflict", "Module still has Materials referencing it.");
-  }
+  await deleteMaterialsByModule(bookId, moduleId);
 
   const deleted = await deleteModuleById(bookId, moduleId, actorEmail);
 

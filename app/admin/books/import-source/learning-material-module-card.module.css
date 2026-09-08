@@ -57,25 +57,24 @@
   cursor: pointer;
 }
 
-/* Hidden at rest, visible on header hover/focus-within -- same affordance
-   as the Book Modules list's own delete action (see item-list.module.css's
-   .actions). */
-.deleteAction {
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.header:hover .deleteAction,
-.header:focus-within .deleteAction {
-  opacity: 1;
-}
-
 .spacer {
   flex: 1 1 auto;
 }
 
-.aiButton {
+/* Delete, AI Assistant, and Translate: hidden at rest, revealed together on
+   header hover/focus-within (ANA-77) -- so keyboard users can still reach
+   them without a pointer (same affordance as the Book Modules list's own
+   delete action, see item-list.module.css's .actions). The language
+   switcher deliberately doesn't get this class -- it always stays visible. */
+.actionButton {
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.header:hover .actionButton,
+.header:focus-within .actionButton {
+  opacity: 1;
 }
 
 .body {

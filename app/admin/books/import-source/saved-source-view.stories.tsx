@@ -42,6 +42,7 @@ const meta = {
   component: SavedSourceView,
   tags: ["autodocs"],
   args: {
+    bookId: "book-1",
     content:
       "# الفصل الأول\n\nنص الصفحة الأولى الذي تم استخراجه ومراجعته.\n\n# الفصل الثاني\n\nنص الصفحة الثانية.",
     onContentChange: () => {},

@@ -138,4 +138,70 @@ describe("ModulesPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
   });
+
+  describe("onDeleteModule (Edit Book's persisted Modules, ANA-77)", () => {
+    it("shows a confirmation dialog instead of deleting immediately", () => {
+      const onDeleteModule = vi.fn();
+      const onModulesChange = vi.fn();
+      renderPanel({ onDeleteModule, onModulesChange });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+
+      expect(
+        screen.getByRole("dialog", { name: "Delete module?" }),
+      ).toBeInTheDocument();
+      expect(onDeleteModule).not.toHaveBeenCalled();
+      expect(onModulesChange).not.toHaveBeenCalled();
+    });
+
+    it("calls onDeleteModule (not onModulesChange) once confirmed", async () => {
+      const onDeleteModule = vi.fn().mockResolvedValue(undefined);
+      const onModulesChange = vi.fn();
+      renderPanel({ onDeleteModule, onModulesChange });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() =>
+        expect(onDeleteModule).toHaveBeenCalledWith(MODULES[0]),
+      );
+      expect(onModulesChange).not.toHaveBeenCalled();
+    });
+
+    it("makes no call when canceled", () => {
+      const onDeleteModule = vi.fn();
+      renderPanel({ onDeleteModule });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onDeleteModule).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Delete module?" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps the row and shows an error when the delete request fails", async () => {
+      const onDeleteModule = vi
+        .fn()
+        .mockRejectedValue(new Error("Module still has Lessons."));
+      renderPanel({ onDeleteModule });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      expect(
+        await screen.findByText("Module still has Lessons."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Introduction")).toBeInTheDocument();
+    });
+  });
 });

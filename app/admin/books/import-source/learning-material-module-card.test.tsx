@@ -56,17 +56,35 @@ describe("LearningMaterialModuleCard", () => {
     expect(await screen.findByRole("toolbar")).toBeInTheDocument();
   });
 
-  it("exposes a drag handle, a delete affordance, a language switcher, an AI Assistant button, and the Markdown editor (ANA-75)", async () => {
+  it("exposes a drag handle, Delete/AI Assistant/Translate actions, a language switcher, and the Markdown editor, with the language switcher right-most (ANA-77)", async () => {
     renderCard();
 
-    expect(
-      screen.getByRole("button", { name: "Delete Module 1" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Arabic" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "English" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "AI Assistant" }),
-    ).toBeInTheDocument();
+    const deleteButton = screen.getByRole("button", {
+      name: "Delete Module 1",
+    });
+    const aiButton = screen.getByRole("button", { name: "AI Assistant" });
+    const translateButton = screen.getByRole("button", {
+      name: "Translate to English",
+    });
+    const languageSwitcher = screen.getByRole("radio", { name: "Arabic" });
+
+    expect(deleteButton).toBeInTheDocument();
+    expect(aiButton).toBeInTheDocument();
+    expect(translateButton).toBeInTheDocument();
+    expect(languageSwitcher).toBeInTheDocument();
+
+    // Left-to-right DOM order matches the header spec: Delete, AI
+    // Assistant, Translate, then the language switcher last.
+    const header = deleteButton.closest("div");
+    const controls = Array.from(header?.children ?? []);
+    expect(controls.indexOf(deleteButton)).toBeLessThan(
+      controls.indexOf(aiButton),
+    );
+    expect(controls.indexOf(aiButton)).toBeLessThan(
+      controls.indexOf(translateButton),
+    );
+    expect(controls.indexOf(translateButton)).toBeLessThan(controls.length - 1);
+
     await screen.findByRole("toolbar");
   });
 
@@ -143,21 +161,20 @@ describe("LearningMaterialModuleCard", () => {
     expect(editable).toHaveAttribute("contenteditable", "true");
   });
 
-  it("renders the delete affordance hidden at rest, revealed on header hover/focus-within", () => {
+  it("renders Delete, AI Assistant, and Translate hidden at rest, revealed together on header hover/focus-within, while the language switcher stays visible (ANA-77)", () => {
     renderCard();
 
     const deleteButton = screen.getByRole("button", {
       name: "Delete Module 1",
     });
-    expect(deleteButton.className).toMatch(/deleteAction/);
-  });
+    const aiButton = screen.getByRole("button", { name: "AI Assistant" });
+    const translateButton = screen.getByRole("button", {
+      name: "Translate to English",
+    });
 
-  it("clicking delete does not remove the card -- the affordance is not wired yet (ANA-75)", () => {
-    renderCard();
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
-
-    expect(screen.getByText("Module 1")).toBeInTheDocument();
+    expect(deleteButton.className).toMatch(/actionButton/);
+    expect(aiButton.className).toMatch(/actionButton/);
+    expect(translateButton.className).toMatch(/actionButton/);
   });
 
   it("clicking delete or AI Assistant does not toggle the card's collapsed state", async () => {
@@ -165,6 +182,7 @@ describe("LearningMaterialModuleCard", () => {
     await screen.findByRole("toolbar");
 
     fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByRole("toolbar")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
@@ -179,6 +197,207 @@ describe("LearningMaterialModuleCard", () => {
 
     expect(fetch).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  describe("Delete", () => {
+    it("shows a confirmation dialog instead of deleting immediately", () => {
+      const onDelete = vi.fn();
+      renderCard({ onDelete });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+
+      expect(
+        screen.getByRole("dialog", { name: "Delete module?" }),
+      ).toBeInTheDocument();
+      expect(onDelete).not.toHaveBeenCalled();
+    });
+
+    it("uses the caller-provided confirmation description", () => {
+      renderCard({
+        onDelete: vi.fn(),
+        deleteConfirmDescription:
+          "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+
+      expect(
+        screen.getByText(
+          "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("calls onDelete only after confirming", async () => {
+      const onDelete = vi.fn().mockResolvedValue(undefined);
+      renderCard({ onDelete });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
+    });
+
+    it("makes no call and closes the dialog when canceled", () => {
+      const onDelete = vi.fn();
+      renderCard({ onDelete });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Delete module?" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("disables the delete action when deleteDisabled is set, independent of `disabled`", () => {
+      renderCard({ onDelete: vi.fn(), deleteDisabled: true });
+
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+    });
+  });
+
+  describe("Translate", () => {
+    it("is disabled when the Arabic draft is empty", () => {
+      renderCard({ material: { ar: "", en: "" }, onTranslate: vi.fn() });
+
+      expect(
+        screen.getByRole("button", { name: "Translate to English" }),
+      ).toBeDisabled();
+    });
+
+    it("translates immediately when English is empty, without touching either draft itself, and activates English on success", async () => {
+      const onMaterialChange = vi.fn();
+      const onTranslate = vi.fn().mockResolvedValue(undefined);
+      renderCard({
+        material: { ar: "Arabic content", en: "" },
+        onMaterialChange,
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
+      // The card never mutates `material` itself -- applying the returned
+      // translation to `material.en` is entirely the caller's own
+      // `onTranslate` implementation (ANA-77).
+      expect(onMaterialChange).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Replace English translation?" }),
+      ).not.toBeInTheDocument();
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole("radio", { name: "English" })).toBeChecked(),
+      );
+    });
+
+    it("requires confirmation before replacing non-empty English content", () => {
+      const onTranslate = vi.fn();
+      renderCard({
+        material: { ar: "Arabic content", en: "Existing English" },
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      expect(
+        screen.getByRole("dialog", { name: "Replace English translation?" }),
+      ).toBeInTheDocument();
+      expect(onTranslate).not.toHaveBeenCalled();
+    });
+
+    it("canceling the replacement leaves content untouched and makes no request", () => {
+      const onTranslate = vi.fn();
+      renderCard({
+        material: { ar: "Arabic content", en: "Existing English" },
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onTranslate).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Replace English translation?" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("translates after confirming replacement of existing English content", async () => {
+      const onTranslate = vi.fn().mockResolvedValue(undefined);
+      renderCard({
+        material: { ar: "Arabic content", en: "Existing English" },
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate and replace" }),
+      );
+
+      await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
+    });
+
+    it("keeps both drafts and shows an error when translation fails", async () => {
+      const onMaterialChange = vi.fn();
+      const onTranslate = vi
+        .fn()
+        .mockRejectedValue(new Error("Translation failed. Please try again."));
+      renderCard({
+        material: { ar: "Arabic content", en: "" },
+        onMaterialChange,
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      expect(
+        await screen.findByText("Translation failed. Please try again."),
+      ).toBeInTheDocument();
+      expect(onMaterialChange).not.toHaveBeenCalled();
+      expect(screen.getByText("Arabic content")).toBeInTheDocument();
+    });
+
+    it("disables translate while a request is already in flight", async () => {
+      let resolveTranslate: () => void = () => {};
+      const onTranslate = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveTranslate = resolve;
+          }),
+      );
+      renderCard({
+        material: { ar: "Arabic content", en: "" },
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Translate to English" }),
+      ).toBeDisabled();
+
+      resolveTranslate();
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Translate to English" }),
+        ).not.toBeDisabled(),
+      );
+    });
   });
 
   function gripElement(container: HTMLElement) {

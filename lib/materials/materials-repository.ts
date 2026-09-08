@@ -131,19 +131,22 @@ export async function deleteAllMaterialsForBook(bookId: string): Promise<void> {
 }
 
 /**
- * Whether any Material references `moduleId` under `bookId` -- used to block
- * Module deletion while it's still referenced (see ANA-62).
+ * Bulk-deletes every Material referencing `moduleId` under `bookId` -- used
+ * by Module delete, which cascades to Materials (unlike Lessons/Questions,
+ * which still block it with `409`; see ANA-77).
  */
-export async function anyMaterialReferencesModule(
+export async function deleteMaterialsByModule(
   bookId: string,
   moduleId: string,
-): Promise<boolean> {
+): Promise<void> {
   const snapshot = await getAdminFirestore()
     .collection(MATERIALS_COLLECTION)
     .where("bookId", "==", bookId)
     .where("moduleId", "==", moduleId)
-    .limit(1)
     .get();
 
-  return !snapshot.empty;
+  await deleteRefsInBatches(
+    getAdminFirestore(),
+    snapshot.docs.map((doc) => doc.ref),
+  );
 }

@@ -16,8 +16,8 @@ import type {
   TextDirection,
   WorkspaceModuleEntry,
 } from "./import-source-types";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { buildSourceContent } from "./build-source-content";
-import { ConfirmDialog } from "./confirm-dialog";
 import { createMaterial, updateMaterial } from "./materials-client";
 import { ModuleBuilderView } from "./module-builder-view";
 import { createModule } from "./modules-client";
@@ -893,10 +893,15 @@ export function ImportSourceModal({
           workspaceModules &&
           workspaceMaterialsData && (
             <SavedSourceView
+              bookId={bookId}
               content={workspaceContent}
               onContentChange={setWorkspaceContent}
               entries={workspaceEntries}
               onEntriesChange={setWorkspaceEntries}
+              onModuleDeleted={async () => {
+                await mutateWorkspaceModules();
+                await mutateWorkspaceMaterials();
+              }}
               onRemove={handleRemoveSourceRequest}
               isRemoving={isRemovingSource}
               removeError={removeSourceError}
@@ -959,6 +964,7 @@ export function ImportSourceModal({
                 onModulesChange={setModules}
                 onBack={handleBackToReview}
                 backDisabled={createdModuleIds.size > 0}
+                createdModuleIds={createdModuleIds}
                 onFinish={handleFinish}
                 isFinishing={isFinishing}
                 finishError={finishError}

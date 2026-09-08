@@ -71,9 +71,10 @@ export async function PATCH(
 }
 
 /**
- * Deletes a Module. Fails `409` if it still has Lessons, Questions, or
- * Materials referencing it -- unlike Book delete, this never cascades. See
- * ANA-62. Requires `books.update`.
+ * Deletes a Module. Fails `409` if it still has Lessons or Questions --
+ * unlike Book delete, this never cascades to those. Any Learning Material
+ * referencing the Module is deleted as part of this same operation instead
+ * of blocking it (ANA-77). Requires `books.update`.
  */
 export async function DELETE(
   _request: Request,

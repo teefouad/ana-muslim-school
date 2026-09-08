@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { ConfirmDialog } from "./confirm-dialog";
 
 const meta = {
-  title: "Books/ImportSource/ConfirmDialog",
+  title: "UI/ConfirmDialog",
   component: ConfirmDialog,
   tags: ["autodocs"],
   args: {

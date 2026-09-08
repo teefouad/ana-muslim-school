@@ -25,6 +25,7 @@ import {
 } from "../../book-form";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
+import { deleteModule } from "../../import-source/modules-client";
 import type { MockModule } from "../../mock-modules";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
@@ -96,6 +97,21 @@ export default function EditBookPage() {
   const [importSourceOpened, setImportSourceOpened] = useState(false);
 
   const notFound = error instanceof HttpError && error.status === 404;
+
+  // Deletes a real, persisted Module via the Module DELETE API (ANA-77) --
+  // the service layer cascades this to that Module's Learning Material.
+  // `book` is always set here: ModulesPanel only renders once it has loaded
+  // (see the render below). Revalidates the Modules SWR data on success so
+  // the row disappears without a page reload; a rejection propagates to
+  // ModulesPanel, which keeps the row visible and shows the error.
+  async function handleDeleteModule(module: MockModule) {
+    if (!book) {
+      return;
+    }
+
+    await deleteModule(book.id, module.id);
+    await mutateModules();
+  }
 
   async function handleSubmit(values: BookFormValues) {
     setSubmitError(null);
@@ -198,12 +214,19 @@ export default function EditBookPage() {
                 </Text>
               </Group>
             ) : (
-              // Reorder/add/delete aren't persisted from this panel yet
-              // (ANA-70 scope boundary -- see modules-panel.tsx) -- Modules
-              // now come from the real API, and this card doesn't add fake
-              // local mutations on top of that list, so these stay no-ops
-              // until a follow-up card wires them to real endpoints.
-              <ModulesPanel modules={modules} onModulesChange={() => {}} />
+              // Reorder/add aren't persisted from this panel yet (ANA-70
+              // scope boundary -- see modules-panel.tsx) -- Modules now come
+              // from the real API, and this page doesn't add fake local
+              // mutations on top of that list, so `onModulesChange` stays a
+              // no-op until a follow-up card wires those two up. Delete is
+              // real (ANA-77): `onDeleteModule` persists it through the
+              // Module DELETE API and revalidates this page's own Modules
+              // SWR data on success.
+              <ModulesPanel
+                modules={modules}
+                onModulesChange={() => {}}
+                onDeleteModule={handleDeleteModule}
+              />
             )}
           </Box>
         </Flex>

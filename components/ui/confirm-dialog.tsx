@@ -17,13 +17,14 @@ export interface ConfirmDialogProps {
   isConfirming?: boolean;
 }
 
-// A small, local confirmation-dialog primitive (ANA-75) for the Import
-// Source modal's own destructive/discarding transitions -- "Discard unsaved
-// changes?" on close, "Remove attached source?" before Select Another PDF's
-// DELETE, and "Return to page selection?" before discarding a reviewed OCR
-// result. Deliberately not promoted to components/ui: it has no reuse
-// beyond this modal yet (see AGENTS.md's Storybook requirement for
-// reusable components, which a components/ui promotion would trigger).
+// A small, reusable confirmation-dialog primitive, introduced for the
+// Import Source modal's own destructive/discarding transitions (ANA-75) --
+// "Discard unsaved changes?" on close, "Remove attached source?" before
+// Select Another PDF's DELETE, and "Return to page selection?" before
+// discarding a reviewed OCR result -- and promoted to components/ui (ANA-77)
+// once Module deletion and Learning Material translation needed the exact
+// same confirm/cancel pattern from other parts of the Books admin (the Edit
+// Book Modules list, the shared Module card) instead of duplicating it.
 export function ConfirmDialog({
   opened,
   title,

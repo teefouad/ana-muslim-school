@@ -1,10 +1,24 @@
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceModuleEntry } from "./import-source-types";
-import { SavedSourceView } from "./saved-source-view";
+
+const { deleteModuleMock, translateArabicToEnglishMock } = vi.hoisted(() => ({
+  deleteModuleMock: vi.fn(),
+  translateArabicToEnglishMock: vi.fn(),
+}));
+
+vi.mock("./modules-client", () => ({
+  deleteModule: deleteModuleMock,
+}));
+
+vi.mock("./translate-client", () => ({
+  translateArabicToEnglish: translateArabicToEnglishMock,
+}));
+
+const { SavedSourceView } = await import("./saved-source-view");
 
 const SAMPLE_ENTRIES: WorkspaceModuleEntry[] = [
   {
@@ -19,6 +33,7 @@ function renderView(
   overrides: Partial<React.ComponentProps<typeof SavedSourceView>> = {},
 ) {
   const props: React.ComponentProps<typeof SavedSourceView> = {
+    bookId: "book-1",
     content: "Saved source text",
     onContentChange: vi.fn(),
     entries: [],
@@ -59,6 +74,10 @@ async function findMaterialEditors() {
 }
 
 describe("SavedSourceView", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("renders the two-panel Source Text + Modules workspace (ANA-72)", () => {
     renderView();
 
@@ -111,7 +130,7 @@ describe("SavedSourceView", () => {
     expect(screen.getByText("Module 2")).toBeInTheDocument();
   });
 
-  it("exposes a drag handle (decorative), delete affordance, language switcher, and AI Assistant for every Module (ANA-75)", () => {
+  it("exposes a drag handle (decorative), delete affordance, language switcher, AI Assistant, and Translate for every Module (ANA-75/ANA-77)", () => {
     renderView({ entries: SAMPLE_ENTRIES });
 
     expect(
@@ -121,6 +140,9 @@ describe("SavedSourceView", () => {
     expect(screen.getAllByRole("radio", { name: "English" })).toHaveLength(2);
     expect(
       screen.getAllByRole("button", { name: "AI Assistant" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Translate to English" }),
     ).toHaveLength(2);
   });
 
@@ -381,5 +403,138 @@ describe("SavedSourceView", () => {
 
     expect(fetch).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  describe("Delete", () => {
+    it("deletes a persisted Module through the API, then removes it from entries and revalidates caches", async () => {
+      deleteModuleMock.mockResolvedValueOnce(undefined);
+      const onEntriesChange = vi.fn();
+      const onModuleDeleted = vi.fn();
+      renderView({
+        entries: SAMPLE_ENTRIES,
+        onEntriesChange,
+        onModuleDeleted,
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      await vi.waitFor(() =>
+        expect(deleteModuleMock).toHaveBeenCalledWith("book-1", "module-1"),
+      );
+      expect(onEntriesChange).toHaveBeenCalledWith([SAMPLE_ENTRIES[1]]);
+      expect(onModuleDeleted).toHaveBeenCalledTimes(1);
+    });
+
+    it("removes an unsaved (moduleId: null) Module locally, with no API request", () => {
+      const unsavedEntries: WorkspaceModuleEntry[] = [
+        { key: "temp-1", moduleId: null, material: { ar: "Draft", en: "" } },
+      ];
+      const onEntriesChange = vi.fn();
+      renderView({ entries: unsavedEntries, onEntriesChange });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      expect(onEntriesChange).toHaveBeenCalledWith([]);
+      expect(deleteModuleMock).not.toHaveBeenCalled();
+    });
+
+    it("uses the temporary-Module confirmation copy for an unsaved entry", () => {
+      const unsavedEntries: WorkspaceModuleEntry[] = [
+        { key: "temp-1", moduleId: null, material: { ar: "Draft", en: "" } },
+      ];
+      renderView({ entries: unsavedEntries });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+
+      expect(
+        screen.getByText(
+          "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("cancels without deleting or making a request", () => {
+      const onEntriesChange = vi.fn();
+      renderView({ entries: SAMPLE_ENTRIES, onEntriesChange });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onEntriesChange).not.toHaveBeenCalled();
+      expect(deleteModuleMock).not.toHaveBeenCalled();
+    });
+
+    it("leaves the entry in place and shows an error when the delete request fails", async () => {
+      deleteModuleMock.mockRejectedValueOnce(
+        new Error("Module still has Lessons."),
+      );
+      const onEntriesChange = vi.fn();
+      renderView({ entries: SAMPLE_ENTRIES, onEntriesChange });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Module 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+      expect(
+        await screen.findByText("Module still has Lessons."),
+      ).toBeInTheDocument();
+      expect(onEntriesChange).not.toHaveBeenCalled();
+      expect(screen.getByText("Module 1")).toBeInTheDocument();
+    });
+
+    it("disables every card's delete action while Save Changes is in flight", () => {
+      renderView({ entries: SAMPLE_ENTRIES, isSaving: true });
+
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+    });
+  });
+
+  describe("Translate", () => {
+    it("translates the active entry's Arabic draft and applies the result to material.en only", async () => {
+      translateArabicToEnglishMock.mockResolvedValueOnce("Translated text");
+      const onEntriesChange = vi.fn();
+      renderView({ entries: SAMPLE_ENTRIES, onEntriesChange });
+
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Translate to English" })[0],
+      );
+
+      await vi.waitFor(() =>
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+          "First material",
+        ),
+      );
+      expect(onEntriesChange).toHaveBeenCalledWith([
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "First material", en: "Translated text" },
+        },
+        SAMPLE_ENTRIES[1],
+      ]);
+    });
+
+    it("requires confirmation before replacing non-empty English content", () => {
+      const entriesWithEnglish: WorkspaceModuleEntry[] = [
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "Arabic", en: "Existing English" },
+        },
+      ];
+      renderView({ entries: entriesWithEnglish });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      expect(
+        screen.getByRole("dialog", { name: "Replace English translation?" }),
+      ).toBeInTheDocument();
+      expect(translateArabicToEnglishMock).not.toHaveBeenCalled();
+    });
   });
 });

@@ -48,8 +48,9 @@ function buildModuleFixture(overrides: Partial<Module> = {}): Module {
 /** Routes the globally-stubbed `fetch` by method + URL, matching every real
  * request this page makes: `GET` the Book, `GET` its Modules (only once the
  * Book has loaded -- see page.tsx's conditional SWR key), the page's own
- * Source-by-bookId lookup (which drives the header button's label), and
- * optionally `PATCH` the Book on save. */
+ * Source-by-bookId lookup (which drives the header button's label),
+ * optionally `PATCH` the Book on save, and optionally `DELETE` a Module
+ * (ANA-77). */
 function setupFetch(
   book: ReturnType<typeof buildBookFixture> | null,
   options: {
@@ -57,6 +58,7 @@ function setupFetch(
     modules?: Module[];
     hasSource?: boolean;
     onPatch?: (body: unknown) => { status: number; body: unknown };
+    onDeleteModule?: (moduleId: string) => { status: number; body: unknown };
   } = {},
 ) {
   const {
@@ -64,6 +66,7 @@ function setupFetch(
     modules = [],
     hasSource = false,
     onPatch,
+    onDeleteModule,
   } = options;
 
   (fetch as ReturnType<typeof vi.fn>).mockImplementation(
@@ -99,6 +102,14 @@ function setupFetch(
 
       if (method === "PATCH" && url === "/api/v1/books/book-1" && onPatch) {
         const { status, body } = onPatch(JSON.parse(init?.body as string));
+        return Promise.resolve(jsonResponse(body, status));
+      }
+
+      const deleteModuleMatch =
+        /^\/api\/v1\/books\/book-1\/modules\/(.+)$/.exec(url);
+
+      if (method === "DELETE" && deleteModuleMatch && onDeleteModule) {
+        const { status, body } = onDeleteModule(deleteModuleMatch[1]);
         return Promise.resolve(jsonResponse(body, status));
       }
 
@@ -437,6 +448,86 @@ describe("EditBookPage", () => {
       expect(
         screen.queryByText("This book has no modules yet."),
       ).toBeInTheDocument();
+    });
+
+    describe("Delete (ANA-77)", () => {
+      it("shows a confirmation, then DELETEs the Module and refreshes the list without a page reload", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          onDeleteModule: () => ({ status: 200, body: { ok: true } }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Delete أ" }));
+
+        expect(
+          screen.getByRole("dialog", { name: "Delete module?" }),
+        ).toBeInTheDocument();
+
+        // Re-routes the Modules fetch to report the Module gone, matching
+        // what a real revalidation after a successful DELETE would return.
+        setupFetch(buildBookFixture(), {
+          modules: [],
+          onDeleteModule: () => ({ status: 200, body: { ok: true } }),
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+        await vi.waitFor(() =>
+          expect(fetch).toHaveBeenCalledWith(
+            "/api/v1/books/book-1/modules/module-1",
+            { method: "DELETE" },
+          ),
+        );
+        expect(
+          await screen.findByText("This book has no modules yet."),
+        ).toBeInTheDocument();
+        expect(pushMock).not.toHaveBeenCalled();
+      });
+
+      it("makes no DELETE request when canceled", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Delete أ" }));
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, init]) => init?.method === "DELETE",
+          ),
+        ).toBe(false);
+        expect(screen.getByText("أ")).toBeInTheDocument();
+      });
+
+      it("keeps the Module visible and shows the error when the DELETE fails", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          onDeleteModule: () => ({
+            status: 409,
+            body: { error: "Module still has Lessons." },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Delete أ" }));
+        fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+        expect(
+          await screen.findByText("Module still has Lessons."),
+        ).toBeInTheDocument();
+        expect(screen.getByText("أ")).toBeInTheDocument();
+      });
     });
   });
 });
