@@ -440,6 +440,72 @@ describe("LearningMaterialModuleCard", () => {
         ).not.toBeDisabled(),
       );
     });
+
+    it("freezes the editor, language switcher, Delete, AI Assistant, and drag handle while its own translation is in flight, then unfreezes on completion (PR review, blocking)", async () => {
+      let resolveTranslate: () => void = () => {};
+      const onTranslate = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveTranslate = resolve;
+          }),
+      );
+      const attributes = { "aria-roledescription": "sortable" } as never;
+      const listeners = { onPointerDown: vi.fn() } as never;
+      renderCard({
+        material: { ar: "Arabic content", en: "" },
+        onTranslate,
+        onDelete: vi.fn(),
+        drag: {
+          attributes,
+          listeners,
+          setNodeRef: vi.fn(),
+          style: {},
+          isDragging: false,
+        },
+      });
+
+      const editable = await screen.findByRole("textbox");
+      expect(editable).toHaveAttribute("contenteditable", "true");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      expect(editable).toHaveAttribute("contenteditable", "false");
+      expect(
+        screen
+          .getByRole("radio", { name: "Arabic" })
+          .closest("[data-disabled]"),
+      ).toHaveAttribute("data-disabled", "true");
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "AI Assistant" }),
+      ).toBeDisabled();
+      const grip = document.querySelector(".lucide-grip-vertical")
+        ?.parentElement as HTMLElement;
+      expect(grip).toHaveAttribute("aria-hidden", "true");
+      expect(grip).not.toHaveAttribute("aria-roledescription");
+
+      resolveTranslate();
+
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Delete Module 1" }),
+        ).not.toBeDisabled(),
+      );
+      expect(
+        screen.getByRole("button", { name: "AI Assistant" }),
+      ).not.toBeDisabled();
+      expect(
+        screen
+          .getByRole("radio", { name: "Arabic" })
+          .closest("[data-disabled]"),
+      ).toHaveAttribute("data-disabled", "false");
+      expect(grip).toHaveAttribute("aria-roledescription", "sortable");
+      expect(grip).not.toHaveAttribute("aria-hidden");
+    });
   });
 
   function gripElement(container: HTMLElement) {

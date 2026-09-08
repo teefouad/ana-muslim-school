@@ -195,6 +195,15 @@ export function LearningMaterialModuleCard({
   }
 
   const isTranslateDisabled = disabled || isTranslating || !material.ar.trim();
+  // While *this* card's own Translate request is in flight, freeze the
+  // rest of the card -- the editor, language switcher, Delete, AI
+  // Assistant, and drag handle -- so the Arabic source it was sent with
+  // can't change out from under the request and so it can't be reordered
+  // or removed mid-translate. Every other card stays fully interactive;
+  // only `disabled` (Save/Finish in flight) freezes those (PR review,
+  // blocking -- ANA-77). The Translate action itself already disables via
+  // `isTranslateDisabled` above; this doesn't need to include it too.
+  const isCardFrozen = disabled || isTranslating;
 
   return (
     <div
@@ -213,10 +222,13 @@ export function LearningMaterialModuleCard({
           more than a single click target (ANA-75). */}
       <div className={styles.header}>
         <span
-          className={[styles.grip, drag && styles.gripDraggable]
+          className={[
+            styles.grip,
+            drag && !isCardFrozen && styles.gripDraggable,
+          ]
             .filter(Boolean)
             .join(" ")}
-          {...(drag
+          {...(drag && !isCardFrozen
             ? { ...drag.attributes, ...drag.listeners }
             : { "aria-hidden": true })}
         >
@@ -245,7 +257,7 @@ export function LearningMaterialModuleCard({
             color="red"
             className={styles.actionButton}
             aria-label={`Delete Module ${index + 1}`}
-            disabled={disabled || deleteDisabled}
+            disabled={isCardFrozen || deleteDisabled}
             onClick={handleDeleteClick}
           >
             <Trash2 size={14} aria-hidden="true" />
@@ -258,7 +270,7 @@ export function LearningMaterialModuleCard({
           variant="subtle"
           className={styles.actionButton}
           aria-label="AI Assistant"
-          disabled={disabled}
+          disabled={isCardFrozen}
         >
           <Sparkles size={16} aria-hidden="true" />
         </ActionIcon>
@@ -279,7 +291,7 @@ export function LearningMaterialModuleCard({
           value={activeLanguage}
           onChange={(slug) => setActiveLanguage(slug as Language)}
           isFilled={(slug) => Boolean(material[slug as Language]?.trim())}
-          disabled={disabled}
+          disabled={isCardFrozen}
         />
       </div>
       {translateError && (
@@ -302,7 +314,7 @@ export function LearningMaterialModuleCard({
               }
               dir={dir}
               fillHeight
-              disabled={disabled}
+              disabled={isCardFrozen}
             />
           </div>
         </div>

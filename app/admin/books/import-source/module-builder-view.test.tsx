@@ -498,6 +498,15 @@ describe("ModuleBuilderView", () => {
         expect(translateArabicToEnglishMock).toHaveBeenCalledWith("Arabic one"),
       );
 
+      // Module 1 itself is frozen while its own request is in flight...
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+      // ...but Module 2 stays fully interactive (PR review, blocking).
+      expect(
+        screen.getByRole("button", { name: "Delete Module 2" }),
+      ).toBeEnabled();
+
       // While that request is still pending, edit Module 2's own Learning
       // Material -- a real state update the builder must not lose.
       const editors = await screen.findAllByRole("textbox");

@@ -609,17 +609,23 @@ export function ImportSourceModal({
         setSavedWorkspaceSourceContent(savedSourceContent);
       }
 
-      // 2. Learning Material edits for Modules that already existed when
-      // this workspace opened -- PATCH when a Material already exists,
-      // otherwise create one, but only when the draft actually changed
-      // (an untouched empty Module stays without a Material). Explicitly
-      // excludes any entry created in *this* Save session (`createdModuleKeys`)
-      // even though its `moduleId` is already promoted by the time this
-      // runs on a retry (see step 3) -- that one always goes through step
-      // 4 below instead, which always writes its Material once (even an
-      // empty one) rather than diffing against a baseline.
+      // 2. Learning Material edits for any entry that already has a real
+      // `moduleId` -- an originally-persisted Module, or one promoted by
+      // step 3 in an *earlier* attempt of this same Save Changes session
+      // (PR review: `workspaceEntries` is the render snapshot captured at
+      // the top of this call, so step 3's `setWorkspaceEntries()` below
+      // can't retroactively make an entry visible to this loop within the
+      // same invocation -- only on a later retry, once that state update
+      // has actually re-rendered, does an entry promoted in a prior
+      // attempt show up here with its real `moduleId`). PATCH when a
+      // Material already exists, otherwise create one, but only when the
+      // draft actually changed (an untouched empty Module stays without a
+      // Material) -- this is what lets a further edit to an
+      // already-succeeded new Module's Material (made after a *different*
+      // entry's write failed in an earlier attempt) actually reach the
+      // server on retry, instead of being silently dropped.
       for (const entry of workspaceEntries) {
-        if (!entry.moduleId || createdModuleKeys.has(entry.key)) {
+        if (!entry.moduleId) {
           continue;
         }
 
@@ -682,21 +688,25 @@ export function ImportSourceModal({
       }
 
       // 4. Each new Module's Learning Material, attached to its real
-      // persisted id -- always created (even an intentionally empty one),
-      // unlike step 2's existing Modules, which only write on a real
-      // change. Selected via `createdModuleKeys` (this session's own
-      // "newly created" set) rather than `entry.moduleId` presence, since
-      // step 3 above already promoted that for every entry in this loop.
+      // persisted id -- always created once (even an intentionally empty
+      // one), unlike step 2's diff-based PATCH-or-create. Selected via
+      // `createdModuleKeys` (this session's own "newly created" set)
+      // rather than `entry.moduleId` presence: `workspaceEntries` is a
+      // single snapshot captured at the top of this call, so an entry step
+      // 3 just promoted a few iterations ago still reads `moduleId: null`
+      // right here in that snapshot -- `idMap` (updated live in this same
+      // call, not just via `setState`) is what resolves its real id.
       // Guarded by `materialDocIds` (the same map step 2 uses) rather than
       // a separate one-shot "already materialized" flag: a flag would
       // permanently skip this entry on every future Save Changes, silently
       // dropping an edit made after this Material succeeds but a
       // *different* write in the same attempt fails (PR review, blocking).
       // Once its Material is created, the entry looks exactly like an
-      // originally-persisted Module (recorded in
-      // `materialDocIds`/`savedMaterialContents`, `createdModuleKeys` still
-      // holds its key) so step 2 explicitly keeps skipping it and this step
-      // never touches it again.
+      // originally-persisted Module (`moduleId` promoted by step 3,
+      // recorded in `materialDocIds`/`savedMaterialContents`) so a *later*
+      // Save Changes attempt picks up any further edit through step 2's
+      // normal diff-based PATCH instead of this step ever touching it
+      // again (PR review).
       for (const entry of workspaceEntries) {
         if (!createdModuleKeys.has(entry.key)) {
           continue;
