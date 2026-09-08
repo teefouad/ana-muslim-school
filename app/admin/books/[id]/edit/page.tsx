@@ -25,10 +25,14 @@ import {
 } from "../../book-form";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
-import { deleteModule } from "../../import-source/modules-client";
+import {
+  deleteModule,
+  reorderModules,
+} from "../../import-source/modules-client";
 import type { MockModule } from "../../mock-modules";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
+import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import type { Module } from "@/lib/modules/types";
 import type { Source } from "@/lib/sources/types";
 
@@ -95,6 +99,12 @@ export default function EditBookPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importSourceOpened, setImportSourceOpened] = useState(false);
+  // True while a drag-and-drop reorder is being persisted through the
+  // Book.modules reorder PATCH (ANA-79) -- suspends further reordering
+  // (`ModulesPanel`'s `disabled`) so overlapping reorder writes can't race
+  // each other.
+  const [isReordering, setIsReordering] = useState(false);
+  const [reorderError, setReorderError] = useState<string | null>(null);
 
   const notFound = error instanceof HttpError && error.status === 404;
 
@@ -109,8 +119,61 @@ export default function EditBookPage() {
       return;
     }
 
+    setReorderError(null);
+
     await deleteModule(book.id, module.id);
     await mutateModules();
+  }
+
+  // Persists a drag-and-drop reorder of the real, API-backed Modules
+  // (ANA-79) -- `ModulesPanel`'s `onModulesChange` previously stayed a
+  // no-op here, so a drop visually snapped back once SWR's unchanged
+  // `modulesData` re-rendered the panel (see the panel's own render below).
+  // `book`/`modulesData` are always set here: the panel only renders once
+  // both have loaded. `ModulesPanel`'s Add action (still out of scope for
+  // this Book-level panel -- ANA-79) funnels through this same prop, so
+  // this only actually persists a same-set reorder; anything else (Add's
+  // extra, never-persisted blank entry) is left exactly as inert as before.
+  async function handleReorderModules(reordered: MockModule[]) {
+    if (
+      !book ||
+      !modulesData ||
+      !isValidReorder(
+        reordered.map((module) => module.id),
+        modulesData.map((module) => module.id),
+      )
+    ) {
+      return;
+    }
+
+    const previousModules = modulesData;
+    const reorderedModules = reordered.map((module) =>
+      modulesData.find((candidate) => candidate.id === module.id)!,
+    );
+
+    // Optimistic, unvalidated update (`false`) -- shows the dropped order
+    // immediately instead of waiting on the PATCH round-trip, matching how
+    // the drag itself already feels instant.
+    await mutateModules(reorderedModules, false);
+    setIsReordering(true);
+    setReorderError(null);
+
+    try {
+      await reorderModules(
+        book.id,
+        reorderedModules.map((module) => module.id),
+      );
+      await mutateModules();
+    } catch (err) {
+      // Reverts to the authoritative server order rather than leaving the
+      // optimistic (never-persisted) order on screen.
+      await mutateModules(previousModules, false);
+      setReorderError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setIsReordering(false);
+    }
   }
 
   async function handleSubmit(values: BookFormValues) {
@@ -214,19 +277,29 @@ export default function EditBookPage() {
                 </Text>
               </Group>
             ) : (
-              // Reorder/add aren't persisted from this panel yet (ANA-70
-              // scope boundary -- see modules-panel.tsx) -- Modules now come
-              // from the real API, and this page doesn't add fake local
-              // mutations on top of that list, so `onModulesChange` stays a
-              // no-op until a follow-up card wires those two up. Delete is
-              // real (ANA-77): `onDeleteModule` persists it through the
-              // Module DELETE API and revalidates this page's own Modules
-              // SWR data on success.
-              <ModulesPanel
-                modules={modules}
-                onModulesChange={() => {}}
-                onDeleteModule={handleDeleteModule}
-              />
+              <>
+                {reorderError && (
+                  <Alert color="red" mb="sm">
+                    {reorderError}
+                  </Alert>
+                )}
+                {/* Reorder is real (ANA-79): `onModulesChange` persists a
+                    drop through the Book.modules reorder API and reverts to
+                    the authoritative server order on failure -- see
+                    handleReorderModules. Add still isn't persisted from
+                    this panel (ANA-70 scope boundary -- see
+                    modules-panel.tsx); handleReorderModules leaves it
+                    exactly as inert as before. Delete is real (ANA-77):
+                    `onDeleteModule` persists it through the Module DELETE
+                    API and revalidates this page's own Modules SWR data on
+                    success. */}
+                <ModulesPanel
+                  modules={modules}
+                  onModulesChange={handleReorderModules}
+                  disabled={isReordering}
+                  onDeleteModule={handleDeleteModule}
+                />
+              </>
             )}
           </Box>
         </Flex>

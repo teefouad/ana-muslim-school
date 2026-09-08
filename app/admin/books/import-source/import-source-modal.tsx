@@ -20,7 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { buildSourceContent } from "./build-source-content";
 import { createMaterial, updateMaterial } from "./materials-client";
 import { ModuleBuilderView } from "./module-builder-view";
-import { createModule } from "./modules-client";
+import { createModule, reorderModules } from "./modules-client";
 import { OcrResultView } from "./ocr-result-view";
 import { PdfFilePicker } from "./pdf-file-picker";
 import { PdfViewer } from "./pdf-viewer";
@@ -37,6 +37,13 @@ const EMPTY_MATERIAL: TranslatableString = { ar: "", en: "" };
  * between them can share the exact same notion of equality. */
 function materialsEqual(a: TranslatableString, b: TranslatableString): boolean {
   return a.ar === b.ar && a.en === b.en;
+}
+
+/** Whether two Module-order arrays are identical, element-for-element
+ * (ANA-79) -- used to skip a pointless reorder PATCH when Save changes runs
+ * with nothing actually reordered. */
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 /** What the modal is currently asking the user to confirm before it
@@ -170,6 +177,15 @@ export function ImportSourceModal({
   // partial failure only re-sends what didn't yet land.
   const [savedWorkspaceSourceContent, setSavedWorkspaceSourceContent] =
     useState("");
+  // The Module order last confirmed persisted to `Book.modules` for this
+  // workspace (ANA-79) -- the initial fetch order, or whatever a previous
+  // Save changes attempt in this session already wrote. Compared against
+  // the currently displayed order at Save time so a Save with no actual
+  // reorder doesn't send a pointless reorder PATCH (which would otherwise
+  // bump the Book's audit fields on every plain content/Material edit).
+  const [savedWorkspaceModuleOrder, setSavedWorkspaceModuleOrder] = useState<
+    string[]
+  >([]);
   const [materialDocIdByModuleId, setMaterialDocIdByModuleId] = useState<
     Record<string, string>
   >({});
@@ -301,6 +317,7 @@ export function ImportSourceModal({
     setSavedWorkspaceSourceContent(existingSource.content);
     setMaterialDocIdByModuleId(initialMaterialDocIds);
     setSavedMaterialContentByModuleId(initialMaterialContents);
+    setSavedWorkspaceModuleOrder(workspaceModules.map((module) => module.id));
     setCreatedWorkspaceModuleKeys(new Set());
     setWorkspaceModuleIdMap({});
     setSaveWorkspaceError(null);
@@ -364,6 +381,7 @@ export function ImportSourceModal({
     setSavedWorkspaceSourceContent("");
     setMaterialDocIdByModuleId({});
     setSavedMaterialContentByModuleId({});
+    setSavedWorkspaceModuleOrder([]);
     setCreatedWorkspaceModuleKeys(new Set());
     setWorkspaceModuleIdMap({});
     setIsSavingWorkspace(false);
@@ -727,6 +745,29 @@ export function ImportSourceModal({
         savedMaterialContents[realModuleId] = entry.material;
         setMaterialDocIdByModuleId({ ...materialDocIds });
         setSavedMaterialContentByModuleId({ ...savedMaterialContents });
+      }
+
+      // 5. Persist the final visible Module order to `Book.modules`, now
+      // that every entry above has a real Module id (ANA-79) -- reordering
+      // in this workspace is a draft change; Save changes is what actually
+      // commits it, alongside everything else this action already
+      // persists. Reads `idMap` (updated live above, step 3) rather than
+      // only `entry.moduleId`, for the same reason step 2 does: a Module
+      // promoted a few iterations ago in *this* call hasn't re-rendered
+      // into `workspaceEntries` yet within the same invocation. Skipped
+      // when the order actually displayed matches what's already
+      // persisted (`savedWorkspaceModuleOrder`) so a plain content/
+      // Material-only Save doesn't send a pointless reorder PATCH.
+      const finalModuleOrder = workspaceEntries.map(
+        (entry) => entry.moduleId ?? idMap[entry.key],
+      );
+
+      if (
+        finalModuleOrder.length > 0 &&
+        !arraysEqual(finalModuleOrder, savedWorkspaceModuleOrder)
+      ) {
+        await reorderModules(bookId, finalModuleOrder);
+        setSavedWorkspaceModuleOrder(finalModuleOrder);
       }
 
       // Every write succeeded -- revalidate everything this screen could

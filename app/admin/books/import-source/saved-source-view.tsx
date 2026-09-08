@@ -2,7 +2,7 @@
 
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Alert, Button, Group, Text, Textarea } from "@mantine/core";
-import { Plus, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import type {
   TextDirection,
@@ -11,7 +11,7 @@ import type {
 import { deleteModule } from "./modules-client";
 import { translateArabicToEnglish } from "./translate-client";
 import { FontSizeControl } from "./font-size-control";
-import { LearningMaterialModuleCard } from "./learning-material-module-card";
+import { SourceModulesPanel } from "./source-modules-panel";
 import { TextDirectionControl } from "./text-direction-control";
 import styles from "./saved-source-view.module.css";
 
@@ -171,22 +171,28 @@ export function SavedSourceView({
   // while a persisted delete is in flight, so any other card's concurrent
   // edit must survive it resolving late, not get reverted by a stale
   // array.
-  async function handleDeleteEntry(entry: WorkspaceModuleEntry) {
+  async function handleDeleteEntry(key: string) {
     setDeleteError(null);
+
+    const entry = entries.find((candidate) => candidate.key === key);
+
+    if (!entry) {
+      return;
+    }
 
     if (!entry.moduleId) {
       onEntriesChange((current) =>
-        current.filter((candidate) => candidate.key !== entry.key),
+        current.filter((candidate) => candidate.key !== key),
       );
       return;
     }
 
-    setDeletingKey(entry.key);
+    setDeletingKey(key);
 
     try {
       await deleteModule(bookId, entry.moduleId);
       onEntriesChange((current) =>
-        current.filter((candidate) => candidate.key !== entry.key),
+        current.filter((candidate) => candidate.key !== key),
       );
       await onModuleDeleted?.();
     } catch (err) {
@@ -285,62 +291,31 @@ export function SavedSourceView({
           </div>
         </div>
 
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <Text size="sm" fw={500}>
-              Modules{entries.length > 0 ? ` (${entries.length})` : ""}
-            </Text>
-            <Button
-              size="xs"
-              leftSection={<Plus size={14} aria-hidden="true" />}
-              disabled={!hasSelection || isSaving}
-              // Same technique as module-builder-view.tsx's Create Module --
-              // preventing mousedown's default focus shift/selection
-              // collapse keeps the textarea's selection intact through the
-              // click.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={handleCreateModule}
-            >
-              Create Module
-            </Button>
-          </div>
-          <div className={styles.panelBody}>
-            {entries.length === 0 ? (
-              <p className={styles.emptyState}>
-                Select text on the left and click &ldquo;Create Module&rdquo; to
-                get started.
-              </p>
-            ) : (
-              <div className={styles.moduleList}>
-                {entries.map((entry, index) => (
-                  <LearningMaterialModuleCard
-                    key={entry.key}
-                    testId={`source-module-card-${index}`}
-                    index={index}
-                    material={entry.material}
-                    onMaterialChange={(value) =>
-                      handleMaterialChange(entry.key, value)
-                    }
-                    fontScale={fontScale}
-                    disabled={isSaving}
-                    // No `drag` prop -- the grip renders as the same chrome
-                    // as the Create-from-PDF card, but persisted Module
-                    // reordering is out of scope for this workspace
-                    // (ANA-75).
-                    onDelete={() => handleDeleteEntry(entry)}
-                    deleteConfirmDescription={
-                      entry.moduleId
-                        ? undefined
-                        : TEMPORARY_DELETE_CONFIRM_DESCRIPTION
-                    }
-                    deleteDisabled={isSaving || deletingKey !== null}
-                    onTranslate={() => handleTranslateEntry(entry.key)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <SourceModulesPanel<WorkspaceModuleEntry>
+          items={entries}
+          getKey={(entry) => entry.key}
+          getMaterial={(entry) => entry.material}
+          onMaterialChange={handleMaterialChange}
+          onReorder={onEntriesChange}
+          fontScale={fontScale}
+          disabled={isSaving}
+          // Reordering is a draft change, persisted to `Book.modules` by
+          // Save changes once every temporary id has resolved (ANA-79) --
+          // suspended while that request is in flight so the displayed
+          // order can't shift out from under it.
+          reorderDisabled={isSaving}
+          canCreateModule={hasSelection}
+          onCreateModule={handleCreateModule}
+          onDeleteItem={handleDeleteEntry}
+          getDeleteConfirmDescription={(key) => {
+            const entry = entries.find((candidate) => candidate.key === key);
+            return entry?.moduleId
+              ? undefined
+              : TEMPORARY_DELETE_CONFIRM_DESCRIPTION;
+          }}
+          isDeleteDisabled={() => isSaving || deletingKey !== null}
+          onTranslateItem={handleTranslateEntry}
+        />
       </div>
 
       {removeError && (

@@ -450,6 +450,155 @@ describe("EditBookPage", () => {
       ).toBeInTheDocument();
     });
 
+    describe("Reorder (ANA-79)", () => {
+      // Same technique as modules-panel.test.tsx/item-list.test.tsx's own
+      // keyboard-drag tests -- dnd-kit's keyboard coordinate math needs
+      // real-ish rects, keyed by ItemList's own testid scheme.
+      function stubItemRects(order: string[], itemHeight = 60) {
+        vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+          function (this: Element) {
+            const container = this.closest('[data-testid^="list-item-"]');
+            const id = container
+              ?.getAttribute("data-testid")
+              ?.replace("list-item-", "");
+            const index = id ? order.indexOf(id) : -1;
+            const top = index === -1 ? 0 : index * itemHeight;
+            return {
+              top,
+              bottom: top + itemHeight,
+              left: 0,
+              right: 300,
+              width: 300,
+              height: itemHeight,
+              x: 0,
+              y: top,
+              toJSON() {},
+            } as DOMRect;
+          },
+        );
+      }
+
+      async function dragFirstModuleDown() {
+        const grip = document.querySelector(
+          '[data-testid="list-item-module-1"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+      }
+
+      it("PATCHes /api/v1/books/{bookId} with the dropped order and keeps it after revalidation", async () => {
+        const allModules = [
+          buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+        ];
+        let patchedModules: string[] | null = null;
+        // Mirrors the real reorder endpoint: GET /modules reflects whatever
+        // order the PATCH last persisted, so revalidation after a
+        // successful reorder confirms the *server's* order, not just the
+        // optimistic one.
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+          (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (method === "GET" && url === "/api/v1/books/book-1") {
+              return Promise.resolve(
+                jsonResponse({ data: buildBookFixture() }),
+              );
+            }
+            if (method === "GET" && url === "/api/v1/books/book-1/modules") {
+              const order = patchedModules ?? ["module-1", "module-2"];
+              return Promise.resolve(
+                jsonResponse({
+                  data: order.map((id) => allModules.find((m) => m.id === id)!),
+                }),
+              );
+            }
+            if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+              return Promise.resolve(jsonResponse({ data: [] }));
+            }
+            if (method === "PATCH" && url === "/api/v1/books/book-1") {
+              patchedModules = (
+                JSON.parse(init?.body as string) as {
+                  modules: string[];
+                }
+              ).modules;
+              return Promise.resolve(
+                jsonResponse({ data: buildBookFixture() }),
+              );
+            }
+            throw new Error(`Unhandled fetch: ${method} ${url}`);
+          },
+        );
+        renderPage();
+
+        await screen.findByText("أ");
+        stubItemRects(["module-1", "module-2"]);
+        await dragFirstModuleDown();
+
+        await vi.waitFor(() =>
+          expect(patchedModules).toEqual(["module-2", "module-1"]),
+        );
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[أب]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["ب", "أ"]);
+        });
+      });
+
+      it("reverts to the server order and shows an error when the reorder PATCH fails", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+          ],
+          onPatch: () => ({
+            status: 409,
+            body: {
+              error: "`modules` must be a reorder of the exact current set.",
+            },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        stubItemRects(["module-1", "module-2"]);
+        await dragFirstModuleDown();
+
+        expect(
+          await screen.findByText(
+            "`modules` must be a reorder of the exact current set.",
+          ),
+        ).toBeInTheDocument();
+        // Reverted to the original, still-persisted order.
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[أب]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["أ", "ب"]);
+        });
+      });
+
+      it("does not persist Add module's local-only blank entry as a reorder", async () => {
+        let patchCalled = false;
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          onPatch: () => {
+            patchCalled = true;
+            return { status: 200, body: { data: buildBookFixture() } };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+
+        expect(patchCalled).toBe(false);
+      });
+    });
+
     describe("Delete (ANA-77)", () => {
       it("shows a confirmation, then DELETEs the Module and refreshes the list without a page reload", async () => {
         setupFetch(buildBookFixture(), {
