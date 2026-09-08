@@ -97,7 +97,9 @@ export function LearningMaterialModuleCard({
           single click target (ANA-75). */}
       <div className={styles.header}>
         <span
-          className={styles.grip}
+          className={[styles.grip, drag && styles.gripDraggable]
+            .filter(Boolean)
+            .join(" ")}
           {...(drag
             ? { ...drag.attributes, ...drag.listeners }
             : { "aria-hidden": true })}

@@ -1105,7 +1105,7 @@ describe("ImportSourceModal", () => {
     );
   });
 
-  it("Create Modules advances to the Module builder using edited OCR Markdown", async () => {
+  it("Create Modules advances to the Module builder using edited OCR Markdown, with Finish already available", async () => {
     requestOcrUploadUrlMock.mockResolvedValue({
       uploadUrl: "https://storage/signed",
       objectPath: "tmp/ocr-uploads/user-1/book.pdf",
@@ -1131,9 +1131,13 @@ describe("ImportSourceModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
     expect(screen.getByText("Edited")).toBeInTheDocument();
+    // The Module builder is now the flow's final editing screen (ANA-75) --
+    // there is no separate "Create Learning Material" step to advance to,
+    // and Finish is available immediately, even before any Module exists.
     expect(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Create Learning Material" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled();
   });
 
   it("clears temporary Modules built from an earlier document when the source is replaced with a new file", async () => {
@@ -1267,11 +1271,11 @@ describe("ImportSourceModal", () => {
     });
   }
 
-  // Reaches the Learning Material step with two temporary Modules, built
-  // (in order) from "Some " and "source" of the single OCR page's text --
-  // used by the Finish tests below to exercise ordering across more than
-  // one Module.
-  async function reachLearningMaterialWithTwoModules() {
+  // Reaches the Module builder -- now the flow's final editing screen
+  // (ANA-75) -- with two temporary Modules, built (in order) from "Some "
+  // and "source" of the single OCR page's text. Used by the Finish tests
+  // below to exercise ordering across more than one Module.
+  async function reachBuildModulesWithTwoModules() {
     requestOcrUploadUrlMock.mockResolvedValue({
       uploadUrl: "https://storage/signed",
       objectPath: "tmp/ocr-uploads/user-1/book.pdf",
@@ -1296,26 +1300,79 @@ describe("ImportSourceModal", () => {
     selectSourceRange(5, 11);
     fireEvent.click(screen.getByRole("button", { name: "Create Module" }));
     expect(screen.getByText("Modules (2)")).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    );
-    await screen.findByText("2 modules created");
   }
 
-  describe("Finish", () => {
-    it("is enabled once a temporary Module exists", async () => {
-      await reachBuildModulesWithOneModule();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Create Learning Material" }),
-      );
-      await screen.findByText("1 module created");
+  it("does not render or navigate to a separate Learning Material step -- the Module builder is the final Create-from-PDF screen (ANA-75)", async () => {
+    await reachBuildModulesWithOneModule();
 
+    expect(
+      screen.queryByRole("button", { name: "Create Learning Material" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Back to Modules" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finish" })).toBeInTheDocument();
+    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
+  });
+
+  describe("Finish", () => {
+    it("is enabled even with zero temporary Modules", async () => {
+      requestOcrUploadUrlMock.mockResolvedValue({
+        uploadUrl: "https://storage/signed",
+        objectPath: "tmp/ocr-uploads/user-1/book.pdf",
+      });
+      uploadPdfToStorageMock.mockResolvedValue(undefined);
+      requestOcrMock.mockResolvedValueOnce({
+        model: "mistral-ocr-latest",
+        pagesProcessed: 1,
+        docSizeBytes: 100,
+        pages: [{ pageNumber: 1, markdown: "Some source text" }],
+      });
+      renderModal();
+      await selectFile();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
+      fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+      await screen.findByRole("button", { name: "Create Modules" });
+      fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
+
+      expect(screen.getByText("Modules")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled();
     });
 
+    it("finishing with zero temporary Modules persists the reviewed Source without creating any Module or Material", async () => {
+      requestOcrUploadUrlMock.mockResolvedValue({
+        uploadUrl: "https://storage/signed",
+        objectPath: "tmp/ocr-uploads/user-1/book.pdf",
+      });
+      uploadPdfToStorageMock.mockResolvedValue(undefined);
+      requestOcrMock.mockResolvedValueOnce({
+        model: "mistral-ocr-latest",
+        pagesProcessed: 1,
+        docSizeBytes: 100,
+        pages: [{ pageNumber: 1, markdown: "Some source text" }],
+      });
+      const { onClose } = renderModal();
+      await selectFile();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
+      fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+      await screen.findByRole("button", { name: "Create Modules" });
+      fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+      await vi.waitFor(() =>
+        expect(createSourceMock).toHaveBeenCalledWith(
+          "book-1",
+          "Some source text",
+        ),
+      );
+      expect(createModuleMock).not.toHaveBeenCalled();
+      expect(createMaterialMock).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
     it("POSTs one Module per temporary Module, in order, with the exact draft payload", async () => {
-      await reachLearningMaterialWithTwoModules();
+      await reachBuildModulesWithTwoModules();
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
@@ -1333,10 +1390,6 @@ describe("ImportSourceModal", () => {
 
     it("does not duplicate requests from repeated clicks while Finish is already running", async () => {
       const { onClose } = await reachBuildModulesWithOneModule();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Create Learning Material" }),
-      );
-      await screen.findByText("1 module created");
 
       let resolveCreate: (value: unknown) => void = () => {};
       createModuleMock.mockReturnValueOnce(
@@ -1358,10 +1411,6 @@ describe("ImportSourceModal", () => {
 
     it("shows an inline error and keeps the modal open when Module creation fails", async () => {
       await reachBuildModulesWithOneModule();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Create Learning Material" }),
-      );
-      await screen.findByText("1 module created");
 
       createModuleMock.mockRejectedValueOnce(new Error("Server exploded"));
 
@@ -1371,13 +1420,13 @@ describe("ImportSourceModal", () => {
       expect(screen.getByText("book.pdf")).toBeInTheDocument();
     });
 
-    it("disables Back to Modules once a Module has already been created, after a partial failure", async () => {
+    it("disables Back once a Module has already been created, after a partial failure", async () => {
       // PR review (ANA-70, blocking): a Module created before a later
       // failure in the same Finish run already exists under the Book and
-      // can't be rolled back from here -- Back to Modules must stay
-      // disabled so the temporary set can't be reordered/deleted out from
-      // under it. Retrying Finish is the only way forward.
-      await reachLearningMaterialWithTwoModules();
+      // can't be rolled back from here -- Back must stay disabled so the
+      // reviewed OCR result (and this Module list) can't be discarded out
+      // from under it. Retrying Finish is the only way forward.
+      await reachBuildModulesWithTwoModules();
 
       createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
       createModuleMock.mockRejectedValueOnce(new Error("Network error"));
@@ -1385,17 +1434,13 @@ describe("ImportSourceModal", () => {
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
       await screen.findByText("Network error");
 
-      const backButton = screen.getByRole("button", {
-        name: "Back to Modules",
-      });
+      const backButton = screen.getByRole("button", { name: "Back" });
       expect(backButton).toBeDisabled();
-
-      fireEvent.click(backButton);
-      expect(screen.getByText("2 modules created")).toBeInTheDocument();
+      expect(screen.getByText("Modules (2)")).toBeInTheDocument();
     });
 
     it("retrying after a partial failure does not recreate Modules that already succeeded", async () => {
-      await reachLearningMaterialWithTwoModules();
+      await reachBuildModulesWithTwoModules();
 
       createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
       createModuleMock.mockRejectedValueOnce(new Error("Network error"));
@@ -1419,10 +1464,6 @@ describe("ImportSourceModal", () => {
       const { onClose } = await reachBuildModulesWithOneModule({
         onModulesCreated,
       });
-      fireEvent.click(
-        screen.getByRole("button", { name: "Create Learning Material" }),
-      );
-      await screen.findByText("1 module created");
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
@@ -1431,7 +1472,7 @@ describe("ImportSourceModal", () => {
     });
 
     it("persists the Source with the Book id and the full reviewed OCR text once every Module is created", async () => {
-      await reachLearningMaterialWithTwoModules();
+      await reachBuildModulesWithTwoModules();
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
@@ -1444,7 +1485,7 @@ describe("ImportSourceModal", () => {
     });
 
     it("does not create the Source before every Module has been created", async () => {
-      await reachLearningMaterialWithTwoModules();
+      await reachBuildModulesWithTwoModules();
       createModuleMock.mockResolvedValueOnce(moduleFixture("created-1"));
       createModuleMock.mockRejectedValueOnce(new Error("Network error"));
 
@@ -1454,25 +1495,30 @@ describe("ImportSourceModal", () => {
       expect(createSourceMock).not.toHaveBeenCalled();
     });
 
-    it("persists one Material per Module using the real persisted moduleId (never the temporary id), including an empty Learning Material", async () => {
-      await reachLearningMaterialWithTwoModules();
+    it("persists one Material per Module using the real persisted moduleId (never the temporary id), each with the full bilingual draft seeded from its Source Text selection", async () => {
+      await reachBuildModulesWithTwoModules();
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
       await vi.waitFor(() =>
         expect(createMaterialMock).toHaveBeenCalledTimes(2),
       );
+      // The Module builder seeds each Module's Arabic draft directly from
+      // its Source Text selection (ANA-75) -- "Some " and "source" here,
+      // matching reachBuildModulesWithTwoModules' selectSourceRange calls --
+      // leaving English empty, with no separate Learning Material step to
+      // pass through first.
       expect(createMaterialMock).toHaveBeenNthCalledWith(
         1,
         "book-1",
         "created-1",
-        { ar: "", en: "" },
+        { ar: "Some ", en: "" },
       );
       expect(createMaterialMock).toHaveBeenNthCalledWith(
         2,
         "book-1",
         "created-2",
-        { ar: "", en: "" },
+        { ar: "source", en: "" },
       );
       // "created-N" (the module fixture ids returned by createModuleMock) are
       // the only moduleId values ever passed -- never a temporary Module id
@@ -1484,7 +1530,7 @@ describe("ImportSourceModal", () => {
     });
 
     it("does not create Materials before the Source has been created", async () => {
-      await reachLearningMaterialWithTwoModules();
+      await reachBuildModulesWithTwoModules();
       createSourceMock.mockRejectedValueOnce(new Error("Storage error"));
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
@@ -1494,12 +1540,12 @@ describe("ImportSourceModal", () => {
     });
 
     it("retrying after a Material failure does not recreate the Modules or the Source, and skips the Material that already succeeded", async () => {
-      await reachLearningMaterialWithTwoModules();
+      await reachBuildModulesWithTwoModules();
       createMaterialMock.mockResolvedValueOnce({
         id: "material-1",
         bookId: "book-1",
         moduleId: "created-1",
-        content: { ar: "", en: "" },
+        content: { ar: "Some ", en: "" },
       });
       createMaterialMock.mockRejectedValueOnce(new Error("Network error"));
 
@@ -1516,7 +1562,7 @@ describe("ImportSourceModal", () => {
         id: "material-2",
         bookId: "book-1",
         moduleId: "created-2",
-        content: { ar: "", en: "" },
+        content: { ar: "source", en: "" },
       });
 
       fireEvent.click(screen.getByRole("button", { name: "Finish" }));
@@ -1525,81 +1571,12 @@ describe("ImportSourceModal", () => {
         expect(createMaterialMock).toHaveBeenCalledTimes(1),
       );
       expect(createMaterialMock).toHaveBeenCalledWith("book-1", "created-2", {
-        ar: "",
+        ar: "source",
         en: "",
       });
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(createSourceMock).not.toHaveBeenCalled();
     });
-  });
-
-  it("Create Learning Material advances to the Learning Material step, showing the filename and Module count", async () => {
-    await reachBuildModulesWithOneModule();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    );
-
-    expect(screen.getByText("book.pdf")).toBeInTheDocument();
-    expect(screen.getByText("1 module created")).toBeInTheDocument();
-    expect(await screen.findByText("Module 1")).toBeInTheDocument();
-    await screen.findByRole("toolbar");
-  });
-
-  it("Back to Modules returns to the Module builder, preserving the temporary Modules", async () => {
-    await reachBuildModulesWithOneModule();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    );
-    await screen.findByText("1 module created");
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to Modules" }));
-
-    expect(screen.getByText("Modules (1)")).toBeInTheDocument();
-  });
-
-  it("returning to the Module builder and back to Learning Material shows the same Module, not a reset flow", async () => {
-    // The Learning Material screen's own persistence of *edits* across a
-    // remount (Back -> Create Learning Material again) is covered by
-    // learning-material-view.test.tsx, using non-empty seed content --
-    // jsdom's contenteditable emulation can't place a cursor in a
-    // genuinely empty Lexical document (see components/ui/markdown-editor
-    // .test.tsx's own tests, which only ever type onto existing content),
-    // so a real Learning Material edit can't be driven end-to-end from
-    // this modal's actual empty starting state. This instead exercises
-    // the modal-level plumbing: the same Module set (not e.g. an emptied
-    // or duplicated one) is what comes back after a Back -> forward round
-    // trip -- observable here via the Module count and its card rendering,
-    // since the unified Module card (ANA-75) no longer shows the raw
-    // source-text excerpt each temporary Module was created from.
-    await reachBuildModulesWithOneModule();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    );
-    await screen.findByText("1 module created");
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to Modules" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    );
-
-    expect(screen.getByText("1 module created")).toBeInTheDocument();
-    expect(await screen.findByText("Module 1")).toBeInTheDocument();
-    await screen.findByRole("toolbar");
-  });
-
-  it("makes no API/network requests from the Learning Material step", async () => {
-    await reachBuildModulesWithOneModule();
-    vi.stubGlobal("fetch", vi.fn());
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    );
-    await screen.findByText("1 module created");
-    await screen.findByRole("toolbar");
-
-    expect(fetch).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
   });
 
   describe("Dirty state and close guard (ANA-75)", () => {

@@ -204,6 +204,10 @@ describe("LearningMaterialModuleCard", () => {
     // the Create-from-PDF card, but it isn't a real drag handle (ANA-75).
     const grip = gripElement(container);
     expect(grip).toHaveAttribute("aria-hidden", "true");
+    // Not a grab cursor either -- a decorative grip must not imply an
+    // interaction (reordering) that isn't actually available here (PR
+    // review).
+    expect(grip.className).not.toMatch(/gripDraggable/);
   });
 
   it("wires the grip as the real drag handle when `drag` is provided", () => {
@@ -231,5 +235,6 @@ describe("LearningMaterialModuleCard", () => {
     const grip = gripElement(container);
     expect(grip).toHaveAttribute("aria-roledescription", "sortable");
     expect(grip).not.toHaveAttribute("aria-hidden");
+    expect(grip.className).toMatch(/gripDraggable/);
   });
 });

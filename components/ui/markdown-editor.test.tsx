@@ -193,6 +193,7 @@ test("does not focus a disabled editor when its empty body is clicked (ANA-75)",
 
   const editable = await screen.findByRole("textbox");
   const body = container.querySelector(".mdxeditor-root-contenteditable");
+  expect(body).not.toBeNull();
   await user.click(body as HTMLElement);
 
   expect(editable).not.toHaveFocus();

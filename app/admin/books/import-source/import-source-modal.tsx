@@ -19,7 +19,6 @@ import type {
 import { buildSourceContent } from "./build-source-content";
 import { ConfirmDialog } from "./confirm-dialog";
 import { createMaterial, updateMaterial } from "./materials-client";
-import { LearningMaterialView } from "./learning-material-view";
 import { ModuleBuilderView } from "./module-builder-view";
 import { createModule } from "./modules-client";
 import { OcrResultView } from "./ocr-result-view";
@@ -61,12 +60,7 @@ const MODULE_DRAFT_DEFAULTS: ModuleWritableFields = {
   isPublished: false,
 };
 
-type Step =
-  | "pick"
-  | "select-pages"
-  | "review-ocr"
-  | "build-modules"
-  | "learning-material";
+type Step = "pick" | "select-pages" | "review-ocr" | "build-modules";
 
 export interface ImportSourceModalProps {
   /** The modal is open whenever this is true. Only a persisted Book can
@@ -87,9 +81,10 @@ export interface ImportSourceModalProps {
   onModulesCreated?: () => void;
 }
 
-// The full PDF -> page selection -> Mistral OCR review -> Module-building ->
-// Learning Material -> persistence workflow (ANA-68/ANA-69/ANA-70/ANA-71).
-// Owns every piece of workflow state itself -- opening the modal never
+// The full PDF -> page selection -> Mistral OCR review -> Module-building
+// (now also the Learning Material editing + Finish step, ANA-75) ->
+// persistence workflow (ANA-68/ANA-69/ANA-70/ANA-71). Owns every piece of
+// workflow state itself -- opening the modal never
 // touches the Book form, and closing it always discards this state (see
 // resetState/handleClose below) so reopening always starts from the PDF
 // picker again, unless the Book already has a saved Source (see the
@@ -113,9 +108,6 @@ export function ImportSourceModal({
   // Arabic is the primary content language for this School's sources.
   const [direction, setDirection] = useState<TextDirection>("rtl");
   const [modules, setModules] = useState<TempModule[]>([]);
-  const [learningMaterials, setLearningMaterials] = useState<
-    Record<string, TranslatableString>
-  >({});
   // Temporary Module ids already persisted through POST
   // /api/v1/books/{bookId}/modules in this modal session -- a retry after a
   // partial failure (see handleFinish) skips these instead of re-creating
@@ -344,7 +336,6 @@ export function ImportSourceModal({
     setFontScale(100);
     setDirection("rtl");
     setModules([]);
-    setLearningMaterials({});
     setCreatedModuleIds(new Set());
     setModuleIdMap({});
     setSourceId(null);
@@ -406,7 +397,6 @@ export function ImportSourceModal({
     setOcrResult(null);
     setEditedMarkdown({});
     setModules([]);
-    setLearningMaterials({});
     setStep("pick");
   }
 
@@ -426,7 +416,6 @@ export function ImportSourceModal({
       // would carry Modules (and their Learning Material) built from the
       // previous extracted text into the Module builder for the new one.
       setModules([]);
-      setLearningMaterials({});
       setStep("review-ocr");
     });
   }
@@ -448,7 +437,6 @@ export function ImportSourceModal({
     setOcrResult(null);
     setEditedMarkdown({});
     setModules([]);
-    setLearningMaterials({});
     setStep("select-pages");
   }
 
@@ -460,20 +448,17 @@ export function ImportSourceModal({
     setStep("review-ocr");
   }
 
-  function handleCreateLearningMaterial() {
-    setStep("learning-material");
-  }
-
-  function handleBackToModules() {
-    setStep("build-modules");
-  }
-
   async function handleFinish() {
     // Guards against a duplicate submission from repeated clicks while a
     // Finish operation is already running, in addition to the button's own
     // disabled-while-loading state (belt and suspenders against a fast
-    // double-click landing before the re-render).
-    if (isFinishing || modules.length === 0) {
+    // double-click landing before the re-render). Enabled even with zero
+    // temporary Modules (ANA-75) -- reaching this screen already represents
+    // a valid reviewed Source import (e.g. attaching/replacing a Book's
+    // Source without adding any new Module), so the Module/Material loops
+    // below simply no-op over an empty `modules` array and only the Source
+    // gets created.
+    if (isFinishing) {
       return;
     }
 
@@ -533,11 +518,7 @@ export function ImportSourceModal({
           continue;
         }
 
-        await createMaterial(
-          bookId,
-          idMap[tempModule.id],
-          learningMaterials[tempModule.id] ?? EMPTY_MATERIAL,
-        );
+        await createMaterial(bookId, idMap[tempModule.id], tempModule.material);
         materialized.add(tempModule.id);
         setMaterializedModuleIds(new Set(materialized));
       }
@@ -807,9 +788,9 @@ export function ImportSourceModal({
           revalidation, another tab's write, etc.). Without this, a Source
           created earlier in a Finish attempt that later fails on its
           Material step could revalidate `existingSource` to true and swap
-          the in-progress Learning Material/retry screen for
-          SavedSourceView, silently discarding the temporary workflow state
-          Finish is required to preserve (see handleFinish, PR review). */}
+          the in-progress Module builder/retry screen for SavedSourceView,
+          silently discarding the temporary workflow state Finish is
+          required to preserve (see handleFinish, PR review). */}
         {step === "pick" && sourceLookupLoading && (
           <div className={styles.centered}>
             <Group gap="sm">
@@ -935,24 +916,10 @@ export function ImportSourceModal({
                 modules={modules}
                 onModulesChange={setModules}
                 onBack={handleBackToReview}
-                onCreateLearningMaterial={handleCreateLearningMaterial}
-              />
-            )}
-
-            {step === "learning-material" && file && (
-              <LearningMaterialView
-                fileName={file.name}
-                modules={modules}
-                onModulesChange={setModules}
-                learningMaterials={learningMaterials}
-                onLearningMaterialsChange={setLearningMaterials}
-                fontScale={fontScale}
-                onFontScaleChange={setFontScale}
-                onBack={handleBackToModules}
+                backDisabled={createdModuleIds.size > 0}
                 onFinish={handleFinish}
                 isFinishing={isFinishing}
                 finishError={finishError}
-                backDisabled={createdModuleIds.size > 0}
               />
             )}
           </>

@@ -21,16 +21,22 @@
   align-items: center;
   color: #a3a3a3;
   flex-shrink: 0;
+}
+
+/* Only applied when `drag` is actually passed (see the component's
+   `gripDraggable` class) -- the saved-Source workspace renders this same
+   grip decoratively (no listeners attached, persisted reordering is out of
+   scope there), so it must not present a grab cursor implying an
+   interaction that doesn't exist (PR review). */
+.gripDraggable {
   cursor: grab;
   /* Prevents the browser's own touch-scroll gesture from competing with
      dnd-kit's pointer sensor on touch devices -- matches item-list.module
-     .css's own `.grip`. Harmless when this card isn't draggable (no
-     listeners attached), so it's unconditional rather than only applied
-     when `drag` is passed. */
+     .css's own `.grip`. */
   touch-action: none;
 }
 
-.grip:active {
+.gripDraggable:active {
   cursor: grabbing;
 }
 
