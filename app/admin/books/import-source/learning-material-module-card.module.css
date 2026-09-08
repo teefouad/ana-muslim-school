@@ -1,0 +1,92 @@
+.card {
+  background-color: #171717;
+  border: 1px solid #262626;
+  border-radius: 12px;
+  color: #ededed;
+}
+
+.dragging {
+  opacity: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.grip {
+  display: flex;
+  align-items: center;
+  color: #a3a3a3;
+  flex-shrink: 0;
+}
+
+/* Only applied when `drag` is actually passed (see the component's
+   `gripDraggable` class) -- the saved-Source workspace renders this same
+   grip decoratively (no listeners attached, persisted reordering is out of
+   scope there), so it must not present a grab cursor implying an
+   interaction that doesn't exist (PR review). */
+.gripDraggable {
+  cursor: grab;
+  /* Prevents the browser's own touch-scroll gesture from competing with
+     dnd-kit's pointer sensor on touch devices -- matches item-list.module
+     .css's own `.grip`. */
+  touch-action: none;
+}
+
+.gripDraggable:active {
+  cursor: grabbing;
+}
+
+.titleButton {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* Hidden at rest, visible on header hover/focus-within -- same affordance
+   as the Book Modules list's own delete action (see item-list.module.css's
+   .actions). */
+.deleteAction {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.header:hover .deleteAction,
+.header:focus-within .deleteAction {
+  opacity: 1;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.aiButton {
+  flex-shrink: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px 12px;
+}
+
+.editorFill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

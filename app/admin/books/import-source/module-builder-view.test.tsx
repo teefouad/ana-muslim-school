@@ -5,6 +5,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,6 +49,10 @@ function collapseSelection() {
   });
 }
 
+function moduleHeader(name: string) {
+  return screen.getByText(name).closest("[aria-expanded]") as HTMLElement;
+}
+
 function renderView(
   overrides: Partial<React.ComponentProps<typeof ModuleBuilderView>> = {},
 ) {
@@ -62,7 +67,10 @@ function renderView(
     modules: [],
     onModulesChange: vi.fn(),
     onBack: vi.fn(),
-    onCreateLearningMaterial: vi.fn(),
+    backDisabled: false,
+    onFinish: vi.fn(),
+    isFinishing: false,
+    finishError: null,
     ...overrides,
   };
 
@@ -116,7 +124,7 @@ describe("ModuleBuilderView", () => {
     ).toBeDisabled();
   });
 
-  it("enables Create Module once text is selected in the source panel, and creates it from the exact selection", () => {
+  it("enables Create Module once text is selected in the source panel, and seeds the new Module's Arabic Learning Material with the exact selection, leaving English empty (ANA-75)", () => {
     const onModulesChange = vi.fn();
     renderView({ onModulesChange });
 
@@ -129,7 +137,7 @@ describe("ModuleBuilderView", () => {
     fireEvent.click(createModule);
 
     expect(onModulesChange).toHaveBeenCalledWith([
-      expect.objectContaining({ text: "First" }),
+      expect.objectContaining({ material: { ar: "First", en: "" } }),
     ]);
   });
 
@@ -164,46 +172,6 @@ describe("ModuleBuilderView", () => {
     ).toBeDisabled();
   });
 
-  it("disables Create Learning Material with zero Modules", () => {
-    renderView({ modules: [] });
-
-    expect(
-      screen.getByRole("button", { name: "Create Learning Material" }),
-    ).toBeDisabled();
-  });
-
-  it("enables Create Learning Material once a Module exists, and clicking it calls onCreateLearningMaterial without making a request", () => {
-    const modules: TempModule[] = [{ id: "module-1", text: "Selected text" }];
-    const onCreateLearningMaterial = vi.fn();
-    renderView({ modules, onCreateLearningMaterial });
-
-    const button = screen.getByRole("button", {
-      name: "Create Learning Material",
-    });
-    expect(button).toBeEnabled();
-
-    fireEvent.click(button);
-
-    expect(onCreateLearningMaterial).toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("shows the Modules count and renders each Module as an editable card", () => {
-    const modules: TempModule[] = [
-      { id: "module-1", text: "First module text" },
-      { id: "module-2", text: "Second module text" },
-    ];
-    renderView({ modules });
-
-    expect(screen.getByText("Modules (2)")).toBeInTheDocument();
-    expect(screen.getByLabelText("Module 1 text")).toHaveValue(
-      "First module text",
-    );
-    expect(screen.getByLabelText("Module 2 text")).toHaveValue(
-      "Second module text",
-    );
-  });
-
   it("shows the same document summary as OCR review, not just the filename", () => {
     // Regression test: the Module-building header previously reduced the
     // OCR review header's summary down to filename-only, dropping pages
@@ -224,5 +192,121 @@ describe("ModuleBuilderView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it("disables Back once a Module has already been created in this Finish session", () => {
+    renderView({ backDisabled: true });
+
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+  });
+
+  it("disables Back while Finish is in flight, even when backDisabled is false (PR review, ANA-75)", () => {
+    // Back would otherwise move the workflow to OCR review while a Finish
+    // request already started is still running.
+    renderView({ isFinishing: true, backDisabled: false });
+
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+  });
+
+  it("disables Create Module while Finish is in flight, even with a valid selection (PR review, ANA-75)", () => {
+    // Finish operates on the `modules` snapshot it was invoked with -- a
+    // Module created mid-request would show a draft that was never part of
+    // that Finish attempt and then vanishes once it succeeds and resets
+    // the modal.
+    renderView({ isFinishing: true });
+    const source = screen.getByText(/First page text/);
+    selectFirstCharacters(source, 5);
+
+    expect(
+      screen.getByRole("button", { name: "Create Module" }),
+    ).toBeDisabled();
+  });
+
+  it("renders the Modules count and each Module as the shared Module card, defaulting to its Arabic draft", async () => {
+    const modules: TempModule[] = [
+      { id: "module-1", material: { ar: "أول", en: "First" } },
+      { id: "module-2", material: { ar: "ثاني", en: "Second" } },
+    ];
+    renderView({ modules });
+
+    expect(screen.getByText("Modules (2)")).toBeInTheDocument();
+    expect(moduleHeader("Module 1")).toBeInTheDocument();
+    expect(moduleHeader("Module 2")).toBeInTheDocument();
+    await screen.findByText("أول");
+    await screen.findByText("ثاني");
+  });
+
+  it("exposes a drag handle, delete affordance, language switcher, and AI Assistant for every Module (ANA-75)", () => {
+    const modules: TempModule[] = [
+      { id: "module-1", material: { ar: "First", en: "" } },
+    ];
+    renderView({ modules });
+
+    expect(
+      screen.getByRole("button", { name: "Delete Module 1" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Arabic" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "English" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "AI Assistant" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reports an edit to a Module's Learning Material without touching other Modules", async () => {
+    const onModulesChange = vi.fn();
+    const modules: TempModule[] = [
+      { id: "module-1", material: { ar: "Keep me", en: "" } },
+      { id: "module-2", material: { ar: "Existing", en: "" } },
+    ];
+    renderView({ modules, onModulesChange });
+
+    const editors = await screen.findAllByRole("textbox");
+    const user = userEvent.setup();
+    await user.click(editors[1]);
+    await user.type(editors[1], "!");
+
+    expect(onModulesChange).toHaveBeenLastCalledWith([
+      { id: "module-1", material: { ar: "Keep me", en: "" } },
+      { id: "module-2", material: { ar: "Existing!", en: "" } },
+    ]);
+  });
+
+  it("Finish is enabled even with zero temporary Modules (ANA-75)", () => {
+    renderView({ modules: [] });
+
+    expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled();
+  });
+
+  it("calls onFinish when Finish is clicked, making no request itself", () => {
+    const onFinish = vi.fn();
+    renderView({ onFinish });
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("disables Finish and shows a loading state while submitting", () => {
+    renderView({ isFinishing: true });
+
+    const finishButton = screen.getByRole("button", { name: "Finish" });
+    expect(finishButton).toBeDisabled();
+  });
+
+  it("makes every Module's Learning Material editor read-only while Finish is submitting", async () => {
+    const modules: TempModule[] = [
+      { id: "module-1", material: { ar: "Existing", en: "" } },
+    ];
+    renderView({ modules, isFinishing: true });
+
+    const editable = await screen.findByRole("textbox");
+    expect(editable).toHaveAttribute("contenteditable", "false");
+  });
+
+  it("shows a clear inline error when Finish fails", () => {
+    renderView({ finishError: "Could not create Module 2." });
+
+    expect(screen.getByText("Could not create Module 2.")).toBeInTheDocument();
   });
 });

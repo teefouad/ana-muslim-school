@@ -9,7 +9,7 @@ import type {
   WorkspaceModuleEntry,
 } from "./import-source-types";
 import { FontSizeControl } from "./font-size-control";
-import { SourceModuleCard } from "./source-module-card";
+import { LearningMaterialModuleCard } from "./learning-material-module-card";
 import { TextDirectionControl } from "./text-direction-control";
 import styles from "./saved-source-view.module.css";
 
@@ -105,7 +105,13 @@ export function SavedSourceView({
 
     onEntriesChange([
       ...entries,
-      { key: crypto.randomUUID(), moduleId: null, material: selectedText },
+      {
+        key: crypto.randomUUID(),
+        moduleId: null,
+        // Arabic is this School's primary content language -- the selected
+        // Source text seeds the Arabic draft, English starts empty (ANA-75).
+        material: { ar: selectedText, en: "" },
+      },
     ]);
 
     if (el) {
@@ -115,7 +121,10 @@ export function SavedSourceView({
     setHasSelection(false);
   }
 
-  function handleMaterialChange(key: string, value: string) {
+  function handleMaterialChange(
+    key: string,
+    value: WorkspaceModuleEntry["material"],
+  ) {
     onEntriesChange(
       entries.map((entry) =>
         entry.key === key ? { ...entry, material: value } : entry,
@@ -206,16 +215,20 @@ export function SavedSourceView({
             ) : (
               <div className={styles.moduleList}>
                 {entries.map((entry, index) => (
-                  <SourceModuleCard
+                  <LearningMaterialModuleCard
                     key={entry.key}
+                    testId={`source-module-card-${index}`}
                     index={index}
                     material={entry.material}
                     onMaterialChange={(value) =>
                       handleMaterialChange(entry.key, value)
                     }
-                    direction={direction}
                     fontScale={fontScale}
                     disabled={isSaving}
+                    // No `drag` prop -- the grip renders as the same chrome
+                    // as the Create-from-PDF card, but persisted Module
+                    // reordering is out of scope for this workspace
+                    // (ANA-75).
                   />
                 ))}
               </div>

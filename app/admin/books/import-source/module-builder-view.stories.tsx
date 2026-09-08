@@ -22,7 +22,10 @@ const SAMPLE_RESULT: OcrResult = {
 };
 
 const SAMPLE_MODULES: TempModule[] = [
-  { id: "module-1", text: "نص الصفحة الأولى الذي تم استخراجه." },
+  {
+    id: "module-1",
+    material: { ar: "نص الصفحة الأولى الذي تم استخراجه.", en: "" },
+  },
 ];
 
 function ModuleBuilderViewDemo(props: ModuleBuilderViewProps) {
@@ -60,7 +63,10 @@ const meta = {
     modules: [],
     onModulesChange: () => {},
     onBack: () => {},
-    onCreateLearningMaterial: () => {},
+    backDisabled: false,
+    onFinish: () => {},
+    isFinishing: false,
+    finishError: null,
   },
   render: (args) => (
     <div style={{ height: "80vh" }}>
@@ -72,8 +78,35 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// This is now the final Create-from-PDF editing screen (ANA-75) -- the
+// footer's Finish action is enabled even with zero Modules, since a valid
+// use case is attaching/replacing a Book's Source without adding any new
+// Module.
 export const Empty: Story = {};
 
 export const WithModules: Story = {
   args: { modules: SAMPLE_MODULES },
+};
+
+export const Finishing: Story = {
+  args: { modules: SAMPLE_MODULES, isFinishing: true },
+};
+
+export const FinishFailed: Story = {
+  args: {
+    modules: SAMPLE_MODULES,
+    finishError: "Could not create Module 2. Please try again.",
+  },
+};
+
+// After a partial failure (Module 1 already created, Module 2 failed), Back
+// is disabled and reordering is frozen -- the temporary set can no longer
+// be reordered/discarded out from under an already-persisted Module (PR
+// review, ANA-70). Retrying Finish is the only way forward from here.
+export const PartialFailureBackDisabled: Story = {
+  args: {
+    modules: SAMPLE_MODULES,
+    finishError: "Could not create Module 2. Please try again.",
+    backDisabled: true,
+  },
 };

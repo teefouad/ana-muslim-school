@@ -86,7 +86,7 @@ describe("GET /api/v1/materials/[id]", () => {
         id: "doc-1",
         bookId: "book-1",
         moduleId: "module-1",
-        content: "x",
+        content: { ar: "x", en: "" },
       },
     });
 
@@ -106,19 +106,19 @@ describe("PATCH /api/v1/materials/[id]", () => {
         id: "doc-1",
         bookId: "book-1",
         moduleId: "module-1",
-        content: "y",
+        content: { ar: "y", en: "" },
       },
     });
 
     const response = await PATCH(
-      jsonRequest("PATCH", { content: "y" }),
+      jsonRequest("PATCH", { content: { ar: "y", en: "" } }),
       context("doc-1"),
     );
 
     expect(response.status).toBe(200);
     expect(requireBooksPermissionMock).toHaveBeenCalledWith("update");
     expect(updateMaterialServiceMock).toHaveBeenCalledWith("doc-1", {
-      content: "y",
+      content: { ar: "y", en: "" },
     });
     expect(upsertMaterialServiceMock).not.toHaveBeenCalled();
   });
@@ -131,7 +131,7 @@ describe("PATCH /api/v1/materials/[id]", () => {
     });
 
     const response = await PATCH(
-      jsonRequest("PATCH", { content: "y" }),
+      jsonRequest("PATCH", { content: { ar: "y", en: "" } }),
       context("missing"),
     );
 
@@ -142,7 +142,7 @@ describe("PATCH /api/v1/materials/[id]", () => {
     deny();
 
     const response = await PATCH(
-      jsonRequest("PATCH", { content: "y" }),
+      jsonRequest("PATCH", { content: { ar: "y", en: "" } }),
       context("doc-1"),
     );
 
@@ -160,7 +160,7 @@ describe("PUT /api/v1/materials/[id]", () => {
         id: "doc-1",
         bookId: "book-1",
         moduleId: "module-1",
-        content: "z",
+        content: { ar: "z", en: "" },
       },
     });
 
@@ -168,7 +168,7 @@ describe("PUT /api/v1/materials/[id]", () => {
       jsonRequest("PUT", {
         bookId: "book-1",
         moduleId: "module-1",
-        content: "z",
+        content: { ar: "z", en: "" },
       }),
       context("doc-1"),
     );
@@ -178,7 +178,7 @@ describe("PUT /api/v1/materials/[id]", () => {
     expect(upsertMaterialServiceMock).toHaveBeenCalledWith("doc-1", {
       bookId: "book-1",
       moduleId: "module-1",
-      content: "z",
+      content: { ar: "z", en: "" },
     });
     expect(updateMaterialServiceMock).not.toHaveBeenCalled();
   });
@@ -190,7 +190,7 @@ describe("PUT /api/v1/materials/[id]", () => {
       jsonRequest("PUT", {
         bookId: "book-1",
         moduleId: "module-1",
-        content: "z",
+        content: { ar: "z", en: "" },
       }),
       context("doc-1"),
     );

@@ -32,9 +32,9 @@ const SAMPLE_ENTRIES: WorkspaceModuleEntry[] = [
   {
     key: "module-1",
     moduleId: "module-1",
-    material: "# الدرس الأول\n\nمحتوى تعليمي للدرس الأول.",
+    material: { ar: "# الدرس الأول\n\nمحتوى تعليمي للدرس الأول.", en: "" },
   },
-  { key: "module-2", moduleId: "module-2", material: "" },
+  { key: "module-2", moduleId: "module-2", material: { ar: "", en: "" } },
 ];
 
 const meta = {

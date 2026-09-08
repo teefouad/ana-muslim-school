@@ -10,14 +10,15 @@ import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { Source } from "@/lib/sources/types";
 import type { Module, ModuleWritableFields } from "@/lib/modules/types";
 import type { Material } from "@/lib/materials/types";
+import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import type {
   TempModule,
   TextDirection,
   WorkspaceModuleEntry,
 } from "./import-source-types";
 import { buildSourceContent } from "./build-source-content";
+import { ConfirmDialog } from "./confirm-dialog";
 import { createMaterial, updateMaterial } from "./materials-client";
-import { LearningMaterialView } from "./learning-material-view";
 import { ModuleBuilderView } from "./module-builder-view";
 import { createModule } from "./modules-client";
 import { OcrResultView } from "./ocr-result-view";
@@ -27,6 +28,25 @@ import { SavedSourceView } from "./saved-source-view";
 import { createSource, deleteSource, updateSource } from "./sources-client";
 import { useOcrRun } from "./use-ocr-run";
 import styles from "./import-source-modal.module.css";
+
+const EMPTY_MATERIAL: TranslatableString = { ar: "", en: "" };
+
+/** Whether two Learning Material drafts are the same in both languages --
+ * used both for the retry-safety "did this actually change" checks (ANA-72)
+ * and for the dirty-state comparisons this card adds (ANA-75), so a switch
+ * between them can share the exact same notion of equality. */
+function materialsEqual(a: TranslatableString, b: TranslatableString): boolean {
+  return a.ar === b.ar && a.en === b.en;
+}
+
+/** What the modal is currently asking the user to confirm before it
+ * proceeds -- see the `pendingConfirmation` state and `confirmDialogProps`
+ * below (ANA-75). Each destructive/discarding transition renders through
+ * the same `ConfirmDialog`, driven by whichever `kind` is pending. */
+type PendingConfirmation =
+  | { kind: "discard-close" }
+  | { kind: "remove-source" }
+  | { kind: "back-to-page-selection" };
 
 // Every temporary Module is created with these exact draft values (ANA-70)
 // -- the import flow only has selected source text at this point, not
@@ -40,12 +60,7 @@ const MODULE_DRAFT_DEFAULTS: ModuleWritableFields = {
   isPublished: false,
 };
 
-type Step =
-  | "pick"
-  | "select-pages"
-  | "review-ocr"
-  | "build-modules"
-  | "learning-material";
+type Step = "pick" | "select-pages" | "review-ocr" | "build-modules";
 
 export interface ImportSourceModalProps {
   /** The modal is open whenever this is true. Only a persisted Book can
@@ -66,9 +81,10 @@ export interface ImportSourceModalProps {
   onModulesCreated?: () => void;
 }
 
-// The full PDF -> page selection -> Mistral OCR review -> Module-building ->
-// Learning Material -> persistence workflow (ANA-68/ANA-69/ANA-70/ANA-71).
-// Owns every piece of workflow state itself -- opening the modal never
+// The full PDF -> page selection -> Mistral OCR review -> Module-building
+// (now also the Learning Material editing + Finish step, ANA-75) ->
+// persistence workflow (ANA-68/ANA-69/ANA-70/ANA-71). Owns every piece of
+// workflow state itself -- opening the modal never
 // touches the Book form, and closing it always discards this state (see
 // resetState/handleClose below) so reopening always starts from the PDF
 // picker again, unless the Book already has a saved Source (see the
@@ -92,9 +108,6 @@ export function ImportSourceModal({
   // Arabic is the primary content language for this School's sources.
   const [direction, setDirection] = useState<TextDirection>("rtl");
   const [modules, setModules] = useState<TempModule[]>([]);
-  const [learningMaterials, setLearningMaterials] = useState<
-    Record<string, string>
-  >({});
   // Temporary Module ids already persisted through POST
   // /api/v1/books/{bookId}/modules in this modal session -- a retry after a
   // partial failure (see handleFinish) skips these instead of re-creating
@@ -115,11 +128,24 @@ export function ImportSourceModal({
   // Source is created doesn't flip the modal over to the saved-source view
   // mid-retry.
   const [sourceId, setSourceId] = useState<string | null>(null);
-  // Temporary Module ids whose Learning Material has already been
-  // persisted in this modal session -- a retry skips these too.
-  const [materializedModuleIds, setMaterializedModuleIds] = useState<
-    Set<string>
-  >(new Set());
+  // Retry-safety bookkeeping for each temporary Module's Material, mirroring
+  // the saved-Source workspace's own `materialDocIdByModuleId`/
+  // `savedMaterialContentByModuleId` (see handleSaveWorkspace) -- keyed by
+  // the *temporary* Module id here, since every entry in `modules` is new
+  // to this Finish session (there's no pre-existing-vs-new distinction like
+  // the workspace's `entry.moduleId` gives it). A one-shot "already
+  // materialized" flag (the previous design) would permanently skip a
+  // Module on every later retry, silently dropping an edit made to its
+  // Learning Material *after* its Material already succeeded but a
+  // *different* write in the same attempt failed (PR review, blocking) --
+  // tracking the persisted Material id plus its last-saved content instead
+  // lets a retry PATCH a real change instead of skipping it outright.
+  const [materialDocIdByTempModuleId, setMaterialDocIdByTempModuleId] =
+    useState<Record<string, string>>({});
+  const [
+    materializedMaterialContentByTempModuleId,
+    setMaterializedMaterialContentByTempModuleId,
+  ] = useState<Record<string, TranslatableString>>({});
   const [isFinishing, setIsFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [isRemovingSource, setIsRemovingSource] = useState(false);
@@ -139,16 +165,16 @@ export function ImportSourceModal({
     WorkspaceModuleEntry[]
   >([]);
   // Retry-safety bookkeeping for Save Changes, mirroring handleFinish's
-  // createdModuleIds/moduleIdMap/materializedModuleIds below -- each is
-  // updated the moment its own write succeeds so a retry after a partial
-  // failure only re-sends what didn't yet land.
+  // createdModuleIds/moduleIdMap/materialDocIdByTempModuleId above -- each
+  // is updated the moment its own write succeeds so a retry after a
+  // partial failure only re-sends what didn't yet land.
   const [savedWorkspaceSourceContent, setSavedWorkspaceSourceContent] =
     useState("");
   const [materialDocIdByModuleId, setMaterialDocIdByModuleId] = useState<
     Record<string, string>
   >({});
   const [savedMaterialContentByModuleId, setSavedMaterialContentByModuleId] =
-    useState<Record<string, string>>({});
+    useState<Record<string, TranslatableString>>({});
   const [createdWorkspaceModuleKeys, setCreatedWorkspaceModuleKeys] = useState<
     Set<string>
   >(new Set());
@@ -159,6 +185,10 @@ export function ImportSourceModal({
   const [saveWorkspaceError, setSaveWorkspaceError] = useState<string | null>(
     null,
   );
+  // Drives the modal's confirmation dialogs (ANA-75) -- see
+  // `PendingConfirmation` and `confirmDialogProps` below.
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<PendingConfirmation | null>(null);
   const ocrRun = useOcrRun();
   const isMobile = useMediaQuery("(max-width: 768px)", false);
 
@@ -178,6 +208,20 @@ export function ImportSourceModal({
     mutate: mutateSource,
   } = useSWR<{ data: Source[] }>(sourceUrl, fetchJson);
   const existingSource = sourceData?.data[0] ?? null;
+
+  // Drives the modal's title (ANA-75): "Source Text" only while the saved-
+  // Source workspace itself is showing, "Create from PDF" for every other
+  // state of the "pick" step (loading/error included, matching this flow's
+  // existing default) and for every step of the PDF upload/OCR/Module-
+  // building workflow. Recomputed from `existingSource`/`step` on every
+  // render rather than tracked separately, so removing the saved Source
+  // (Select Another PDF) or finishing the upload flow always keeps the
+  // title in sync with what's actually on screen.
+  const showingSavedSource =
+    step === "pick" &&
+    !sourceLookupLoading &&
+    !sourceLookupError &&
+    Boolean(existingSource);
 
   // The Book's persisted Modules, in `Book.modules` order, and its
   // Materials (Book-filtered via `?bookId=`, never the full collection --
@@ -238,7 +282,7 @@ export function ImportSourceModal({
       ]),
     );
     const initialMaterialDocIds: Record<string, string> = {};
-    const initialMaterialContents: Record<string, string> = {};
+    const initialMaterialContents: Record<string, TranslatableString> = {};
 
     for (const material of workspaceMaterialsData.data) {
       initialMaterialDocIds[material.moduleId] = material.id;
@@ -251,7 +295,7 @@ export function ImportSourceModal({
       workspaceModules.map((module) => ({
         key: module.id,
         moduleId: module.id,
-        material: materialByModuleId.get(module.id)?.content ?? "",
+        material: materialByModuleId.get(module.id)?.content ?? EMPTY_MATERIAL,
       })),
     );
     setSavedWorkspaceSourceContent(existingSource.content);
@@ -262,6 +306,40 @@ export function ImportSourceModal({
     setSaveWorkspaceError(null);
   }
 
+  // Whether the saved-Source workspace has anything Save Changes hasn't
+  // persisted yet (ANA-75): the Source Text draft, any Module's Learning
+  // Material draft (either language), or a new temporary Module created in
+  // this session (`moduleId === null`, always dirty until Save Changes
+  // creates it). Reuses the exact same "did this actually change" baselines
+  // Save Changes itself already tracks for retry-safety
+  // (`savedWorkspaceSourceContent`/`savedMaterialContentByModuleId`), so
+  // there's only one notion of "changed" for this workspace, not two.
+  const isWorkspaceDirty =
+    workspaceContent !== savedWorkspaceSourceContent ||
+    workspaceEntries.some(
+      (entry) =>
+        !entry.moduleId ||
+        !materialsEqual(
+          entry.material,
+          savedMaterialContentByModuleId[entry.moduleId] ?? EMPTY_MATERIAL,
+        ),
+    );
+
+  // Whether the Create-from-PDF workflow has any meaningful, unsaved work
+  // (ANA-75): every step past the initial "pick" picker implies at least a
+  // PDF was selected -- and every other trigger this modal cares about
+  // (reviewed/edited OCR text, created Module drafts, edited Learning
+  // Material) only becomes reachable after that same step change, so this
+  // one check already covers all of them. Only meaningful while the upload
+  // flow itself is showing (`!existingSource`) -- see `isDirty` below.
+  const isCreateFromPdfDirty = step !== "pick";
+
+  // What the close guard (X button/Escape/backdrop -- all funnel through
+  // Modal's own `onClose`, see `handleClose`) actually checks. Whichever of
+  // the two flows is currently on screen decides which dirty check applies;
+  // they're never both relevant at once (see `showingSavedSource`).
+  const isDirty = showingSavedSource ? isWorkspaceDirty : isCreateFromPdfDirty;
+
   function resetState() {
     setStep("pick");
     setFile(null);
@@ -271,11 +349,11 @@ export function ImportSourceModal({
     setFontScale(100);
     setDirection("rtl");
     setModules([]);
-    setLearningMaterials({});
     setCreatedModuleIds(new Set());
     setModuleIdMap({});
     setSourceId(null);
-    setMaterializedModuleIds(new Set());
+    setMaterialDocIdByTempModuleId({});
+    setMaterializedMaterialContentByTempModuleId({});
     setIsFinishing(false);
     setFinishError(null);
     setIsRemovingSource(false);
@@ -290,10 +368,26 @@ export function ImportSourceModal({
     setWorkspaceModuleIdMap({});
     setIsSavingWorkspace(false);
     setSaveWorkspaceError(null);
+    setPendingConfirmation(null);
     ocrRun.invalidate();
   }
 
+  // Funnels every way of closing the modal (X button, Escape, backdrop
+  // click -- Mantine's Modal fires the same `onClose` for all three) through
+  // one dirty check (ANA-75). A save/finish already in flight is never
+  // raced: closing is simply ignored until it settles (success already
+  // closes the modal itself; failure leaves the user free to retry or close
+  // once it's no longer in flight).
   function handleClose() {
+    if (isFinishing || isSavingWorkspace) {
+      return;
+    }
+
+    if (isDirty) {
+      setPendingConfirmation({ kind: "discard-close" });
+      return;
+    }
+
     resetState();
     onClose();
   }
@@ -317,7 +411,6 @@ export function ImportSourceModal({
     setOcrResult(null);
     setEditedMarkdown({});
     setModules([]);
-    setLearningMaterials({});
     setStep("pick");
   }
 
@@ -337,12 +430,27 @@ export function ImportSourceModal({
       // would carry Modules (and their Learning Material) built from the
       // previous extracted text into the Module builder for the new one.
       setModules([]);
-      setLearningMaterials({});
       setStep("review-ocr");
     });
   }
 
+  // Only ever reachable from the "review-ocr" step, which always has a
+  // reviewed OCR result to lose -- so this always confirms first (ANA-75);
+  // see `performBackToPageSelection` for the actual transition, run once
+  // the user confirms.
   function handleBackToPageSelection() {
+    setPendingConfirmation({ kind: "back-to-page-selection" });
+  }
+
+  function performBackToPageSelection() {
+    // Mirrors handleRunOcr's own reset when a fresh OCR result replaces an
+    // earlier one -- discards the reviewed OCR result and everything built
+    // from it, while explicitly preserving the selected PDF/page-selection
+    // choices (ANA-75).
+    ocrRun.invalidate();
+    setOcrResult(null);
+    setEditedMarkdown({});
+    setModules([]);
     setStep("select-pages");
   }
 
@@ -354,20 +462,17 @@ export function ImportSourceModal({
     setStep("review-ocr");
   }
 
-  function handleCreateLearningMaterial() {
-    setStep("learning-material");
-  }
-
-  function handleBackToModules() {
-    setStep("build-modules");
-  }
-
   async function handleFinish() {
     // Guards against a duplicate submission from repeated clicks while a
     // Finish operation is already running, in addition to the button's own
     // disabled-while-loading state (belt and suspenders against a fast
-    // double-click landing before the re-render).
-    if (isFinishing || modules.length === 0) {
+    // double-click landing before the re-render). Enabled even with zero
+    // temporary Modules (ANA-75) -- reaching this screen already represents
+    // a valid reviewed Source import (e.g. attaching/replacing a Book's
+    // Source without adding any new Module), so the Module/Material loops
+    // below simply no-op over an empty `modules` array and only the Source
+    // gets created.
+    if (isFinishing) {
       return;
     }
 
@@ -381,7 +486,10 @@ export function ImportSourceModal({
     // operation finishes.
     const created = new Set(createdModuleIds);
     const idMap = { ...moduleIdMap };
-    const materialized = new Set(materializedModuleIds);
+    const materialDocIds = { ...materialDocIdByTempModuleId };
+    const materializedContents = {
+      ...materializedMaterialContentByTempModuleId,
+    };
 
     try {
       // Sequential, not Promise.all: Modules must be created in the current
@@ -421,19 +529,40 @@ export function ImportSourceModal({
       }
 
       // Same order as the Modules loop above, each attached to its
-      // Module's real persisted id -- never the temporary one.
+      // Module's real persisted id -- never the temporary one. PATCH when
+      // this Module's Material already exists (from an earlier attempt in
+      // this Finish session) and its draft actually changed since then,
+      // otherwise create it -- the same diff-based pattern
+      // handleSaveWorkspace uses, so an edit made to an already-succeeded
+      // Module's Learning Material after a *different* Module's Material
+      // fails is PATCHed on retry instead of silently skipped (PR review,
+      // blocking).
       for (const tempModule of modules) {
-        if (materialized.has(tempModule.id)) {
-          continue;
+        const existingMaterialId = materialDocIds[tempModule.id];
+
+        if (existingMaterialId) {
+          const original =
+            materializedContents[tempModule.id] ?? EMPTY_MATERIAL;
+
+          if (materialsEqual(tempModule.material, original)) {
+            continue;
+          }
+
+          await updateMaterial(existingMaterialId, tempModule.material);
+        } else {
+          const createdMaterial = await createMaterial(
+            bookId,
+            idMap[tempModule.id],
+            tempModule.material,
+          );
+          materialDocIds[tempModule.id] = createdMaterial.id;
+          setMaterialDocIdByTempModuleId({ ...materialDocIds });
         }
 
-        await createMaterial(
-          bookId,
-          idMap[tempModule.id],
-          learningMaterials[tempModule.id] ?? "",
-        );
-        materialized.add(tempModule.id);
-        setMaterializedModuleIds(new Set(materialized));
+        materializedContents[tempModule.id] = tempModule.material;
+        setMaterializedMaterialContentByTempModuleId({
+          ...materializedContents,
+        });
       }
 
       onModulesCreated?.();
@@ -489,9 +618,10 @@ export function ImportSourceModal({
           continue;
         }
 
-        const original = savedMaterialContents[entry.moduleId] ?? "";
+        const original =
+          savedMaterialContents[entry.moduleId] ?? EMPTY_MATERIAL;
 
-        if (entry.material === original) {
+        if (materialsEqual(entry.material, original)) {
           continue;
         }
 
@@ -592,8 +722,15 @@ export function ImportSourceModal({
     }
   }
 
+  // "Select Another PDF" opens the confirmation dialog first (ANA-75) --
+  // the actual DELETE only runs once the user confirms, via
+  // `handleRemoveSource` below.
+  function handleRemoveSourceRequest() {
+    setPendingConfirmation({ kind: "remove-source" });
+  }
+
   async function handleRemoveSource() {
-    if (!existingSource) {
+    if (!existingSource || isRemovingSource) {
       return;
     }
 
@@ -604,37 +741,88 @@ export function ImportSourceModal({
       await deleteSource(existingSource.id);
       await mutateSource();
       setIsRemovingSource(false);
+      // Closes the confirmation and reveals the (now PDF-upload) flow
+      // behind it -- a failure instead falls through to the catch below,
+      // which also closes the dialog so the existing saved-workspace error
+      // Alert (already wired to `removeSourceError`) stays the visible
+      // failure surface, matching the pre-ANA-75 behavior.
+      setPendingConfirmation(null);
     } catch (err) {
       setRemoveSourceError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
       setIsRemovingSource(false);
+      setPendingConfirmation(null);
     }
   }
 
+  // What `pendingConfirmation` renders as, with the exact copy the spec
+  // requires (ANA-75) -- `null` when nothing is pending, so the caller
+  // below can render this unconditionally.
+  const activeConfirmDialog = !pendingConfirmation
+    ? null
+    : pendingConfirmation.kind === "discard-close"
+      ? {
+          title: "Discard unsaved changes?",
+          description: "Your changes have not been saved and will be lost.",
+          confirmLabel: "Discard changes",
+          cancelLabel: "Keep editing",
+          isConfirming: false,
+          onCancel: () => setPendingConfirmation(null),
+          onConfirm: () => {
+            resetState();
+            onClose();
+          },
+        }
+      : pendingConfirmation.kind === "remove-source"
+        ? {
+            title: "Remove attached source?",
+            description:
+              "This removes the Source Text attached to this book and returns to PDF upload. Existing Modules and Learning Materials will not be deleted. Any unsaved changes in this modal will also be lost.",
+            confirmLabel: "Remove source",
+            cancelLabel: "Keep source",
+            isConfirming: isRemovingSource,
+            onCancel: () => setPendingConfirmation(null),
+            onConfirm: handleRemoveSource,
+          }
+        : {
+            title: "Return to page selection?",
+            description:
+              "Changes made to the current extracted Source Text will be discarded.",
+            confirmLabel: "Return to page selection",
+            cancelLabel: "Keep editing",
+            isConfirming: false,
+            onCancel: () => setPendingConfirmation(null),
+            onConfirm: () => {
+              setPendingConfirmation(null);
+              performBackToPageSelection();
+            },
+          };
+
   return (
-    <Modal
-      opened={opened}
-      onClose={handleClose}
-      title="Create from PDF"
-      classNames={{ content: styles.content, body: styles.body }}
-      // Near-full desktop width with normal dashboard margins still
-      // visible: Mantine's own Modal.Inner reserves a *default* 5vw of
-      // horizontal padding around Modal.Content regardless of `size`
-      // (see Modal.css's `--modal-x-offset`), so a plain `size` override
-      // alone still gets clamped back down to ~90vw by that padding.
-      // `xOffset` shrinks that padding to a small fixed gutter that
-      // matches the margin already baked into `size` below, instead of
-      // stacking on top of it. `fullScreen` on narrow viewports matches
-      // the card's "use essentially the full viewport" requirement and
-      // is Mantine's own supported way to get there, rather than
-      // re-deriving full-bleed sizing by hand.
-      size={isMobile ? "100%" : "min(1800px, calc(100vw - 48px))"}
-      xOffset={isMobile ? "0px" : "24px"}
-      fullScreen={isMobile}
-      centered
-    >
-      {/* Only the initial "pick" screen ever defers to the Source lookup
+    <>
+      <Modal
+        opened={opened}
+        onClose={handleClose}
+        title={showingSavedSource ? "Source Text" : "Create from PDF"}
+        classNames={{ content: styles.content, body: styles.body }}
+        // Near-full desktop width with normal dashboard margins still
+        // visible: Mantine's own Modal.Inner reserves a *default* 5vw of
+        // horizontal padding around Modal.Content regardless of `size`
+        // (see Modal.css's `--modal-x-offset`), so a plain `size` override
+        // alone still gets clamped back down to ~90vw by that padding.
+        // `xOffset` shrinks that padding to a small fixed gutter that
+        // matches the margin already baked into `size` below, instead of
+        // stacking on top of it. `fullScreen` on narrow viewports matches
+        // the card's "use essentially the full viewport" requirement and
+        // is Mantine's own supported way to get there, rather than
+        // re-deriving full-bleed sizing by hand.
+        size={isMobile ? "100%" : "min(1800px, calc(100vw - 48px))"}
+        xOffset={isMobile ? "0px" : "24px"}
+        fullScreen={isMobile}
+        centered
+      >
+        {/* Only the initial "pick" screen ever defers to the Source lookup
           (loading/error/saved-source) below -- once the user has moved past
           it into the upload workflow, `showUploadFlow` stays true for the
           rest of this modal session regardless of what that lookup's SWR
@@ -642,157 +830,144 @@ export function ImportSourceModal({
           revalidation, another tab's write, etc.). Without this, a Source
           created earlier in a Finish attempt that later fails on its
           Material step could revalidate `existingSource` to true and swap
-          the in-progress Learning Material/retry screen for
-          SavedSourceView, silently discarding the temporary workflow state
-          Finish is required to preserve (see handleFinish, PR review). */}
-      {step === "pick" && sourceLookupLoading && (
-        <div className={styles.centered}>
-          <Group gap="sm">
-            <Loader size="sm" />
-            <Text size="sm" c="dimmed">
-              Loading source…
-            </Text>
-          </Group>
-        </div>
-      )}
-
-      {step === "pick" && !sourceLookupLoading && sourceLookupError && (
-        <div className={styles.centered}>
-          <Alert color="red" title="Could not load the saved source">
-            {sourceLookupError.message}
-          </Alert>
-        </div>
-      )}
-
-      {step === "pick" &&
-        !sourceLookupLoading &&
-        !sourceLookupError &&
-        existingSource &&
-        !(workspaceModules && workspaceMaterialsData) &&
-        !(workspaceModulesError || workspaceMaterialsError) && (
+          the in-progress Module builder/retry screen for SavedSourceView,
+          silently discarding the temporary workflow state Finish is
+          required to preserve (see handleFinish, PR review). */}
+        {step === "pick" && sourceLookupLoading && (
           <div className={styles.centered}>
             <Group gap="sm">
               <Loader size="sm" />
               <Text size="sm" c="dimmed">
-                Loading modules…
+                Loading source…
               </Text>
             </Group>
           </div>
         )}
 
-      {step === "pick" &&
-        !sourceLookupLoading &&
-        !sourceLookupError &&
-        existingSource &&
-        // Excludes the case where Modules/Materials were already loaded
-        // once and a later background revalidation failed (SWR keeps the
-        // previous data on such a failure) -- that keeps showing the
-        // workspace below instead of also stacking an error banner above
-        // it.
-        !(workspaceModules && workspaceMaterialsData) &&
-        (workspaceModulesError || workspaceMaterialsError) && (
+        {step === "pick" && !sourceLookupLoading && sourceLookupError && (
           <div className={styles.centered}>
-            <Alert color="red" title="Could not load the Book's Modules">
-              {(workspaceModulesError ?? workspaceMaterialsError)?.message}
+            <Alert color="red" title="Could not load the saved source">
+              {sourceLookupError.message}
             </Alert>
           </div>
         )}
 
-      {step === "pick" &&
-        !sourceLookupLoading &&
-        !sourceLookupError &&
-        existingSource &&
-        workspaceModules &&
-        workspaceMaterialsData && (
-          <SavedSourceView
-            content={workspaceContent}
-            onContentChange={setWorkspaceContent}
-            entries={workspaceEntries}
-            onEntriesChange={setWorkspaceEntries}
-            onRemove={handleRemoveSource}
-            isRemoving={isRemovingSource}
-            removeError={removeSourceError}
-            onSave={handleSaveWorkspace}
-            isSaving={isSavingWorkspace}
-            saveError={saveWorkspaceError}
-            fontScale={fontScale}
-            onFontScaleChange={setFontScale}
-            direction={direction}
-            onDirectionChange={setDirection}
-          />
+        {step === "pick" &&
+          !sourceLookupLoading &&
+          !sourceLookupError &&
+          existingSource &&
+          !(workspaceModules && workspaceMaterialsData) &&
+          !(workspaceModulesError || workspaceMaterialsError) && (
+            <div className={styles.centered}>
+              <Group gap="sm">
+                <Loader size="sm" />
+                <Text size="sm" c="dimmed">
+                  Loading modules…
+                </Text>
+              </Group>
+            </div>
+          )}
+
+        {step === "pick" &&
+          !sourceLookupLoading &&
+          !sourceLookupError &&
+          existingSource &&
+          // Excludes the case where Modules/Materials were already loaded
+          // once and a later background revalidation failed (SWR keeps the
+          // previous data on such a failure) -- that keeps showing the
+          // workspace below instead of also stacking an error banner above
+          // it.
+          !(workspaceModules && workspaceMaterialsData) &&
+          (workspaceModulesError || workspaceMaterialsError) && (
+            <div className={styles.centered}>
+              <Alert color="red" title="Could not load the Book's Modules">
+                {(workspaceModulesError ?? workspaceMaterialsError)?.message}
+              </Alert>
+            </div>
+          )}
+
+        {step === "pick" &&
+          !sourceLookupLoading &&
+          !sourceLookupError &&
+          existingSource &&
+          workspaceModules &&
+          workspaceMaterialsData && (
+            <SavedSourceView
+              content={workspaceContent}
+              onContentChange={setWorkspaceContent}
+              entries={workspaceEntries}
+              onEntriesChange={setWorkspaceEntries}
+              onRemove={handleRemoveSourceRequest}
+              isRemoving={isRemovingSource}
+              removeError={removeSourceError}
+              onSave={handleSaveWorkspace}
+              isSaving={isSavingWorkspace}
+              saveError={saveWorkspaceError}
+              fontScale={fontScale}
+              onFontScaleChange={setFontScale}
+              direction={direction}
+              onDirectionChange={setDirection}
+            />
+          )}
+
+        {(step !== "pick" ||
+          (!sourceLookupLoading && !sourceLookupError && !existingSource)) && (
+          <>
+            {step === "pick" && (
+              <PdfFilePicker onFileSelected={handleFileSelected} />
+            )}
+
+            {step === "select-pages" && file && (
+              <PdfViewer
+                file={file}
+                selectedPages={selectedPages}
+                onSelectedPagesChange={setSelectedPages}
+                onChooseDifferentFile={handleChooseDifferentFile}
+                onRunOcr={handleRunOcr}
+                isRunningOcr={ocrRun.state.status === "running"}
+                ocrError={
+                  ocrRun.state.status === "error" ? ocrRun.state.message : null
+                }
+              />
+            )}
+
+            {step === "review-ocr" && ocrResult && file && (
+              <OcrResultView
+                file={file}
+                ocrResult={ocrResult}
+                editedMarkdown={editedMarkdown}
+                onEditedMarkdownChange={setEditedMarkdown}
+                fontScale={fontScale}
+                onFontScaleChange={setFontScale}
+                direction={direction}
+                onDirectionChange={setDirection}
+                onBack={handleBackToPageSelection}
+                onCreateModules={handleCreateModules}
+              />
+            )}
+
+            {step === "build-modules" && ocrResult && file && (
+              <ModuleBuilderView
+                fileName={file.name}
+                ocrResult={ocrResult}
+                editedMarkdown={editedMarkdown}
+                fontScale={fontScale}
+                onFontScaleChange={setFontScale}
+                direction={direction}
+                onDirectionChange={setDirection}
+                modules={modules}
+                onModulesChange={setModules}
+                onBack={handleBackToReview}
+                backDisabled={createdModuleIds.size > 0}
+                onFinish={handleFinish}
+                isFinishing={isFinishing}
+                finishError={finishError}
+              />
+            )}
+          </>
         )}
-
-      {(step !== "pick" ||
-        (!sourceLookupLoading && !sourceLookupError && !existingSource)) && (
-        <>
-          {step === "pick" && (
-            <PdfFilePicker onFileSelected={handleFileSelected} />
-          )}
-
-          {step === "select-pages" && file && (
-            <PdfViewer
-              file={file}
-              selectedPages={selectedPages}
-              onSelectedPagesChange={setSelectedPages}
-              onChooseDifferentFile={handleChooseDifferentFile}
-              onRunOcr={handleRunOcr}
-              isRunningOcr={ocrRun.state.status === "running"}
-              ocrError={
-                ocrRun.state.status === "error" ? ocrRun.state.message : null
-              }
-            />
-          )}
-
-          {step === "review-ocr" && ocrResult && file && (
-            <OcrResultView
-              file={file}
-              ocrResult={ocrResult}
-              editedMarkdown={editedMarkdown}
-              onEditedMarkdownChange={setEditedMarkdown}
-              fontScale={fontScale}
-              onFontScaleChange={setFontScale}
-              direction={direction}
-              onDirectionChange={setDirection}
-              onBack={handleBackToPageSelection}
-              onCreateModules={handleCreateModules}
-            />
-          )}
-
-          {step === "build-modules" && ocrResult && file && (
-            <ModuleBuilderView
-              fileName={file.name}
-              ocrResult={ocrResult}
-              editedMarkdown={editedMarkdown}
-              fontScale={fontScale}
-              onFontScaleChange={setFontScale}
-              direction={direction}
-              onDirectionChange={setDirection}
-              modules={modules}
-              onModulesChange={setModules}
-              onBack={handleBackToReview}
-              onCreateLearningMaterial={handleCreateLearningMaterial}
-            />
-          )}
-
-          {step === "learning-material" && file && (
-            <LearningMaterialView
-              fileName={file.name}
-              modules={modules}
-              learningMaterials={learningMaterials}
-              onLearningMaterialsChange={setLearningMaterials}
-              fontScale={fontScale}
-              onFontScaleChange={setFontScale}
-              direction={direction}
-              onDirectionChange={setDirection}
-              onBack={handleBackToModules}
-              onFinish={handleFinish}
-              isFinishing={isFinishing}
-              finishError={finishError}
-              backDisabled={createdModuleIds.size > 0}
-            />
-          )}
-        </>
-      )}
-    </Modal>
+      </Modal>
+      {activeConfirmDialog && <ConfirmDialog opened {...activeConfirmDialog} />}
+    </>
   );
 }

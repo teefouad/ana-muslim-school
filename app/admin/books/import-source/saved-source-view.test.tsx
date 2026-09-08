@@ -7,8 +7,12 @@ import type { WorkspaceModuleEntry } from "./import-source-types";
 import { SavedSourceView } from "./saved-source-view";
 
 const SAMPLE_ENTRIES: WorkspaceModuleEntry[] = [
-  { key: "module-1", moduleId: "module-1", material: "First material" },
-  { key: "module-2", moduleId: "module-2", material: "" },
+  {
+    key: "module-1",
+    moduleId: "module-1",
+    material: { ar: "First material", en: "" },
+  },
+  { key: "module-2", moduleId: "module-2", material: { ar: "", en: "" } },
 ];
 
 function renderView(
@@ -107,6 +111,19 @@ describe("SavedSourceView", () => {
     expect(screen.getByText("Module 2")).toBeInTheDocument();
   });
 
+  it("exposes a drag handle (decorative), delete affordance, language switcher, and AI Assistant for every Module (ANA-75)", () => {
+    renderView({ entries: SAMPLE_ENTRIES });
+
+    expect(
+      screen.getByRole("button", { name: "Delete Module 1" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("radio", { name: "Arabic" })).toHaveLength(2);
+    expect(screen.getAllByRole("radio", { name: "English" })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "AI Assistant" }),
+    ).toHaveLength(2);
+  });
+
   it("loads existing Modules in the given order with their Learning Material", async () => {
     renderView({ entries: SAMPLE_ENTRIES });
 
@@ -135,8 +152,12 @@ describe("SavedSourceView", () => {
     await user.type(editors[0], "!");
 
     expect(onEntriesChange).toHaveBeenLastCalledWith([
-      { key: "module-1", moduleId: "module-1", material: "First material!" },
-      { key: "module-2", moduleId: "module-2", material: "" },
+      {
+        key: "module-1",
+        moduleId: "module-1",
+        material: { ar: "First material!", en: "" },
+      },
+      { key: "module-2", moduleId: "module-2", material: { ar: "", en: "" } },
     ]);
   });
 
@@ -148,7 +169,7 @@ describe("SavedSourceView", () => {
     ).toBeDisabled();
   });
 
-  it("enables Create Module once Source Text is selected, and seeds the new Module's Learning Material with the exact selection", () => {
+  it("enables Create Module once Source Text is selected, and seeds the new Module's Arabic Learning Material with the exact selection, leaving English empty", () => {
     const onEntriesChange = vi.fn();
     renderView({
       content: "Some source text to select",
@@ -167,7 +188,11 @@ describe("SavedSourceView", () => {
     fireEvent.click(createModule);
 
     expect(onEntriesChange).toHaveBeenCalledWith([
-      { key: expect.any(String), moduleId: null, material: "Some" },
+      {
+        key: expect.any(String),
+        moduleId: null,
+        material: { ar: "Some", en: "" },
+      },
     ]);
   });
 
