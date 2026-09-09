@@ -108,15 +108,15 @@ export default function EditBookPage() {
 
   const modules: MockModule[] = moduleOrderDraft ?? serverModules;
   // Whether this Book already has a saved Source (ANA-71) -- fetched here,
-  // not gated on the Import Modules modal being open, since which internal
+  // not gated on the Module Builder modal being open, since which internal
   // modal flow the header button opens (saved Source workspace vs. PDF
   // import) needs to be known before the modal has ever been opened. The
-  // button's own label/icon are fixed ("Import Modules", ANA-83) and don't
+  // button's own label/icon are fixed ("Module Builder", ANA-83) and don't
   // vary with this. Shares the modal's own Source-by-bookId SWR cache entry
   // (same key) so opening the modal right after doesn't re-fetch.
   //
   // `sourceData` (rather than a separate loading/error flag) is also what
-  // decides whether the Import Modules button renders at all (ANA-75):
+  // decides whether the Module Builder button renders at all (ANA-75):
   // while the lookup is pending or has failed, SWR leaves `data` at
   // `undefined` (there's no earlier successful fetch to fall back to), so
   // gating the button on `sourceData` being present keeps it hidden for
@@ -233,7 +233,7 @@ export default function EditBookPage() {
               onClick={() => setImportSourceOpened(true)}
               leftSection={<FileText size={16} aria-hidden="true" />}
             >
-              Import Modules
+              Module Builder
             </Button>
           )}
           <Button

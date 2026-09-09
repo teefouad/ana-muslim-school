@@ -279,27 +279,27 @@ describe("ImportSourceModal", () => {
   });
 
   describe("Modal title (ANA-83)", () => {
-    it("titles the modal Import Modules for the upload/OCR/new-import workflow", async () => {
+    it("titles the modal Module Builder for the upload/OCR/new-import workflow", async () => {
       renderModal();
 
       expect(
-        await screen.findByRole("dialog", { name: "Import Modules" }),
+        await screen.findByRole("dialog", { name: "Module Builder" }),
       ).toBeInTheDocument();
     });
 
-    it("titles the modal Import Modules for the saved-Source workspace too", async () => {
+    it("titles the modal Module Builder for the saved-Source workspace too", async () => {
       mockExistingSource();
       renderModal();
 
       expect(
-        await screen.findByRole("dialog", { name: "Import Modules" }),
+        await screen.findByRole("dialog", { name: "Module Builder" }),
       ).toBeInTheDocument();
     });
 
-    it("keeps the title Import Modules once the saved Source is removed", async () => {
+    it("keeps the title Module Builder once the saved Source is removed", async () => {
       mockExistingSource();
       renderModal();
-      await screen.findByRole("dialog", { name: "Import Modules" });
+      await screen.findByRole("dialog", { name: "Module Builder" });
 
       (fetch as ReturnType<typeof vi.fn>).mockImplementationOnce((input) => {
         const url = String(input);
@@ -316,7 +316,7 @@ describe("ImportSourceModal", () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
 
       expect(
-        await screen.findByRole("dialog", { name: "Import Modules" }),
+        await screen.findByRole("dialog", { name: "Module Builder" }),
       ).toBeInTheDocument();
     });
   });

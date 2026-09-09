@@ -69,11 +69,11 @@ describe("AddBookPage", () => {
     expect(addButton).toHaveAttribute("form");
   });
 
-  it("does not render an Import Modules action", () => {
+  it("does not render a Module Builder action", () => {
     renderPage();
 
     expect(
-      screen.queryByRole("button", { name: "Import Modules" }),
+      screen.queryByRole("button", { name: "Module Builder" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Create from PDF" }),

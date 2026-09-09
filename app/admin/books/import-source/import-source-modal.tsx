@@ -73,7 +73,7 @@ type Step = "pick" | "select-pages" | "review-ocr" | "build-modules";
 export interface ImportSourceModalProps {
   /** The modal is open whenever this is true. Only a persisted Book can
    * open the flow -- callers are responsible for not rendering the
-   * triggering "Import Modules" button until a real `bookId` exists. */
+   * triggering "Module Builder" button until a real `bookId` exists. */
   opened: boolean;
   onClose: () => void;
   /** The Book this import belongs to -- Finish creates the temporary
@@ -250,7 +250,7 @@ export function ImportSourceModal({
   // every other state of the "pick" step (loading/error included) or any
   // step of the PDF upload/OCR/Module-building workflow -- decides which
   // dirty check applies (`isDirty` below) and which of the two flows
-  // renders. The modal's title is fixed to "Import Modules" regardless
+  // renders. The modal's title is fixed to "Module Builder" regardless
   // (ANA-83); this no longer drives any visible copy.
   const showingSavedSource =
     step === "pick" &&
@@ -938,7 +938,7 @@ export function ImportSourceModal({
       <Modal
         opened={opened}
         onClose={handleClose}
-        title="Import Modules"
+        title="Module Builder"
         classNames={{ content: styles.content, body: styles.body }}
         // Near-full desktop width with normal dashboard margins still
         // visible: Mantine's own Modal.Inner reserves a *default* 5vw of

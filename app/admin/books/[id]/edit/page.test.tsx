@@ -176,7 +176,7 @@ describe("EditBookPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders Import Modules immediately next to Save changes in the header, both enabled once loaded", async () => {
+  it("renders Module Builder immediately next to Save changes in the header, both enabled once loaded", async () => {
     setupFetch(buildBookFixture());
     renderPage();
 
@@ -184,7 +184,7 @@ describe("EditBookPage", () => {
       name: "Save changes",
     });
     const importSource = await screen.findByRole("button", {
-      name: "Import Modules",
+      name: "Module Builder",
     });
     expect(importSource).toBeEnabled();
     expect(saveChanges).toBeEnabled();
@@ -222,17 +222,17 @@ describe("EditBookPage", () => {
     // independently of the Source lookup, which is still pending here.
     await screen.findByRole("button", { name: "Save changes" });
     expect(
-      screen.queryByRole("button", { name: "Import Modules" }),
+      screen.queryByRole("button", { name: "Module Builder" }),
     ).not.toBeInTheDocument();
 
     resolveSources(jsonResponse({ data: [] }));
 
     expect(
-      await screen.findByRole("button", { name: "Import Modules" }),
+      await screen.findByRole("button", { name: "Module Builder" }),
     ).toBeInTheDocument();
   });
 
-  it("keeps the Source action button hidden if the Source lookup fails, instead of guessing Import Modules (ANA-75)", async () => {
+  it("keeps the Source action button hidden if the Source lookup fails, instead of guessing Module Builder (ANA-75)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockImplementation(
       (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -261,16 +261,16 @@ describe("EditBookPage", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(
-      screen.queryByRole("button", { name: "Import Modules" }),
+      screen.queryByRole("button", { name: "Module Builder" }),
     ).not.toBeInTheDocument();
   });
 
-  it("labels the header button Import Modules whether or not the Book already has a saved Source", async () => {
+  it("labels the header button Module Builder whether or not the Book already has a saved Source", async () => {
     setupFetch(buildBookFixture(), { hasSource: true });
     renderPage();
 
     expect(
-      await screen.findByRole("button", { name: "Import Modules" }),
+      await screen.findByRole("button", { name: "Module Builder" }),
     ).toBeInTheDocument();
   });
 
@@ -290,17 +290,17 @@ describe("EditBookPage", () => {
     renderPage();
 
     const importSource = await screen.findByRole("button", {
-      name: "Import Modules",
+      name: "Module Builder",
     });
 
     expect(
-      screen.queryByRole("dialog", { name: "Import Modules" }),
+      screen.queryByRole("dialog", { name: "Module Builder" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(importSource);
 
     expect(
-      await screen.findByRole("dialog", { name: "Import Modules" }),
+      await screen.findByRole("dialog", { name: "Module Builder" }),
     ).toBeInTheDocument();
     // The modal's own Source-by-bookId lookup (ANA-71) resolves
     // asynchronously before the upload flow renders -- `findByRole` waits
@@ -645,7 +645,7 @@ describe("EditBookPage", () => {
       });
     });
 
-    describe("Import Modules order sync (ANA-84)", () => {
+    describe("Module Builder order sync (ANA-84)", () => {
       // Same keyboard-drag technique as the Reorder (ANA-79) tests above,
       // for this page's own Modules panel (`list-item-<id>` testids).
       function stubItemRects(order: string[], itemHeight = 60) {
@@ -781,7 +781,7 @@ describe("EditBookPage", () => {
         );
       }
 
-      it("opens Import Modules seeded with the page's own unsaved reorder draft, matched by id", async () => {
+      it("opens Module Builder seeded with the page's own unsaved reorder draft, matched by id", async () => {
         setupSyncFetch([
           buildModuleFixture({ id: "module-1", title: { ar: "", en: "A" } }),
           buildModuleFixture({ id: "module-2", title: { ar: "", en: "B" } }),
@@ -797,8 +797,8 @@ describe("EditBookPage", () => {
           expect(items.map((el) => el.textContent)).toEqual(["B", "A", "C"]);
         });
 
-        fireEvent.click(screen.getByRole("button", { name: "Import Modules" }));
-        await screen.findByRole("dialog", { name: "Import Modules" });
+        fireEvent.click(screen.getByRole("button", { name: "Module Builder" }));
+        await screen.findByRole("dialog", { name: "Module Builder" });
 
         const cards = await screen.findAllByTestId(/^module-card-(?!overlay-)/);
         const ids = cards
@@ -818,7 +818,7 @@ describe("EditBookPage", () => {
         ).toBe(false);
       });
 
-      it("a Module order saved inside Import Modules becomes this page's displayed order, superseding the stale outer draft", async () => {
+      it("a Module order saved inside Module Builder becomes this page's displayed order, superseding the stale outer draft", async () => {
         setupSyncFetch([
           buildModuleFixture({ id: "module-1", title: { ar: "", en: "A" } }),
           buildModuleFixture({ id: "module-2", title: { ar: "", en: "B" } }),
@@ -835,11 +835,11 @@ describe("EditBookPage", () => {
           expect(items.map((el) => el.textContent)).toEqual(["B", "A", "C"]);
         });
 
-        // 2. Opens Import Modules -- correctly seeded from that draft
+        // 2. Opens Module Builder -- correctly seeded from that draft
         // (B,A,C), per the previous test.
-        fireEvent.click(screen.getByRole("button", { name: "Import Modules" }));
+        fireEvent.click(screen.getByRole("button", { name: "Module Builder" }));
         const dialog = await screen.findByRole("dialog", {
-          name: "Import Modules",
+          name: "Module Builder",
         });
         await screen.findByTestId("module-card-module-2");
 
@@ -860,7 +860,7 @@ describe("EditBookPage", () => {
         // adopted the modal's save, not merely "reverted" the untouched
         // draft: a bug that left the stale B,A,C draft in place would still
         // display B,A,C here).
-        await screen.findByRole("button", { name: "Import Modules" });
+        await screen.findByRole("button", { name: "Module Builder" });
         await vi.waitFor(async () => {
           const items = await screen.findAllByText(/^[ABC]$/);
           expect(items.map((el) => el.textContent)).toEqual(["A", "B", "C"]);
