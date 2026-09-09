@@ -43,6 +43,14 @@ export interface SourceModulesPanelProps<T> {
   getDeleteConfirmDescription?: (key: string) => string | undefined;
   isDeleteDisabled: (key: string) => boolean;
   onTranslateItem: (key: string) => Promise<void>;
+  /** AI Assistant for a given item (ANA-85), keyed by `getKey` -- called
+   * with the active language tab (owned by the card itself) and the
+   * optional trimmed instructions. */
+  onAiAssistItem: (
+    key: string,
+    language: "ar" | "en",
+    instructions?: string,
+  ) => Promise<void>;
 }
 
 function SortableModuleCard<T>({
@@ -58,6 +66,7 @@ function SortableModuleCard<T>({
   deleteConfirmDescription,
   deleteDisabled,
   onTranslate,
+  onAiAssist,
   testId,
 }: {
   item: T;
@@ -76,6 +85,7 @@ function SortableModuleCard<T>({
   deleteConfirmDescription: string | undefined;
   deleteDisabled: boolean;
   onTranslate: () => Promise<void>;
+  onAiAssist: (language: "ar" | "en", instructions?: string) => Promise<void>;
   testId: string;
 }) {
   const {
@@ -113,6 +123,7 @@ function SortableModuleCard<T>({
       deleteConfirmDescription={deleteConfirmDescription}
       deleteDisabled={deleteDisabled}
       onTranslate={onTranslate}
+      onAiAssist={onAiAssist}
     />
   );
 }
@@ -142,6 +153,7 @@ export function SourceModulesPanel<T>({
   getDeleteConfirmDescription,
   isDeleteDisabled,
   onTranslateItem,
+  onAiAssistItem,
 }: SourceModulesPanelProps<T>) {
   return (
     <div className={styles.panel}>
@@ -195,6 +207,9 @@ export function SourceModulesPanel<T>({
                   deleteConfirmDescription={getDeleteConfirmDescription?.(key)}
                   deleteDisabled={isDeleteDisabled(key)}
                   onTranslate={() => onTranslateItem(key)}
+                  onAiAssist={(language, instructions) =>
+                    onAiAssistItem(key, language, instructions)
+                  }
                   testId={`module-card-${key}`}
                 />
               );
@@ -219,6 +234,7 @@ export function SourceModulesPanel<T>({
                 forceCollapsed
                 onDelete={() => {}}
                 onTranslate={async () => {}}
+                onAiAssist={async () => {}}
                 style={{
                   pointerEvents: "none",
                   ...(width != null ? { width } : {}),

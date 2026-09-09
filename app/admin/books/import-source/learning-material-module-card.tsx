@@ -1,16 +1,27 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
-import { ActionIcon, Alert } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Text,
+  Textarea,
+} from "@mantine/core";
 import { GripVertical, Languages, Sparkles, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
-import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import {
+  MarkdownEditor,
+  type MarkdownEditorHandle,
+} from "@/components/ui/markdown-editor";
 import type { LanguageOption } from "@/components/ui/translatable-value";
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import styles from "./learning-material-module-card.module.css";
@@ -78,6 +89,21 @@ export interface LearningMaterialModuleCardProps {
    * and never changes which language tab is active (ANA-83) -- success or
    * failure. Omit to hide the translate affordance entirely. */
   onTranslate?: () => Promise<void>;
+  /** AI Assistant (ANA-85, using ANA-74/ANA-85's server-only AI service
+   * through the server-only `/api/v1/ai/assist` boundary): opens a dialog
+   * for optional additional instructions, then -- once Generate is clicked
+   * -- is called with the *currently active* language tab and the trimmed
+   * instructions (`undefined` when blank). The card never reads or applies
+   * the result itself: the caller resolves the current text for that
+   * language (and the Book context, server-side) and is responsible for
+   * applying the returned text to that same language's draft against its
+   * own *latest* state, mirroring `onTranslate` -- so a concurrent edit/
+   * reorder/delete to a different Module can't be lost to a stale snapshot.
+   * The card owns the dialog, loading state, and card-freeze; it never
+   * changes which language tab is active. Omit to hide the affordance's
+   * inner dialog/loading wiring (the button itself remains, matching
+   * `onTranslate`'s optional-but-inert pattern when omitted). */
+  onAiAssist?: (language: Language, instructions?: string) => Promise<void>;
   /** Renders this card as a non-interactive drag preview (ANA-80): always
    * collapsed regardless of internal state, and the collapse toggle never
    * responds to clicks. Used for `SortableList`'s `DragOverlay` copy, which
@@ -105,8 +131,9 @@ type PendingAction = "delete" | "translate" | null;
 // switcher itself stays visible and is always the right-most control. Body:
 // the School MarkdownEditor for whichever language is currently active,
 // direction following that language rather than a global source-text
-// direction. AI Assistant remains UI-only here -- wiring the actual dialog
-// is a later card.
+// direction. AI Assistant opens its own instructions dialog and transforms
+// the active language's draft (ANA-85), using the exact same
+// card-reads/caller-applies split Translate already established.
 export function LearningMaterialModuleCard({
   testId,
   index,
@@ -119,6 +146,7 @@ export function LearningMaterialModuleCard({
   deleteConfirmDescription = DEFAULT_DELETE_CONFIRM_DESCRIPTION,
   deleteDisabled = false,
   onTranslate,
+  onAiAssist,
   forceCollapsed = false,
   style,
 }: LearningMaterialModuleCardProps) {
@@ -134,6 +162,47 @@ export function LearningMaterialModuleCard({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
+  // AI Assistant (ANA-85): the instructions dialog's own open/draft state --
+  // `aiInstructions` is reset to "" every time the dialog opens (never
+  // carried over from a previous session), and is entirely local to this
+  // card until Generate reads it once.
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // MDXEditor's own `markdown` prop only seeds the editor's *initial*
+  // content -- once mounted, an external change to `material[activeLanguage]`
+  // (an AI Assistant result, or a Translate result landing on the language
+  // the user has already switched to) must be pushed in via
+  // `MarkdownEditorHandle.setMarkdown` instead (same primitive
+  // TranslatableTextArea uses for this). This is required for Translate too,
+  // not just AI Assistant: Translate is enabled purely off `material.ar`, so
+  // nothing stops the user from switching to the English tab *before*
+  // clicking it, in which case its result lands on the very language already
+  // on screen.
+  //
+  // `shownRef` is a plain ref, not state -- it's bookkeeping the effect below
+  // reads/writes to tell "the editor's own onChange round-tripped back
+  // through the parent" apart from "the value changed out from under it",
+  // and never needs to itself cause a render.
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+  const activeMaterial = material[activeLanguage];
+  const shownRef = useRef({ language: activeLanguage, value: activeMaterial });
+
+  useEffect(() => {
+    if (shownRef.current.language !== activeLanguage) {
+      // A language switch already remounts the editor (keyed on
+      // `activeLanguage` below) with the right initial value -- this only
+      // needs to update the tracked snapshot, not call `setMarkdown`.
+      shownRef.current = { language: activeLanguage, value: activeMaterial };
+      return;
+    }
+    if (shownRef.current.value !== activeMaterial) {
+      editorRef.current?.setMarkdown(activeMaterial);
+      shownRef.current = { language: activeLanguage, value: activeMaterial };
+    }
+  }, [activeLanguage, activeMaterial]);
 
   // Collapses the card the instant a drag starts (ANA-80) -- an expanded
   // card must never keep showing its Markdown editor while being dragged,
@@ -231,16 +300,65 @@ export function LearningMaterialModuleCard({
     setPendingAction(null);
   }
 
-  const isTranslateDisabled = disabled || isTranslating || !material.ar.trim();
-  // While *this* card's own Translate request is in flight, freeze the
-  // rest of the card -- the editor, language switcher, Delete, AI
-  // Assistant, and drag handle -- so the Arabic source it was sent with
-  // can't change out from under the request and so it can't be reordered
-  // or removed mid-translate. Every other card stays fully interactive;
-  // only `disabled` (Save/Finish in flight) freezes those (PR review,
-  // blocking -- ANA-77). The Translate action itself already disables via
-  // `isTranslateDisabled` above; this doesn't need to include it too.
-  const isCardFrozen = disabled || isTranslating;
+  // AI Assistant (ANA-85): opens with a fresh, empty instructions field
+  // every time -- never the previous session's leftover draft.
+  function handleAiAssistClick() {
+    setAiInstructions("");
+    setAiError(null);
+    setIsAiDialogOpen(true);
+  }
+
+  function handleAiDialogCancel() {
+    setIsAiDialogOpen(false);
+  }
+
+  async function handleGenerateClick() {
+    const instructions = aiInstructions.trim() || undefined;
+    // Closes the dialog immediately on Generate, before the request
+    // resolves (spec #6) -- loading then shows on the AI Assistant action
+    // itself, not the (now closed) dialog.
+    setIsAiDialogOpen(false);
+
+    if (!onAiAssist) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiError(null);
+
+    try {
+      await onAiAssist(activeLanguage, instructions);
+      // Leaves the active language tab exactly as the user had it (spec #6)
+      // -- the card never mutates `material` itself; applying the result to
+      // that language's draft is entirely the caller's own `onAiAssist`
+      // implementation, mirroring Translate (ANA-83). The `shown`-tracking
+      // effect above pushes the new value into the mounted editor via
+      // `setMarkdown` once the resulting `material` prop update lands.
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  const isTranslateDisabled =
+    disabled || isTranslating || isGenerating || !material.ar.trim();
+  const isAiAssistDisabled =
+    disabled ||
+    isTranslating ||
+    isGenerating ||
+    !material[activeLanguage].trim();
+  // While *this* card's own Translate or AI Assistant request is in flight,
+  // freeze the rest of the card -- the editor, language switcher, Delete,
+  // AI Assistant, Translate, and drag handle -- so the exact text/language
+  // either request was sent with can't change out from under it, and so it
+  // can't be reordered or removed mid-request. Every other card stays fully
+  // interactive; only `disabled` (Save/Finish in flight) freezes those (PR
+  // review, blocking -- ANA-77; extended to `isGenerating` for ANA-85). The
+  // Translate/AI Assistant actions themselves already disable via
+  // `isTranslateDisabled`/`isAiAssistDisabled` above; this doesn't need to
+  // include those too.
+  const isCardFrozen = disabled || isTranslating || isGenerating;
 
   return (
     <div
@@ -300,14 +418,16 @@ export function LearningMaterialModuleCard({
             <Trash2 size={14} aria-hidden="true" />
           </ActionIcon>
         )}
-        {/* UI-only affordance (ANA-75): no AI instructions dialog opens and
-            no request is made from this card yet -- wiring the actual AI
-            service (see ANA-74) to this button is a later card. */}
+        {/* Opens the instructions dialog for the currently active language
+            (ANA-85) -- disabled when that language's draft is blank, since
+            there's nothing to transform. */}
         <ActionIcon
           variant="subtle"
           className={styles.actionButton}
           aria-label="AI Assistant"
-          disabled={isCardFrozen}
+          disabled={isAiAssistDisabled}
+          loading={isGenerating}
+          onClick={handleAiAssistClick}
         >
           <Sparkles size={16} aria-hidden="true" />
         </ActionIcon>
@@ -336,6 +456,11 @@ export function LearningMaterialModuleCard({
           {translateError}
         </Alert>
       )}
+      {aiError && (
+        <Alert color="red" mx="sm" mb="xs" py={4} role="alert">
+          {aiError}
+        </Alert>
+      )}
       {effectiveExpanded && (
         <div className={styles.body}>
           <div
@@ -345,10 +470,16 @@ export function LearningMaterialModuleCard({
           >
             <MarkdownEditor
               key={activeLanguage}
-              markdown={material[activeLanguage]}
-              onChange={(value) =>
-                onMaterialChange({ ...material, [activeLanguage]: value })
-              }
+              ref={editorRef}
+              markdown={activeMaterial}
+              onChange={(value) => {
+                // Updates `shownRef` synchronously, before the parent's own
+                // `material` prop update reaches this component -- so the
+                // sync effect above never sees this edit as an external
+                // change and bounces it back via `setMarkdown`.
+                shownRef.current = { language: activeLanguage, value };
+                onMaterialChange({ ...material, [activeLanguage]: value });
+              }}
               dir={dir}
               fillHeight
               disabled={isCardFrozen}
@@ -378,6 +509,34 @@ export function LearningMaterialModuleCard({
           onCancel={handleCancelPendingAction}
           onConfirm={handleConfirmTranslate}
         />
+      )}
+      {isAiDialogOpen && (
+        <Modal
+          opened
+          onClose={handleAiDialogCancel}
+          title="AI Assistant"
+          centered
+        >
+          <Text size="sm" c="dimmed" mb="md">
+            The AI will transform the current Module text for the active
+            language. It won&rsquo;t touch the other language&rsquo;s draft.
+          </Text>
+          <Textarea
+            label="Additional instructions or context (optional)"
+            value={aiInstructions}
+            onChange={(event) => setAiInstructions(event.currentTarget.value)}
+            autosize
+            minRows={3}
+            maxRows={8}
+            mb="lg"
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={handleAiDialogCancel}>
+              Cancel
+            </Button>
+            <Button onClick={handleGenerateClick}>Generate</Button>
+          </Group>
+        </Modal>
       )}
     </div>
   );

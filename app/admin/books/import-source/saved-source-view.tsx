@@ -8,6 +8,7 @@ import type {
   TextDirection,
   WorkspaceModuleEntry,
 } from "./import-source-types";
+import { assistLearningMaterial } from "./ai-assist-client";
 import { deleteModule } from "./modules-client";
 import { translateArabicToEnglish } from "./translate-client";
 import { FontSizeControl } from "./font-size-control";
@@ -236,6 +237,43 @@ export function SavedSourceView({
     );
   }
 
+  // AI Assistant for a single card's currently active language (ANA-85) --
+  // reads that entry's *current* draft for `language` at call time, same
+  // reasoning as `handleTranslateEntry`, then applies the result through a
+  // functional update against whichever `entries` is current *when the
+  // request resolves*, replacing only that entry's `material[language]` so
+  // a concurrent edit/reorder/delete to a *different* card survives this
+  // resolving late instead of being reverted by a stale snapshot (spec #6).
+  async function handleAiAssistEntry(
+    key: string,
+    language: "ar" | "en",
+    instructions?: string,
+  ) {
+    const entry = entries.find((candidate) => candidate.key === key);
+
+    if (!entry) {
+      return;
+    }
+
+    const refined = await assistLearningMaterial({
+      bookId,
+      text: entry.material[language],
+      language,
+      additionalInstructions: instructions,
+    });
+
+    onEntriesChange((current) =>
+      current.map((candidate) =>
+        candidate.key === key
+          ? {
+              ...candidate,
+              material: { ...candidate.material, [language]: refined },
+            }
+          : candidate,
+      ),
+    );
+  }
+
   return (
     <div className={styles.shell}>
       <div className={styles.header}>
@@ -315,6 +353,7 @@ export function SavedSourceView({
           }}
           isDeleteDisabled={() => isSaving || deletingKey !== null}
           onTranslateItem={handleTranslateEntry}
+          onAiAssistItem={handleAiAssistEntry}
         />
       </div>
 

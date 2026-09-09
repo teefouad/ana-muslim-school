@@ -57,6 +57,7 @@ function renderPanel(
     onDeleteItem: vi.fn(),
     isDeleteDisabled: () => false,
     onTranslateItem: vi.fn(),
+    onAiAssistItem: vi.fn(),
     ...overrides,
   };
 
@@ -117,6 +118,7 @@ describe("SourceModulesPanel", () => {
           onDeleteItem={vi.fn()}
           isDeleteDisabled={() => false}
           onTranslateItem={vi.fn()}
+          onAiAssistItem={vi.fn()}
         />
       </MantineProvider>,
     );
@@ -141,6 +143,7 @@ describe("SourceModulesPanel", () => {
           onDeleteItem={vi.fn()}
           isDeleteDisabled={() => false}
           onTranslateItem={vi.fn()}
+          onAiAssistItem={vi.fn()}
         />
       </MantineProvider>,
     );
@@ -172,6 +175,17 @@ describe("SourceModulesPanel", () => {
       screen.getAllByRole("button", { name: "Translate to English" })[1],
     );
     expect(onTranslateItem).toHaveBeenCalledWith("module-2");
+  });
+
+  it("wires AI Assistant per item, keyed by getKey, forwarding the active language and instructions (ANA-85)", async () => {
+    const onAiAssistItem = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ onAiAssistItem });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "AI Assistant" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await vi.waitFor(() => expect(onAiAssistItem).toHaveBeenCalledTimes(1));
+    expect(onAiAssistItem).toHaveBeenCalledWith("module-2", "ar", undefined);
   });
 
   it("disables an item's delete action per isDeleteDisabled(key)", () => {
@@ -301,7 +315,7 @@ describe("SourceModulesPanel", () => {
       ).toBe("false");
     });
 
-    it("the overlay preview reserves Delete/Translate for every dragged card, since SourceModulesPanel always wires both", async () => {
+    it("the overlay preview reserves Delete/AI Assistant/Translate for every dragged card, since SourceModulesPanel always wires all three", async () => {
       stubItemRects(["module-1", "module-2"]);
       renderPanel();
       await screen.findAllByRole("toolbar");
@@ -315,6 +329,9 @@ describe("SourceModulesPanel", () => {
       const overlayCard = screen.getByTestId("module-card-overlay-module-1");
       expect(
         overlayCard.querySelector('[aria-label="Delete Module 1"]'),
+      ).toBeInTheDocument();
+      expect(
+        overlayCard.querySelector('[aria-label="AI Assistant"]'),
       ).toBeInTheDocument();
       expect(
         overlayCard.querySelector('[aria-label="Translate to English"]'),

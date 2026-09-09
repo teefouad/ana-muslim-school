@@ -13,6 +13,7 @@ import { ArrowLeft } from "lucide-react";
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule, TextDirection } from "./import-source-types";
+import { assistLearningMaterial } from "./ai-assist-client";
 import { DocumentSummary } from "./document-summary";
 import { FontSizeControl } from "./font-size-control";
 import { SourceModulesPanel } from "./source-modules-panel";
@@ -24,6 +25,11 @@ const TEMPORARY_DELETE_CONFIRM_DESCRIPTION =
   "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.";
 
 export interface ModuleBuilderViewProps {
+  /** The Book this Create-from-PDF session belongs to (ANA-85) -- passed
+   * through to the AI Assistant's `/api/v1/ai/assist` request so the server
+   * can load this Book's persisted context; never sent as Book content
+   * itself. */
+  bookId: string;
   fileName: string;
   ocrResult: OcrResult;
   editedMarkdown: Record<number, string>;
@@ -81,6 +87,7 @@ export interface ModuleBuilderViewProps {
 // starts empty), and the user edits both languages right here. Finish
 // replaces the old "Create Learning Material" step entirely.
 export function ModuleBuilderView({
+  bookId,
   fileName,
   ocrResult,
   editedMarkdown,
@@ -206,6 +213,40 @@ export function ModuleBuilderView({
     );
   }
 
+  // AI Assistant for a single card's currently active language (ANA-85) --
+  // reads that Module's *current* draft for `language` at call time, same
+  // reasoning as `handleTranslateModule`, then applies the result through a
+  // functional update against whichever `modules` is current *when the
+  // request resolves*, replacing only that Module's `material[language]` so
+  // a concurrent edit/reorder/delete to a *different* Module survives this
+  // resolving late instead of being reverted by a stale snapshot (spec #6).
+  async function handleAiAssistModule(
+    moduleId: string,
+    language: "ar" | "en",
+    instructions?: string,
+  ) {
+    const targetModule = modules.find((module) => module.id === moduleId);
+
+    if (!targetModule) {
+      return;
+    }
+
+    const refined = await assistLearningMaterial({
+      bookId,
+      text: targetModule.material[language],
+      language,
+      additionalInstructions: instructions,
+    });
+
+    onModulesChange((current) =>
+      current.map((module) =>
+        module.id === moduleId
+          ? { ...module, material: { ...module.material, [language]: refined } }
+          : module,
+      ),
+    );
+  }
+
   const reorderDisabled = isFinishing || backDisabled;
 
   return (
@@ -263,6 +304,7 @@ export function ModuleBuilderView({
           }
           isDeleteDisabled={(id) => isFinishing || createdModuleIds.has(id)}
           onTranslateItem={handleTranslateModule}
+          onAiAssistItem={handleAiAssistModule}
         />
       </div>
 

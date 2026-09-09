@@ -51,6 +51,7 @@ const meta = {
   component: ModuleBuilderView,
   tags: ["autodocs"],
   args: {
+    bookId: "book-1",
     fileName: "the-sealed-nectar.pdf",
     ocrResult: SAMPLE_RESULT,
     editedMarkdown: Object.fromEntries(

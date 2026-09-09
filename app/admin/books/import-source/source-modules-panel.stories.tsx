@@ -52,6 +52,7 @@ const meta = {
     onDeleteItem: () => {},
     isDeleteDisabled: () => false,
     onTranslateItem: async () => {},
+    onAiAssistItem: async () => {},
   },
   render: (args) => <SourceModulesPanelDemo {...args} />,
 } satisfies Meta<typeof SourceModulesPanel<Item>>;

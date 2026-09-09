@@ -73,15 +73,34 @@ export const Disabled: Story = {
   },
 };
 
-// Delete and Translate wired up (ANA-77): Delete opens this card's own
-// confirmation dialog before calling `onDelete`; Translate is enabled since
-// the Arabic draft is non-empty, and English is empty so it would translate
-// immediately without a replace-confirmation.
+// Delete, Translate, and AI Assistant wired up (ANA-77/ANA-85): Delete opens
+// this card's own confirmation dialog before calling `onDelete`; Translate
+// is enabled since the Arabic draft is non-empty, and English is empty so it
+// would translate immediately without a replace-confirmation; AI Assistant
+// opens its own instructions dialog for the active language.
 export const WithActions: Story = {
   args: {
     material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
     onDelete: () => {},
     onTranslate: async () => {},
+    onAiAssist: async () => {},
+  },
+};
+
+// Clicking AI Assistant opens a dialog with an optional instructions
+// textarea; Generate closes it and calls `onAiAssist` with the active
+// language and the trimmed instructions (ANA-85).
+export const AiAssistant: Story = {
+  args: {
+    material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
+    onAiAssist: async () => {},
+  },
+};
+
+export const AiAssistantDisabledForBlankActiveLanguage: Story = {
+  args: {
+    material: { ar: "", en: "" },
+    onAiAssist: async () => {},
   },
 };
 

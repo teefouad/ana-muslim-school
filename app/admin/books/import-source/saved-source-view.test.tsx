@@ -6,9 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceModuleEntry } from "./import-source-types";
 
-const { deleteModuleMock, translateArabicToEnglishMock } = vi.hoisted(() => ({
+const {
+  deleteModuleMock,
+  translateArabicToEnglishMock,
+  assistLearningMaterialMock,
+} = vi.hoisted(() => ({
   deleteModuleMock: vi.fn(),
   translateArabicToEnglishMock: vi.fn(),
+  assistLearningMaterialMock: vi.fn(),
 }));
 
 vi.mock("./modules-client", () => ({
@@ -17,6 +22,10 @@ vi.mock("./modules-client", () => ({
 
 vi.mock("./translate-client", () => ({
   translateArabicToEnglish: translateArabicToEnglishMock,
+}));
+
+vi.mock("./ai-assist-client", () => ({
+  assistLearningMaterial: assistLearningMaterialMock,
 }));
 
 const { SavedSourceView } = await import("./saved-source-view");
@@ -754,6 +763,112 @@ describe("SavedSourceView", () => {
         screen.getByRole("dialog", { name: "Replace English translation?" }),
       ).toBeInTheDocument();
       expect(translateArabicToEnglishMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AI Assistant", () => {
+    it("sends the active entry's active-language draft and bookId, and applies the result to that language only", async () => {
+      assistLearningMaterialMock.mockResolvedValueOnce("Refined text");
+      const onEntriesChange = vi.fn();
+      renderView({
+        bookId: "book-42",
+        entries: SAMPLE_ENTRIES,
+        onEntriesChange,
+      });
+
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() =>
+        expect(assistLearningMaterialMock).toHaveBeenCalledWith({
+          bookId: "book-42",
+          text: "First material",
+          language: "ar",
+          additionalInstructions: undefined,
+        }),
+      );
+      expect(applyLastEntriesUpdate(onEntriesChange, SAMPLE_ENTRIES)).toEqual([
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "Refined text", en: "" },
+        },
+        SAMPLE_ENTRIES[1],
+      ]);
+    });
+
+    it("applies its result against the latest entries when it resolves, preserving a concurrent edit made to a different card while it was in flight", async () => {
+      let resolveAssist: (value: string) => void = () => {};
+      assistLearningMaterialMock.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveAssist = resolve;
+          }),
+      );
+      const entries: WorkspaceModuleEntry[] = [
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "Arabic one", en: "" },
+        },
+        {
+          key: "module-2",
+          moduleId: "module-2",
+          material: { ar: "Arabic two", en: "" },
+        },
+      ];
+      renderStatefulView({ entries });
+
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+      await vi.waitFor(() =>
+        expect(assistLearningMaterialMock).toHaveBeenCalledTimes(1),
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Delete Module 2" }),
+      ).toBeEnabled();
+
+      const editors = await findMaterialEditors();
+      const user = userEvent.setup();
+      await user.click(editors[1]);
+      await user.type(editors[1], "!");
+      expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
+
+      resolveAssist("Refined one");
+
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
+      expect(screen.getAllByRole("radio", { name: "Arabic" })[0]).toBeChecked();
+      expect(await screen.findByText("Refined one")).toBeInTheDocument();
+      expect(screen.getByText("Arabic two!")).toBeInTheDocument();
+    });
+
+    it("shows an error and leaves material unchanged when the request fails", async () => {
+      assistLearningMaterialMock.mockRejectedValueOnce(
+        new Error("AI Assistant failed. Please try again."),
+      );
+      renderView({ entries: SAMPLE_ENTRIES });
+
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      expect(
+        await screen.findByText("AI Assistant failed. Please try again."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("First material")).toBeInTheDocument();
     });
   });
 });
