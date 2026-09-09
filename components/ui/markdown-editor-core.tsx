@@ -177,6 +177,7 @@ export default function MarkdownEditorCore({
     getSelectedText: () => selectedTextBox.current,
     getSelectedMarkdown: () => editorRef.current?.getSelectionMarkdown() ?? "",
     setMarkdown: (value) => editorRef.current?.setMarkdown(value),
+    insertMarkdown: (value) => editorRef.current?.insertMarkdown(value),
   }));
 
   // Without `fillHeight`, MDXEditor's own contenteditable only sizes to its

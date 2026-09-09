@@ -213,27 +213,26 @@ export function ModuleBuilderView({
     );
   }
 
-  // AI Assistant for a single card's currently active language (ANA-85) --
-  // reads that Module's *current* draft for `language` at call time, same
-  // reasoning as `handleTranslateModule`, then applies the result through a
+  // AI Assistant for a single card's current selection (ANA-85, PR review)
+  // -- sends only `selectedMarkdown` (the exact text the card captured, not
+  // the whole Module) to the AI, then applies the result through a
   // functional update against whichever `modules` is current *when the
-  // request resolves*, replacing only that Module's `material[language]` so
-  // a concurrent edit/reorder/delete to a *different* Module survives this
-  // resolving late instead of being reverted by a stale snapshot (spec #6).
+  // request resolves*, replacing only `token` (the unique marker the card
+  // already substituted in place of the selection) within that Module's
+  // `material[language]` -- never re-searching for `selectedMarkdown`
+  // itself, which may recur elsewhere in the Module text -- so a concurrent
+  // edit/reorder/delete to a *different* Module survives this resolving
+  // late instead of being reverted by a stale snapshot (spec #6).
   async function handleAiAssistModule(
     moduleId: string,
     language: "ar" | "en",
-    instructions?: string,
+    instructions: string | undefined,
+    selectedMarkdown: string,
+    token: string,
   ) {
-    const targetModule = modules.find((module) => module.id === moduleId);
-
-    if (!targetModule) {
-      return;
-    }
-
     const refined = await assistLearningMaterial({
       bookId,
-      text: targetModule.material[language],
+      text: selectedMarkdown,
       language,
       additionalInstructions: instructions,
     });
@@ -241,7 +240,13 @@ export function ModuleBuilderView({
     onModulesChange((current) =>
       current.map((module) =>
         module.id === moduleId
-          ? { ...module, material: { ...module.material, [language]: refined } }
+          ? {
+              ...module,
+              material: {
+                ...module.material,
+                [language]: module.material[language].replace(token, refined),
+              },
+            }
           : module,
       ),
     );

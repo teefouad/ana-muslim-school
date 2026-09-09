@@ -135,6 +135,29 @@ test("returns the current selection as plain text and Markdown", async () => {
   expect(ref.current?.getSelectedMarkdown()).toBe("Hello");
 });
 
+test("insertMarkdown replaces the current selection, leaving the rest of the document untouched", async () => {
+  const ref = createRef<MarkdownEditorHandle>();
+  const onChange = vi.fn();
+  renderWithProvider(
+    <MarkdownEditor
+      ref={ref as RefObject<MarkdownEditorHandle>}
+      markdown="Hello world"
+      onChange={onChange}
+    />,
+  );
+
+  const editable = await screen.findByRole("textbox");
+  await userEvent.setup().click(editable);
+  selectFirstCharacters(editable, 5);
+  await vi.waitFor(() => expect(ref.current?.getSelectedText()).toBe("Hello"));
+
+  ref.current?.insertMarkdown("Goodbye");
+
+  await vi.waitFor(() =>
+    expect(onChange).toHaveBeenLastCalledWith("Goodbye world", false),
+  );
+});
+
 test("omits the full-height layout by default", async () => {
   const { container } = renderWithProvider(
     <MarkdownEditor markdown="Hello" onChange={vi.fn()} />,

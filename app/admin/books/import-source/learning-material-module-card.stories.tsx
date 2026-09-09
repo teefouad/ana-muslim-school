@@ -77,7 +77,8 @@ export const Disabled: Story = {
 // this card's own confirmation dialog before calling `onDelete`; Translate
 // is enabled since the Arabic draft is non-empty, and English is empty so it
 // would translate immediately without a replace-confirmation; AI Assistant
-// opens its own instructions dialog for the active language.
+// operates on the editor's current selection and starts disabled until text
+// is selected in it (PR review).
 export const WithActions: Story = {
   args: {
     material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
@@ -87,19 +88,14 @@ export const WithActions: Story = {
   },
 };
 
-// Clicking AI Assistant opens a dialog with an optional instructions
-// textarea; Generate closes it and calls `onAiAssist` with the active
-// language and the trimmed instructions (ANA-85).
+// Select some text in the editor to enable AI Assistant, then click it --
+// opens a dialog with an optional instructions textarea; Generate closes it
+// and calls `onAiAssist` with the active language, the trimmed instructions,
+// the exact selected Markdown, and a token marking its place (ANA-85, PR
+// review).
 export const AiAssistant: Story = {
   args: {
     material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
-    onAiAssist: async () => {},
-  },
-};
-
-export const AiAssistantDisabledForBlankActiveLanguage: Story = {
-  args: {
-    material: { ar: "", en: "" },
     onAiAssist: async () => {},
   },
 };

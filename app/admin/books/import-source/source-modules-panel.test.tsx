@@ -1,9 +1,27 @@
+import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { SourceModulesPanel } from "./source-modules-panel";
+
+// Selects the first `length` characters of the editor's first text node
+// directly through the native Selection API (same technique as
+// components/ui/markdown-editor.test.tsx and learning-material-module-
+// card.test.tsx) -- needed for AI Assistant, which now requires an active
+// selection (ANA-85, PR review).
+function selectFirstCharacters(root: HTMLElement, length: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNode = walker.nextNode() as Text;
+  const range = document.createRange();
+  range.setStart(textNode, 0);
+  range.setEnd(textNode, length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
 
 type Item = { key: string; material: TranslatableString };
 
@@ -68,6 +86,52 @@ function renderPanel(
   );
 
   return { ...props, container };
+}
+
+// AI Assistant's selection-token flow (ANA-85, PR review) round-trips
+// through the real `onMaterialChange` callback -- `renderPanel`'s bare
+// `vi.fn()` never feeds an update back into `items`, so tests exercising
+// that flow need a genuinely stateful wrapper instead.
+function renderStatefulPanel(
+  overrides: Partial<
+    React.ComponentProps<typeof SourceModulesPanel<Item>>
+  > = {},
+) {
+  function Wrapper() {
+    const [items, setItems] = useState<Item[]>(overrides.items ?? ITEMS);
+
+    return (
+      <SourceModulesPanel<Item>
+        getKey={(item) => item.key}
+        getMaterial={(item) => item.material}
+        onReorder={setItems}
+        fontScale={100}
+        disabled={false}
+        reorderDisabled={false}
+        canCreateModule={false}
+        onCreateModule={vi.fn()}
+        onDeleteItem={vi.fn()}
+        isDeleteDisabled={() => false}
+        onTranslateItem={vi.fn()}
+        onAiAssistItem={vi.fn()}
+        {...overrides}
+        items={items}
+        onMaterialChange={(key, material) =>
+          setItems((current) =>
+            current.map((item) =>
+              item.key === key ? { ...item, material } : item,
+            ),
+          )
+        }
+      />
+    );
+  }
+
+  render(
+    <MantineProvider>
+      <Wrapper />
+    </MantineProvider>,
+  );
 }
 
 describe("SourceModulesPanel", () => {
@@ -177,15 +241,32 @@ describe("SourceModulesPanel", () => {
     expect(onTranslateItem).toHaveBeenCalledWith("module-2");
   });
 
-  it("wires AI Assistant per item, keyed by getKey, forwarding the active language and instructions (ANA-85)", async () => {
+  it("wires AI Assistant per item, keyed by getKey, forwarding the active language, instructions, selected Markdown, and a token (ANA-85, PR review)", async () => {
     const onAiAssistItem = vi.fn().mockResolvedValue(undefined);
-    renderPanel({ onAiAssistItem });
+    renderStatefulPanel({ onAiAssistItem });
+
+    const editors = await screen.findAllByRole("textbox");
+    selectFirstCharacters(editors[1], 4);
+    await vi.waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "AI Assistant" })[1],
+      ).toBeEnabled(),
+    );
 
     fireEvent.click(screen.getAllByRole("button", { name: "AI Assistant" })[1]);
+    // `insertMarkdown` settles asynchronously (see markdown-editor.test.
+    // tsx) -- awaited so the token has landed before Generate runs.
+    await vi.waitFor(() => expect(screen.queryByText("ثاني")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
     await vi.waitFor(() => expect(onAiAssistItem).toHaveBeenCalledTimes(1));
-    expect(onAiAssistItem).toHaveBeenCalledWith("module-2", "ar", undefined);
+    expect(onAiAssistItem).toHaveBeenCalledWith(
+      "module-2",
+      "ar",
+      undefined,
+      "ثاني",
+      expect.stringMatching(/^AISELECTION/),
+    );
   });
 
   it("disables an item's delete action per isDeleteDisabled(key)", () => {

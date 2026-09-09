@@ -563,18 +563,27 @@ describe("ModuleBuilderView", () => {
   });
 
   describe("AI Assistant", () => {
-    it("sends the Module's active-language draft and bookId, and applies the result to that language only", async () => {
+    it("sends only the selected Markdown and bookId, and applies the result to only the selected range (ANA-85, PR review)", async () => {
       assistLearningMaterialMock.mockResolvedValueOnce("Refined text");
-      const onModulesChange = vi.fn();
       const modules: TempModule[] = [
         { id: "module-1", material: { ar: "First", en: "" } },
         { id: "module-2", material: { ar: "Second", en: "" } },
       ];
-      renderView({ bookId: "book-42", modules, onModulesChange });
+      renderStatefulView({ bookId: "book-42", modules });
 
+      const editors = await screen.findAllByRole("textbox");
+      selectFirstCharacters(editors[0], 5);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
       fireEvent.click(
         screen.getAllByRole("button", { name: "AI Assistant" })[0],
       );
+      // `insertMarkdown` settles asynchronously (see markdown-editor.test.
+      // tsx) -- awaited so the token has landed before Generate runs.
+      await vi.waitFor(() => expect(screen.queryByText("First")).toBeNull());
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
       await vi.waitFor(() =>
@@ -585,10 +594,8 @@ describe("ModuleBuilderView", () => {
           additionalInstructions: undefined,
         }),
       );
-      expect(applyLastModulesUpdate(onModulesChange, modules)).toEqual([
-        { id: "module-1", material: { ar: "Refined text", en: "" } },
-        modules[1],
-      ]);
+      expect(await screen.findByText("Refined text")).toBeInTheDocument();
+      expect(screen.getByText("Second")).toBeInTheDocument();
     });
 
     it("applies its result against the latest modules when it resolves, preserving a concurrent edit made to a different card while it was in flight", async () => {
@@ -605,8 +612,18 @@ describe("ModuleBuilderView", () => {
       ];
       renderStatefulView({ modules });
 
+      const editors = await screen.findAllByRole("textbox");
+      selectFirstCharacters(editors[0], 10);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
       fireEvent.click(
         screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      await vi.waitFor(() =>
+        expect(screen.queryByText("Arabic one")).toBeNull(),
       );
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
       await vi.waitFor(() =>
@@ -624,7 +641,6 @@ describe("ModuleBuilderView", () => {
 
       // While that request is still pending, edit Module 2's own Learning
       // Material -- a real state update the builder must not lose.
-      const editors = await screen.findAllByRole("textbox");
       const user = userEvent.setup();
       await user.click(editors[1]);
       await user.type(editors[1], "!");
@@ -632,10 +648,15 @@ describe("ModuleBuilderView", () => {
 
       resolveAssist("Refined one");
 
+      // Module 1 unfreezes once the request resolves -- AI Assistant
+      // itself goes back to *disabled* rather than enabled, since applying
+      // the result clears the selection it was operating on (ANA-85, PR
+      // review); Delete unfreezing is what signals the card is no longer
+      // frozen.
       await vi.waitFor(() =>
         expect(
-          screen.getAllByRole("button", { name: "AI Assistant" })[0],
-        ).toBeEnabled(),
+          screen.getByRole("button", { name: "Delete Module 1" }),
+        ).not.toBeDisabled(),
       );
       // Module 1's active language tab stays exactly as it was (Arabic).
       expect(screen.getAllByRole("radio", { name: "Arabic" })[0]).toBeChecked();
@@ -645,16 +666,24 @@ describe("ModuleBuilderView", () => {
       expect(screen.getByText("Arabic two!")).toBeInTheDocument();
     });
 
-    it("shows an error and leaves material unchanged when the request fails", async () => {
+    it("restores the original selected text and shows an error when the request fails", async () => {
       assistLearningMaterialMock.mockRejectedValueOnce(
         new Error("AI Assistant failed. Please try again."),
       );
       const modules: TempModule[] = [
         { id: "module-1", material: { ar: "First", en: "" } },
       ];
-      renderView({ modules });
+      renderStatefulView({ modules });
 
+      const editable = await screen.findByRole("textbox");
+      selectFirstCharacters(editable, 5);
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "AI Assistant" }),
+        ).toBeEnabled(),
+      );
       fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
+      await vi.waitFor(() => expect(screen.queryByText("First")).toBeNull());
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
       expect(

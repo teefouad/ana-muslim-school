@@ -43,13 +43,19 @@ export interface SourceModulesPanelProps<T> {
   getDeleteConfirmDescription?: (key: string) => string | undefined;
   isDeleteDisabled: (key: string) => boolean;
   onTranslateItem: (key: string) => Promise<void>;
-  /** AI Assistant for a given item (ANA-85), keyed by `getKey` -- called
-   * with the active language tab (owned by the card itself) and the
-   * optional trimmed instructions. */
+  /** AI Assistant for a given item (ANA-85, PR review), keyed by `getKey` --
+   * called with the active language tab (owned by the card itself), the
+   * optional trimmed instructions, the exact selected Markdown the card
+   * captured, and the unique token the card already substituted in its
+   * place within the item's own material. The callee's own functional
+   * update must replace that *token* (never re-search for the original
+   * text, which may recur elsewhere in the document) with the AI's result. */
   onAiAssistItem: (
     key: string,
     language: "ar" | "en",
-    instructions?: string,
+    instructions: string | undefined,
+    selectedMarkdown: string,
+    token: string,
   ) => Promise<void>;
 }
 
@@ -85,7 +91,12 @@ function SortableModuleCard<T>({
   deleteConfirmDescription: string | undefined;
   deleteDisabled: boolean;
   onTranslate: () => Promise<void>;
-  onAiAssist: (language: "ar" | "en", instructions?: string) => Promise<void>;
+  onAiAssist: (
+    language: "ar" | "en",
+    instructions: string | undefined,
+    selectedMarkdown: string,
+    token: string,
+  ) => Promise<void>;
   testId: string;
 }) {
   const {
@@ -207,8 +218,19 @@ export function SourceModulesPanel<T>({
                   deleteConfirmDescription={getDeleteConfirmDescription?.(key)}
                   deleteDisabled={isDeleteDisabled(key)}
                   onTranslate={() => onTranslateItem(key)}
-                  onAiAssist={(language, instructions) =>
-                    onAiAssistItem(key, language, instructions)
+                  onAiAssist={(
+                    language,
+                    instructions,
+                    selectedMarkdown,
+                    token,
+                  ) =>
+                    onAiAssistItem(
+                      key,
+                      language,
+                      instructions,
+                      selectedMarkdown,
+                      token,
+                    )
                   }
                   testId={`module-card-${key}`}
                 />
