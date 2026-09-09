@@ -719,12 +719,17 @@ describe("SavedSourceView", () => {
       // Now let Module 1's translation resolve.
       resolveTranslate("Translated one");
 
-      // Module 1 switches to English, showing the translation...
+      // Module 1's active language tab stays exactly as it was (Arabic,
+      // ANA-83) -- it is not switched to English on success.
       await vi.waitFor(() =>
         expect(
-          screen.getAllByRole("radio", { name: "English" })[0],
-        ).toBeChecked(),
+          screen.getAllByRole("button", { name: "Translate to English" })[0],
+        ).toBeEnabled(),
       );
+      expect(screen.getAllByRole("radio", { name: "Arabic" })[0]).toBeChecked();
+      // The translation still landed in Module 1's English draft -- switch
+      // to it manually to confirm.
+      fireEvent.click(screen.getAllByRole("radio", { name: "English" })[0]);
       expect(await screen.findByText("Translated one")).toBeInTheDocument();
       // ...and Module 2's concurrent edit is still there, not reverted by
       // the translation applying against a stale snapshot of `entries`.

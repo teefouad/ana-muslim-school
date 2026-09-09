@@ -75,8 +75,8 @@ export interface LearningMaterialModuleCardProps {
    * `/api/v1/ai/translate` boundary): reads the current `material.ar`
    * draft, replaces `material.en` via `onMaterialChange`, and rejects on
    * failure without touching either draft. The card owns the loading state
-   * and switches the active language to English once this resolves. Omit
-   * to hide the translate affordance entirely. */
+   * and never changes which language tab is active (ANA-83) -- success or
+   * failure. Omit to hide the translate affordance entirely. */
   onTranslate?: () => Promise<void>;
   /** Renders this card as a non-interactive drag preview (ANA-80): always
    * collapsed regardless of internal state, and the collapse toggle never
@@ -199,10 +199,8 @@ export function LearningMaterialModuleCard({
 
     try {
       await onTranslate();
-      // Switches the card over so the user immediately sees the result
-      // (ANA-77) -- only on success; a failure leaves the active language
-      // (and both drafts) untouched.
-      setActiveLanguage("en");
+      // Leaves the active language tab exactly as the user had it (ANA-83)
+      // -- success or failure, only `material.en` changes here.
     } catch (err) {
       setTranslateError(
         err instanceof Error ? err.message : "Something went wrong.",

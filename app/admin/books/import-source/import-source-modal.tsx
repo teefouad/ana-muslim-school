@@ -71,8 +71,8 @@ type Step = "pick" | "select-pages" | "review-ocr" | "build-modules";
 
 export interface ImportSourceModalProps {
   /** The modal is open whenever this is true. Only a persisted Book can
-   * open the flow -- callers are responsible for keeping the triggering
-   * "Create from PDF" button disabled until a real `bookId` exists. */
+   * open the flow -- callers are responsible for not rendering the
+   * triggering "Import Modules" button until a real `bookId` exists. */
   opened: boolean;
   onClose: () => void;
   /** The Book this import belongs to -- Finish creates the temporary
@@ -225,14 +225,12 @@ export function ImportSourceModal({
   } = useSWR<{ data: Source[] }>(sourceUrl, fetchJson);
   const existingSource = sourceData?.data[0] ?? null;
 
-  // Drives the modal's title (ANA-75): "Source Text" only while the saved-
-  // Source workspace itself is showing, "Create from PDF" for every other
-  // state of the "pick" step (loading/error included, matching this flow's
-  // existing default) and for every step of the PDF upload/OCR/Module-
-  // building workflow. Recomputed from `existingSource`/`step` on every
-  // render rather than tracked separately, so removing the saved Source
-  // (Select Another PDF) or finishing the upload flow always keeps the
-  // title in sync with what's actually on screen.
+  // Whether the saved-Source workspace itself is showing, as opposed to
+  // every other state of the "pick" step (loading/error included) or any
+  // step of the PDF upload/OCR/Module-building workflow -- decides which
+  // dirty check applies (`isDirty` below) and which of the two flows
+  // renders. The modal's title is fixed to "Import Modules" regardless
+  // (ANA-83); this no longer drives any visible copy.
   const showingSavedSource =
     step === "pick" &&
     !sourceLookupLoading &&
@@ -461,9 +459,10 @@ export function ImportSourceModal({
       );
       // A fresh OCR result (even for the same file, e.g. a different page
       // selection) replaces the source text Modules were built from --
-      // without this, going Back -> Back to page selection -> Run OCR again
-      // would carry Modules (and their Learning Material) built from the
-      // previous extracted text into the Module builder for the new one.
+      // without this, going Back -> Back to page selection -> Process
+      // Pages again would carry Modules (and their Learning Material)
+      // built from the previous extracted text into the Module builder
+      // for the new one.
       setModules([]);
       setStep("review-ocr");
     });
@@ -888,7 +887,7 @@ export function ImportSourceModal({
       <Modal
         opened={opened}
         onClose={handleClose}
-        title={showingSavedSource ? "Source Text" : "Create from PDF"}
+        title="Import Modules"
         classNames={{ content: styles.content, body: styles.body }}
         // Near-full desktop width with normal dashboard margins still
         // visible: Mantine's own Modal.Inner reserves a *default* 5vw of
