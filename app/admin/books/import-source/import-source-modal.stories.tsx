@@ -9,7 +9,7 @@ function ImportSourceModalDemo() {
 
   return (
     <>
-      <Button onClick={() => setOpened(true)}>Import Modules</Button>
+      <Button onClick={() => setOpened(true)}>Module Builder</Button>
       <ImportSourceModal
         opened={opened}
         onClose={() => setOpened(false)}

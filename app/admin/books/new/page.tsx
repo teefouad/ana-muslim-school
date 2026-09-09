@@ -26,7 +26,7 @@ import type { Book } from "@/lib/books/types";
 const BOOK_FORM_ID = "add-book-form";
 
 // Add Book (ANA-65): creates through `POST /api/v1/books` and hands off to
-// the normal Edit Book surface for the server-returned id -- Import Modules
+// the normal Edit Book surface for the server-returned id -- Module Builder
 // isn't rendered at all here, and the Modules panel stays disabled, since a
 // Book must exist (and have a real id) before either can do anything, and
 // this page never keeps rendering a "saved" state of its own after a
