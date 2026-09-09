@@ -16,7 +16,7 @@ export type OcrRunState =
 
 /**
  * Owns the upload-url -> direct-upload -> OCR request chain for the Import
- * Source modal's "Run OCR" action (ANA-68).
+ * Source modal's "Process Pages" action (ANA-68).
  *
  * `activeFileRef` guards against a late response from an abandoned request
  * overwriting state for a newly selected file: `run` stamps the file it was

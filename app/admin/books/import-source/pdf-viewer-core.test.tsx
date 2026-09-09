@@ -239,17 +239,19 @@ describe("PdfViewer", () => {
     expect(screen.getByText("1 of 1 page selected")).toBeInTheDocument();
   });
 
-  it("disables Run OCR when zero pages are selected", () => {
+  it("disables Process Pages when zero pages are selected", () => {
     renderViewer({ selectedPages: new Set() });
 
-    expect(screen.getByRole("button", { name: /Run OCR/ })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Process Pages/ }),
+    ).toBeDisabled();
   });
 
-  it("enables Run OCR once pages are selected and calls onRunOcr with sorted pages", () => {
+  it("enables Process Pages once pages are selected and calls onRunOcr with sorted pages", () => {
     const onRunOcr = vi.fn();
     renderViewer({ selectedPages: new Set([5, 2]), onRunOcr });
 
-    const runOcr = screen.getByRole("button", { name: /Run OCR/ });
+    const runOcr = screen.getByRole("button", { name: /Process Pages/ });
     expect(runOcr).toBeEnabled();
 
     fireEvent.click(runOcr);
@@ -257,10 +259,10 @@ describe("PdfViewer", () => {
     expect(onRunOcr).toHaveBeenCalledWith([2, 5]);
   });
 
-  it("shows a loading state on the Run OCR button while OCR is in flight", () => {
+  it("shows a loading state on the Process Pages button while OCR is in flight", () => {
     renderViewer({ selectedPages: new Set([1]), isRunningOcr: true });
 
-    const runOcr = screen.getByRole("button", { name: /Run OCR/ });
+    const runOcr = screen.getByRole("button", { name: /Process Pages/ });
     expect(
       within(runOcr).getByText("", { selector: ".mantine-Button-loader" }),
     ).toBeInTheDocument();

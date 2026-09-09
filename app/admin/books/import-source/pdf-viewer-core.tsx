@@ -146,7 +146,7 @@ export default function PdfViewer({
           loading={isRunningOcr}
           onClick={handleRunOcr}
         >
-          Run OCR
+          Process Pages
         </Button>
       </div>
     </div>

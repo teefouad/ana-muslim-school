@@ -176,7 +176,7 @@ describe("EditBookPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders Create from PDF immediately next to Save changes in the header, both enabled once loaded", async () => {
+  it("renders Import Modules immediately next to Save changes in the header, both enabled once loaded", async () => {
     setupFetch(buildBookFixture());
     renderPage();
 
@@ -184,7 +184,7 @@ describe("EditBookPage", () => {
       name: "Save changes",
     });
     const importSource = await screen.findByRole("button", {
-      name: "Create from PDF",
+      name: "Import Modules",
     });
     expect(importSource).toBeEnabled();
     expect(saveChanges).toBeEnabled();
@@ -222,20 +222,17 @@ describe("EditBookPage", () => {
     // independently of the Source lookup, which is still pending here.
     await screen.findByRole("button", { name: "Save changes" });
     expect(
-      screen.queryByRole("button", { name: "Create from PDF" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "View source text" }),
+      screen.queryByRole("button", { name: "Import Modules" }),
     ).not.toBeInTheDocument();
 
     resolveSources(jsonResponse({ data: [] }));
 
     expect(
-      await screen.findByRole("button", { name: "Create from PDF" }),
+      await screen.findByRole("button", { name: "Import Modules" }),
     ).toBeInTheDocument();
   });
 
-  it("keeps the Source action button hidden if the Source lookup fails, instead of guessing Create from PDF (ANA-75)", async () => {
+  it("keeps the Source action button hidden if the Source lookup fails, instead of guessing Import Modules (ANA-75)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockImplementation(
       (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -264,23 +261,17 @@ describe("EditBookPage", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(
-      screen.queryByRole("button", { name: "Create from PDF" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "View source text" }),
+      screen.queryByRole("button", { name: "Import Modules" }),
     ).not.toBeInTheDocument();
   });
 
-  it("labels the header button View source text when the Book already has a saved Source", async () => {
+  it("labels the header button Import Modules whether or not the Book already has a saved Source", async () => {
     setupFetch(buildBookFixture(), { hasSource: true });
     renderPage();
 
     expect(
-      await screen.findByRole("button", { name: "View source text" }),
+      await screen.findByRole("button", { name: "Import Modules" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Create from PDF" }),
-    ).not.toBeInTheDocument();
   });
 
   it("renders the Modules panel on the right, enabled", async () => {
@@ -299,17 +290,17 @@ describe("EditBookPage", () => {
     renderPage();
 
     const importSource = await screen.findByRole("button", {
-      name: "Create from PDF",
+      name: "Import Modules",
     });
 
     expect(
-      screen.queryByRole("dialog", { name: "Create from PDF" }),
+      screen.queryByRole("dialog", { name: "Import Modules" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(importSource);
 
     expect(
-      await screen.findByRole("dialog", { name: "Create from PDF" }),
+      await screen.findByRole("dialog", { name: "Import Modules" }),
     ).toBeInTheDocument();
     // The modal's own Source-by-bookId lookup (ANA-71) resolves
     // asynchronously before the upload flow renders -- `findByRole` waits

@@ -15,7 +15,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { Eye, Upload } from "lucide-react";
+import { FileText } from "lucide-react";
 
 import {
   BookForm,
@@ -108,24 +108,24 @@ export default function EditBookPage() {
 
   const modules: MockModule[] = moduleOrderDraft ?? serverModules;
   // Whether this Book already has a saved Source (ANA-71) -- fetched here,
-  // not gated on the Import Source modal being open, since the header
-  // button's own label (Create from PDF vs. View source text) needs to
-  // reflect this before the modal has ever been opened. Shares the modal's
-  // own Source-by-bookId SWR cache entry (same key) so opening the modal
-  // right after doesn't re-fetch.
+  // not gated on the Import Modules modal being open, since which internal
+  // modal flow the header button opens (saved Source workspace vs. PDF
+  // import) needs to be known before the modal has ever been opened. The
+  // button's own label/icon are fixed ("Import Modules", ANA-83) and don't
+  // vary with this. Shares the modal's own Source-by-bookId SWR cache entry
+  // (same key) so opening the modal right after doesn't re-fetch.
   //
   // `sourceData` (rather than a separate loading/error flag) is also what
-  // decides whether the Source action button renders at all (ANA-75):
+  // decides whether the Import Modules button renders at all (ANA-75):
   // while the lookup is pending or has failed, SWR leaves `data` at
   // `undefined` (there's no earlier successful fetch to fall back to), so
   // gating the button on `sourceData` being present keeps it hidden for
-  // both cases instead of guessing "Create from PDF" and flashing to "View
-  // source text" once the real answer arrives.
+  // both cases instead of guessing which modal flow to route into before
+  // the real answer arrives.
   const { data: sourceData } = useSWR<{ data: Source[] }>(
     book ? `/api/v1/sources?bookId=${encodeURIComponent(book.id)}` : null,
     fetchJson,
   );
-  const hasSource = (sourceData?.data.length ?? 0) > 0;
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [importSourceOpened, setImportSourceOpened] = useState(false);
@@ -231,15 +231,9 @@ export default function EditBookPage() {
             <Button
               variant="default"
               onClick={() => setImportSourceOpened(true)}
-              leftSection={
-                hasSource ? (
-                  <Eye size={16} aria-hidden="true" />
-                ) : (
-                  <Upload size={16} aria-hidden="true" />
-                )
-              }
+              leftSection={<FileText size={16} aria-hidden="true" />}
             >
-              {hasSource ? "View source text" : "Create from PDF"}
+              Import Modules
             </Button>
           )}
           <Button

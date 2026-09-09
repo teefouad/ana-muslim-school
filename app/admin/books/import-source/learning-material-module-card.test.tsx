@@ -354,7 +354,7 @@ describe("LearningMaterialModuleCard", () => {
       ).toBeDisabled();
     });
 
-    it("translates immediately when English is empty, without touching either draft itself, and activates English on success", async () => {
+    it("translates immediately when English is empty, without touching either draft itself, and leaves the active language tab unchanged (ANA-83)", async () => {
       const onMaterialChange = vi.fn();
       const onTranslate = vi.fn().mockResolvedValue(undefined);
       renderCard({
@@ -362,6 +362,11 @@ describe("LearningMaterialModuleCard", () => {
         onMaterialChange,
         onTranslate,
       });
+
+      // Arabic is the card's default active language -- confirm it's still
+      // selected going in, so the assertion below actually proves nothing
+      // switched it.
+      expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
 
       fireEvent.click(
         screen.getByRole("button", { name: "Translate to English" }),
@@ -375,10 +380,25 @@ describe("LearningMaterialModuleCard", () => {
       expect(
         screen.queryByRole("dialog", { name: "Replace English translation?" }),
       ).not.toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
+    });
 
-      await vi.waitFor(() =>
-        expect(screen.getByRole("radio", { name: "English" })).toBeChecked(),
+    it("leaves English selected after a successful translation, when English was the active tab (ANA-83)", async () => {
+      const onTranslate = vi.fn().mockResolvedValue(undefined);
+      renderCard({
+        material: { ar: "Arabic content", en: "" },
+        onTranslate,
+      });
+
+      fireEvent.click(screen.getByRole("radio", { name: "English" }));
+      expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
       );
+
+      await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
+      expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
     });
 
     it("requires confirmation before replacing non-empty English content", () => {
@@ -416,12 +436,14 @@ describe("LearningMaterialModuleCard", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("translates after confirming replacement of existing English content", async () => {
+    it("translates after confirming replacement of existing English content, without changing the active language tab (ANA-83)", async () => {
       const onTranslate = vi.fn().mockResolvedValue(undefined);
       renderCard({
         material: { ar: "Arabic content", en: "Existing English" },
         onTranslate,
       });
+
+      expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
 
       fireEvent.click(
         screen.getByRole("button", { name: "Translate to English" }),
@@ -431,6 +453,7 @@ describe("LearningMaterialModuleCard", () => {
       );
 
       await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
+      expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
     });
 
     it("keeps both drafts and shows an error when translation fails", async () => {
@@ -453,6 +476,7 @@ describe("LearningMaterialModuleCard", () => {
       ).toBeInTheDocument();
       expect(onMaterialChange).not.toHaveBeenCalled();
       expect(screen.getByText("Arabic content")).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
     });
 
     it("disables translate while a request is already in flight", async () => {

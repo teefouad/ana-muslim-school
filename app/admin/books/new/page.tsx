@@ -12,7 +12,6 @@ import {
   Stack,
   Title,
 } from "@mantine/core";
-import { Upload } from "lucide-react";
 
 import {
   BookForm,
@@ -20,20 +19,23 @@ import {
   toBookWritableFields,
   type BookFormValues,
 } from "../book-form";
-import { INITIAL_MOCK_MODULES, type MockModule } from "../mock-modules";
+import type { MockModule } from "../mock-modules";
 import { ModulesPanel } from "../modules-panel";
 import type { Book } from "@/lib/books/types";
 
 const BOOK_FORM_ID = "add-book-form";
 
 // Add Book (ANA-65): creates through `POST /api/v1/books` and hands off to
-// the normal Edit Book surface for the server-returned id -- Import Source
-// and the Modules panel stay disabled here since a Book must exist (and
-// have a real id) before either can do anything, and this page never keeps
-// rendering a "saved" state of its own after a successful create.
+// the normal Edit Book surface for the server-returned id -- Import Modules
+// isn't rendered at all here, and the Modules panel stays disabled, since a
+// Book must exist (and have a real id) before either can do anything, and
+// this page never keeps rendering a "saved" state of its own after a
+// successful create. The Modules list starts empty (ANA-83) -- there is no
+// local Book yet for any Module to belong to, so nothing renders until
+// real, persisted Modules exist on Edit Book.
 export default function AddBookPage() {
   const router = useRouter();
-  const [modules, setModules] = useState<MockModule[]>(INITIAL_MOCK_MODULES);
+  const [modules, setModules] = useState<MockModule[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -71,13 +73,6 @@ export default function AddBookPage() {
       <Group justify="space-between" wrap="wrap" gap="sm">
         <Title order={2}>Add Book</Title>
         <Group gap="sm">
-          <Button
-            variant="default"
-            disabled
-            leftSection={<Upload size={16} aria-hidden="true" />}
-          >
-            Create from PDF
-          </Button>
           <Button type="submit" form={BOOK_FORM_ID} loading={isSubmitting}>
             Add book
           </Button>

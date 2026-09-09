@@ -69,13 +69,27 @@ describe("AddBookPage", () => {
     expect(addButton).toHaveAttribute("form");
   });
 
-  it("renders Create from PDF and the Modules panel disabled", () => {
+  it("does not render an Import Modules action", () => {
     renderPage();
 
     expect(
-      screen.getByRole("button", { name: "Create from PDF" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Import Modules" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create from PDF" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the Modules panel disabled and empty, with no placeholder rows", () => {
+    renderPage();
+
     expect(screen.getByText("Modules")).toBeInTheDocument();
+    expect(
+      screen.getByText("This book has no modules yet."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Introduction")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prayer basics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Summary")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add module" })).toBeDisabled();
   });
 

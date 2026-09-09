@@ -278,28 +278,28 @@ describe("ImportSourceModal", () => {
     ).toBeInTheDocument();
   });
 
-  describe("Modal title (ANA-75)", () => {
-    it("titles the modal Create from PDF for the upload/OCR/new-import workflow", async () => {
+  describe("Modal title (ANA-83)", () => {
+    it("titles the modal Import Modules for the upload/OCR/new-import workflow", async () => {
       renderModal();
 
       expect(
-        await screen.findByRole("dialog", { name: "Create from PDF" }),
+        await screen.findByRole("dialog", { name: "Import Modules" }),
       ).toBeInTheDocument();
     });
 
-    it("titles the modal Source Text for the saved-Source workspace", async () => {
+    it("titles the modal Import Modules for the saved-Source workspace too", async () => {
       mockExistingSource();
       renderModal();
 
       expect(
-        await screen.findByRole("dialog", { name: "Source Text" }),
+        await screen.findByRole("dialog", { name: "Import Modules" }),
       ).toBeInTheDocument();
     });
 
-    it("switches the title back to Create from PDF once the saved Source is removed", async () => {
+    it("keeps the title Import Modules once the saved Source is removed", async () => {
       mockExistingSource();
       renderModal();
-      await screen.findByRole("dialog", { name: "Source Text" });
+      await screen.findByRole("dialog", { name: "Import Modules" });
 
       (fetch as ReturnType<typeof vi.fn>).mockImplementationOnce((input) => {
         const url = String(input);
@@ -316,7 +316,7 @@ describe("ImportSourceModal", () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
 
       expect(
-        await screen.findByRole("dialog", { name: "Create from PDF" }),
+        await screen.findByRole("dialog", { name: "Import Modules" }),
       ).toBeInTheDocument();
     });
   });
@@ -1347,7 +1347,7 @@ describe("ImportSourceModal", () => {
     await selectFile();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
 
     expect(
       await screen.findByRole("button", { name: "Create Modules" }),
@@ -1388,7 +1388,7 @@ describe("ImportSourceModal", () => {
     renderModal();
     await selectFile();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
     await screen.findByRole("button", { name: "Create Modules" });
 
     fireEvent.click(
@@ -1421,7 +1421,7 @@ describe("ImportSourceModal", () => {
     renderModal();
     await selectFile();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
 
     await screen.findByRole("button", { name: "Create Modules" });
 
@@ -1462,7 +1462,7 @@ describe("ImportSourceModal", () => {
     renderModal();
     await selectFile("book.pdf");
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
     await screen.findByRole("button", { name: "Create Modules" });
     fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
@@ -1495,7 +1495,7 @@ describe("ImportSourceModal", () => {
       screen.getByRole("button", { name: "Choose a different file" }),
     );
 
-    // Run OCR again on a new document.
+    // Process Pages again on a new document.
     requestOcrMock.mockResolvedValueOnce({
       model: "mistral-ocr-latest",
       pagesProcessed: 1,
@@ -1504,7 +1504,7 @@ describe("ImportSourceModal", () => {
     });
     await selectFile("book-2.pdf");
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
     await screen.findByRole("button", { name: "Create Modules" });
     fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
@@ -1534,7 +1534,7 @@ describe("ImportSourceModal", () => {
     const rendered = renderModal(overrides);
     await selectFile();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
     await screen.findByRole("button", { name: "Create Modules" });
     fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
@@ -1591,7 +1591,7 @@ describe("ImportSourceModal", () => {
     renderModal();
     await selectFile();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
     await screen.findByRole("button", { name: "Create Modules" });
     fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
@@ -1631,7 +1631,7 @@ describe("ImportSourceModal", () => {
       renderModal();
       await selectFile();
       fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-      fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
       await screen.findByRole("button", { name: "Create Modules" });
       fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
@@ -1654,7 +1654,7 @@ describe("ImportSourceModal", () => {
       const { onClose } = renderModal();
       await selectFile();
       fireEvent.click(screen.getByRole("checkbox", { name: "Select page 1" }));
-      fireEvent.click(screen.getByRole("button", { name: /Run OCR/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Process Pages/ }));
       await screen.findByRole("button", { name: "Create Modules" });
       fireEvent.click(screen.getByRole("button", { name: "Create Modules" }));
 
