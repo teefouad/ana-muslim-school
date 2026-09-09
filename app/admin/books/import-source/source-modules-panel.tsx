@@ -45,18 +45,17 @@ export interface SourceModulesPanelProps<T> {
   onTranslateItem: (key: string) => Promise<void>;
   /** AI Assistant for a given item (ANA-85, PR review), keyed by `getKey` --
    * called with the active language tab (owned by the card itself), the
-   * optional trimmed instructions, the exact selected Markdown the card
-   * captured, and the unique token the card already substituted in its
-   * place within the item's own material. The callee's own functional
-   * update must replace that *token* (never re-search for the original
-   * text, which may recur elsewhere in the document) with the AI's result. */
+   * optional trimmed instructions, and the exact selected Markdown the
+   * card captured. Resolves to the replacement text; the card itself
+   * applies it in place (restoring its own captured Lexical selection and
+   * replacing exactly that range) -- this callback never touches the
+   * item's `material` itself. */
   onAiAssistItem: (
     key: string,
     language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
-    token: string,
-  ) => Promise<void>;
+  ) => Promise<string>;
 }
 
 function SortableModuleCard<T>({
@@ -95,8 +94,7 @@ function SortableModuleCard<T>({
     language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
-    token: string,
-  ) => Promise<void>;
+  ) => Promise<string>;
   testId: string;
 }) {
   const {
@@ -218,18 +216,12 @@ export function SourceModulesPanel<T>({
                   deleteConfirmDescription={getDeleteConfirmDescription?.(key)}
                   deleteDisabled={isDeleteDisabled(key)}
                   onTranslate={() => onTranslateItem(key)}
-                  onAiAssist={(
-                    language,
-                    instructions,
-                    selectedMarkdown,
-                    token,
-                  ) =>
+                  onAiAssist={(language, instructions, selectedMarkdown) =>
                     onAiAssistItem(
                       key,
                       language,
                       instructions,
                       selectedMarkdown,
-                      token,
                     )
                   }
                   testId={`module-card-${key}`}
@@ -256,7 +248,7 @@ export function SourceModulesPanel<T>({
                 forceCollapsed
                 onDelete={() => {}}
                 onTranslate={async () => {}}
-                onAiAssist={async () => {}}
+                onAiAssist={async () => ""}
                 style={{
                   pointerEvents: "none",
                   ...(width != null ? { width } : {}),

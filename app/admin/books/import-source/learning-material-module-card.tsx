@@ -21,6 +21,7 @@ import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import {
   MarkdownEditor,
   type MarkdownEditorHandle,
+  type MarkdownSelectionCapture,
 } from "@/components/ui/markdown-editor";
 import type { LanguageOption } from "@/components/ui/translatable-value";
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
@@ -93,33 +94,35 @@ export interface LearningMaterialModuleCardProps {
    * through the server-only `/api/v1/ai/assist` boundary): operates on the
    * currently *selected* Markdown within the active language's editor only
    * -- never the whole Module text (PR review). Disabled whenever that
-   * editor has no non-empty selection. Clicking it captures the exact
-   * selected Markdown and immediately replaces that selection in place with
-   * a unique, invisible token (via `MarkdownEditorHandle.insertMarkdown`),
-   * before the instructions dialog can steal focus and collapse the native
-   * selection -- so the exact edited range survives regardless of what the
-   * user does with focus afterward. Once Generate is clicked, `onAiAssist`
-   * is called with the active language, the trimmed instructions
-   * (`undefined` when blank), the captured selected Markdown, and that
-   * token. The caller resolves the selection's replacement (and the Book
-   * context, server-side) and is responsible for splicing the result back
-   * in by replacing the *token* -- never the original selected text itself,
-   * which may recur elsewhere in the document -- in that language's draft,
-   * against its own *latest* state, mirroring `onTranslate` -- so a
-   * concurrent edit/reorder/delete to a different Module can't be lost to a
-   * stale snapshot. On Cancel, or if the request fails, the card itself
-   * restores the token back to the original selected text, so the document
-   * is left exactly as it was either way. The card owns the dialog, loading
-   * state, and card-freeze; it never changes which language tab is active.
-   * Omit to hide the affordance's inner dialog/loading wiring (the button
-   * itself remains, matching `onTranslate`'s optional-but-inert pattern
-   * when omitted). */
+   * editor has no non-empty selection.
+   *
+   * Clicking it captures the exact selected Markdown to send, and a
+   * restorable snapshot of the Lexical selection itself (via
+   * `MarkdownEditorHandle.captureSelection`) -- `material` and the
+   * editor's own canonical content are never touched at this point, or at
+   * any point before a successful Generate (PR review): opening the dialog
+   * or cancelling it leaves the document byte-for-byte as it was, with
+   * nothing to restore. Once Generate is clicked, `onAiAssist` is called
+   * with the active language, the trimmed instructions (`undefined` when
+   * blank), and the captured selected Markdown -- it resolves to the
+   * replacement text (and loads the Book context server-side); the card
+   * then applies it itself via `MarkdownEditorHandle
+   * .replaceCapturedSelection`, which restores the captured Lexical range
+   * and replaces exactly that range using the editor's own selection-aware
+   * node insertion, never a text search against the original selected
+   * text (which may recur elsewhere in the document) -- this in turn fires
+   * the editor's normal `onChange`, routing through `onMaterialChange`
+   * exactly like a manual edit would. The card owns the dialog, loading
+   * state, and card-freeze (so the captured range can't be invalidated by
+   * an edit to this same Module while the request is in flight); it never
+   * changes which language tab is active. Omit to hide the affordance's
+   * inner dialog/loading wiring (the button itself remains, matching
+   * `onTranslate`'s optional-but-inert pattern when omitted). */
   onAiAssist?: (
     language: Language,
     instructions: string | undefined,
     selectedMarkdown: string,
-    token: string,
-  ) => Promise<void>;
+  ) => Promise<string>;
   /** Renders this card as a non-interactive drag preview (ANA-80): always
    * collapsed regardless of internal state, and the collapse toggle never
    * responds to clicks. Used for `SortableList`'s `DragOverlay` copy, which
@@ -186,13 +189,14 @@ export function LearningMaterialModuleCard({
   const [aiInstructions, setAiInstructions] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  // The selection AI Assistant is currently working with -- `token` is the
-  // unique marker (see `handleAiAssistClick`) that's standing in for
-  // `text` (the originally selected Markdown) inside `material` right now,
-  // so Cancel/failure can restore it and Generate's caller knows exactly
-  // what to replace. `null` whenever no AI Assistant request is pending.
+  // The selection AI Assistant captured on click (PR review) -- `capture`
+  // is the restorable Lexical range snapshot `handleGenerateClick` later
+  // passes to `replaceCapturedSelection`; `text` is the Markdown sent to
+  // the AI. Purely local bookkeeping: capturing it never touches `material`
+  // or the editor's own content, so there is nothing to undo on Cancel or
+  // failure. `null` whenever no AI Assistant request is pending.
   const [pendingSelection, setPendingSelection] = useState<{
-    token: string;
+    capture: MarkdownSelectionCapture;
     text: string;
   } | null>(null);
   // Whether the active language's editor currently has a non-empty
@@ -378,57 +382,32 @@ export function LearningMaterialModuleCard({
     setPendingAction(null);
   }
 
-  // Replaces `selection.token` back with `selection.text` in the active
-  // language's draft -- used to undo the token substitution
-  // `handleAiAssistClick` made, whenever a pending AI Assistant selection
-  // never reaches a successful Generate (Cancel, or a failed request), so
-  // the document is always left exactly as it was either way (PR review).
-  function restoreSelection(selection: { token: string; text: string }) {
-    onMaterialChange({
-      ...material,
-      [activeLanguage]: material[activeLanguage].replace(
-        selection.token,
-        selection.text,
-      ),
-    });
-  }
-
   // AI Assistant (ANA-85, PR review): operates on the active editor's
-  // current *selection* only. Captures the exact selected Markdown, then
-  // immediately swaps it in place for a unique token via
-  // `insertMarkdown` -- before the dialog can steal focus and collapse the
-  // native selection -- so the exact edited range survives regardless of
-  // what the user does with focus afterward, and Generate's caller can
-  // later splice its result back in by replacing that token (never by
-  // searching for the original text, which may recur elsewhere in the
-  // document). Opens with a fresh, empty instructions field every time --
-  // never the previous session's leftover draft.
+  // current *selection* only. Captures the exact selected Markdown to
+  // send, and a restorable snapshot of the Lexical selection itself, via
+  // `MarkdownEditorHandle.captureSelection` -- `material` and the editor's
+  // own content are never touched here, so there is nothing to undo if
+  // the dialog is cancelled or the request fails (PR review). Opens with a
+  // fresh, empty instructions field every time -- never the previous
+  // session's leftover draft.
   function handleAiAssistClick() {
     const selectedMarkdown = editorRef.current?.getSelectedMarkdown() ?? "";
+    const capture = editorRef.current?.captureSelection() ?? null;
 
-    if (!selectedMarkdown.trim()) {
+    if (!selectedMarkdown.trim() || !capture) {
       return;
     }
 
-    // Purely alphanumeric, deliberately -- Markdown serialization (mdast-
-    // util-to-markdown) backslash-escapes underscores and hyphens even
-    // mid-word (verified empirically), which would corrupt a token
-    // containing either the moment it round-trips through `onChange`,
-    // permanently breaking the later `.replace(token, ...)` lookup.
-    const token = `AISELECTION${crypto.randomUUID().replaceAll("-", "")}`;
-    editorRef.current?.insertMarkdown(token);
-    setPendingSelection({ token, text: selectedMarkdown });
+    setPendingSelection({ capture, text: selectedMarkdown });
     setAiInstructions("");
     setAiError(null);
     setIsAiDialogOpen(true);
   }
 
+  // Nothing was ever mutated by capturing a selection (PR review), so
+  // Cancel is just discarding the pending capture -- no restoration.
   function handleAiDialogCancel() {
-    if (pendingSelection) {
-      restoreSelection(pendingSelection);
-      setPendingSelection(null);
-    }
-
+    setPendingSelection(null);
     setIsAiDialogOpen(false);
   }
 
@@ -439,16 +418,9 @@ export function LearningMaterialModuleCard({
     // resolves (spec #6) -- loading then shows on the AI Assistant action
     // itself, not the (now closed) dialog.
     setIsAiDialogOpen(false);
+    setPendingSelection(null);
 
-    if (!selection) {
-      return;
-    }
-
-    if (!onAiAssist) {
-      // No caller wired to ever resolve the token -- restore right away
-      // instead of leaving a stray marker sitting in the document.
-      restoreSelection(selection);
-      setPendingSelection(null);
+    if (!selection || !onAiAssist) {
       return;
     }
 
@@ -456,26 +428,22 @@ export function LearningMaterialModuleCard({
     setAiError(null);
 
     try {
-      await onAiAssist(
+      const refined = await onAiAssist(
         activeLanguage,
         instructions,
         selection.text,
-        selection.token,
       );
-      // Leaves the active language tab exactly as the user had it (spec #6)
-      // -- the card never mutates `material` itself; splicing the result
-      // back in by replacing `selection.token` is entirely the caller's own
-      // `onAiAssist` implementation, mirroring Translate (ANA-83). The
-      // `shown`-tracking effect above pushes the resulting value into the
-      // mounted editor via `setMarkdown` once the `material` prop update
-      // lands.
-      setPendingSelection(null);
+      // Applies the result itself: restores the captured Lexical range and
+      // replaces exactly that range using the editor's own selection-aware
+      // node insertion, never a text search against the original selected
+      // text (which may recur elsewhere in the document, PR review). This
+      // fires the editor's normal `onChange`, routing through
+      // `onMaterialChange` exactly like a manual edit would -- the active
+      // language tab stays exactly as the user had it throughout (spec
+      // #6).
+      editorRef.current?.replaceCapturedSelection(selection.capture, refined);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "Something went wrong.");
-      // A failed request never leaves the token sitting in the document --
-      // restore the original selected text, matching Cancel.
-      restoreSelection(selection);
-      setPendingSelection(null);
     } finally {
       setIsGenerating(false);
     }

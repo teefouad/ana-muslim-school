@@ -581,9 +581,6 @@ describe("ModuleBuilderView", () => {
       fireEvent.click(
         screen.getAllByRole("button", { name: "AI Assistant" })[0],
       );
-      // `insertMarkdown` settles asynchronously (see markdown-editor.test.
-      // tsx) -- awaited so the token has landed before Generate runs.
-      await vi.waitFor(() => expect(screen.queryByText("First")).toBeNull());
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
       await vi.waitFor(() =>
@@ -621,9 +618,6 @@ describe("ModuleBuilderView", () => {
       );
       fireEvent.click(
         screen.getAllByRole("button", { name: "AI Assistant" })[0],
-      );
-      await vi.waitFor(() =>
-        expect(screen.queryByText("Arabic one")).toBeNull(),
       );
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
       await vi.waitFor(() =>
@@ -683,7 +677,6 @@ describe("ModuleBuilderView", () => {
         ).toBeEnabled(),
       );
       fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
-      await vi.waitFor(() => expect(screen.queryByText("First")).toBeNull());
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
       expect(

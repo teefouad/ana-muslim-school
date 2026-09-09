@@ -6,7 +6,10 @@ import dynamic from "next/dynamic";
 import type { MarkdownEditorCoreProps } from "./markdown-editor-core";
 import type { MarkdownEditorHandle } from "./markdown-editor-types";
 
-export type { MarkdownEditorHandle } from "./markdown-editor-types";
+export type {
+  MarkdownEditorHandle,
+  MarkdownSelectionCapture,
+} from "./markdown-editor-types";
 
 // MDXEditor touches browser-only APIs during module init and has no SSR
 // support, so it's loaded only on the client (Next.js App Router's

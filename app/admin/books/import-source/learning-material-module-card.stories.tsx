@@ -84,19 +84,19 @@ export const WithActions: Story = {
     material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
     onDelete: () => {},
     onTranslate: async () => {},
-    onAiAssist: async () => {},
+    onAiAssist: async () => "",
   },
 };
 
 // Select some text in the editor to enable AI Assistant, then click it --
 // opens a dialog with an optional instructions textarea; Generate closes it
 // and calls `onAiAssist` with the active language, the trimmed instructions,
-// the exact selected Markdown, and a token marking its place (ANA-85, PR
-// review).
+// and the exact selected Markdown, resolving to the replacement text the
+// card then splices into place itself (ANA-85, PR review).
 export const AiAssistant: Story = {
   args: {
     material: { ar: "## الدرس\n\nملخص الدرس هنا.", en: "" },
-    onAiAssist: async () => {},
+    onAiAssist: async () => "",
   },
 };
 

@@ -95,31 +95,22 @@ function renderCardWithRerender(
   };
 }
 
-// AI Assistant's selection-token flow (ANA-85, PR review) round-trips
-// through the real `material`/`onMaterialChange` prop cycle -- inserting
-// the token, and later restoring or replacing it, all read the *current*
-// `material` prop -- so tests exercising it need a genuinely stateful
-// wrapper, not a bare `vi.fn()` that never feeds an update back in.
+// AI Assistant applies its result by restoring its own captured Lexical
+// selection directly in the mounted editor (ANA-85, PR review), which
+// fires the editor's real `onChange` -- so tests exercising a successful
+// (or failed) generation need a genuinely stateful `material`, not a bare
+// `vi.fn()` that never feeds an update back into the rendered editor. An
+// `onMaterialChange` passed in `overrides` is still invoked (for
+// assertions), wrapped around the real setter so both happen together.
 function renderStatefulCard(
   overrides: Partial<
     React.ComponentProps<typeof LearningMaterialModuleCard>
   > = {},
-  // Escape hatch for tests whose own `onAiAssist` mock needs to apply a
-  // realistic material update (e.g. replacing a token) the same way a real
-  // caller's functional update would -- assigned on every render, so it's
-  // always the latest setter by the time a test actually calls it.
-  setMaterialRef?: {
-    current: React.Dispatch<React.SetStateAction<TranslatableString>>;
-  },
 ) {
   function Wrapper() {
     const [material, setMaterial] = useState<TranslatableString>(
       overrides.material ?? { ar: "", en: "" },
     );
-
-    if (setMaterialRef) {
-      setMaterialRef.current = setMaterial;
-    }
 
     return (
       <LearningMaterialModuleCard
@@ -130,7 +121,10 @@ function renderStatefulCard(
         onTranslate={vi.fn()}
         {...overrides}
         material={material}
-        onMaterialChange={setMaterial}
+        onMaterialChange={(value) => {
+          overrides.onMaterialChange?.(value);
+          setMaterial(value);
+        }}
       />
     );
   }
@@ -681,11 +675,13 @@ describe("LearningMaterialModuleCard", () => {
       );
     });
 
-    it("opens the dialog with an empty instructions field once a selection is made, without calling onAiAssist yet", async () => {
+    it("opens the dialog with an empty instructions field once a selection is made, without calling onAiAssist or touching material yet", async () => {
       const onAiAssist = vi.fn();
+      const onMaterialChange = vi.fn();
       renderStatefulCard({
         material: { ar: "Arabic content", en: "" },
         onAiAssist,
+        onMaterialChange,
       });
 
       const editable = await screen.findByRole("textbox");
@@ -707,13 +703,20 @@ describe("LearningMaterialModuleCard", () => {
         }),
       ).toHaveValue("");
       expect(onAiAssist).not.toHaveBeenCalled();
+      // Capturing the selection never mutates `material` or the editor's
+      // own content (PR review) -- the document still reads exactly as it
+      // did before the dialog opened.
+      expect(onMaterialChange).not.toHaveBeenCalled();
+      expect(screen.getByText("Arabic content")).toBeInTheDocument();
     });
 
-    it("Cancel closes the dialog, without calling onAiAssist, and restores the document to exactly what it was before the selection was captured", async () => {
+    it("Cancel closes the dialog without calling onAiAssist -- nothing was ever mutated, so there is nothing to restore (PR review)", async () => {
       const onAiAssist = vi.fn();
+      const onMaterialChange = vi.fn();
       renderStatefulCard({
         material: { ar: "Arabic content", en: "" },
         onAiAssist,
+        onMaterialChange,
       });
 
       const editable = await screen.findByRole("textbox");
@@ -725,27 +728,18 @@ describe("LearningMaterialModuleCard", () => {
       );
 
       fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
-      // While the dialog is open, the selection has already been swapped
-      // for an invisible token -- the visible document no longer reads
-      // "Arabic content" verbatim. `insertMarkdown` settles asynchronously
-      // (see markdown-editor.test.tsx), so this is awaited -- by the time a
-      // real user could click Cancel behind the now-open modal, this has
-      // long since settled.
-      await vi.waitFor(() =>
-        expect(screen.queryByText("Arabic content")).not.toBeInTheDocument(),
-      );
-
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
       expect(
         screen.queryByRole("dialog", { name: "AI Assistant" }),
       ).not.toBeInTheDocument();
       expect(onAiAssist).not.toHaveBeenCalled();
-      expect(await screen.findByText("Arabic content")).toBeInTheDocument();
+      expect(onMaterialChange).not.toHaveBeenCalled();
+      expect(screen.getByText("Arabic content")).toBeInTheDocument();
     });
 
     it("does not carry a previous session's instructions into a freshly reopened dialog", async () => {
-      const onAiAssist = vi.fn().mockResolvedValue(undefined);
+      const onAiAssist = vi.fn().mockResolvedValue("Refined text");
       renderStatefulCard({
         material: { ar: "Arabic content", en: "" },
         onAiAssist,
@@ -768,8 +762,7 @@ describe("LearningMaterialModuleCard", () => {
       );
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-      const editableAgain = await screen.findByRole("textbox");
-      selectFirstCharacters(editableAgain, 6);
+      selectFirstCharacters(editable, 6);
       await vi.waitFor(() =>
         expect(
           screen.getByRole("button", { name: "AI Assistant" }),
@@ -784,11 +777,11 @@ describe("LearningMaterialModuleCard", () => {
       ).toHaveValue("");
     });
 
-    it("Generate closes the dialog, shows loading, and calls onAiAssist with the active language, trimmed instructions, and the exact selected Markdown plus a token", async () => {
-      let resolveAiAssist: () => void = () => {};
+    it("Generate closes the dialog, shows loading, and calls onAiAssist with the active language, trimmed instructions, and the exact selected Markdown", async () => {
+      let resolveAiAssist: (value: string) => void = () => {};
       const onAiAssist = vi.fn(
         () =>
-          new Promise<void>((resolve) => {
+          new Promise<string>((resolve) => {
             resolveAiAssist = resolve;
           }),
       );
@@ -821,13 +814,12 @@ describe("LearningMaterialModuleCard", () => {
         "ar",
         "Use more headings",
         "Arabic",
-        expect.stringMatching(/^AISELECTION/),
       );
       expect(
         screen.getByRole("button", { name: "AI Assistant" }),
       ).toBeDisabled();
 
-      resolveAiAssist();
+      resolveAiAssist("Refined text");
       await vi.waitFor(() =>
         expect(
           screen.getByRole("button", { name: "AI Assistant" }),
@@ -836,7 +828,7 @@ describe("LearningMaterialModuleCard", () => {
     });
 
     it("passes undefined instructions when the field is left blank/whitespace-only", async () => {
-      const onAiAssist = vi.fn().mockResolvedValue(undefined);
+      const onAiAssist = vi.fn().mockResolvedValue("Refined text");
       renderStatefulCard({
         material: { ar: "Arabic content", en: "" },
         onAiAssist,
@@ -857,7 +849,7 @@ describe("LearningMaterialModuleCard", () => {
     });
 
     it("uses the active English tab, not Arabic, when English is selected", async () => {
-      const onAiAssist = vi.fn().mockResolvedValue(undefined);
+      const onAiAssist = vi.fn().mockResolvedValue("Refined text");
       renderStatefulCard({
         material: { ar: "Arabic content", en: "English content" },
         onAiAssist,
@@ -879,27 +871,12 @@ describe("LearningMaterialModuleCard", () => {
       expect(onAiAssist.mock.calls[0][2]).toBe("English");
     });
 
-    it("replaces only the selected occurrence, leaving an identical duplicate elsewhere in the Module untouched (PR review)", async () => {
-      const setMaterialRef: {
-        current: React.Dispatch<React.SetStateAction<TranslatableString>>;
-      } = { current: () => {} };
-      const onAiAssist = vi.fn(
-        async (
-          language: "ar" | "en",
-          _instructions: string | undefined,
-          _selectedMarkdown: string,
-          token: string,
-        ) => {
-          setMaterialRef.current((current) => ({
-            ...current,
-            [language]: current[language].replace(token, "Hi"),
-          }));
-        },
-      );
-      renderStatefulCard(
-        { material: { ar: "Hello world. Hello again.", en: "" }, onAiAssist },
-        setMaterialRef,
-      );
+    it("applies the result to only the selected range, leaving an identical duplicate elsewhere in the Module untouched (PR review)", async () => {
+      const onAiAssist = vi.fn().mockResolvedValue("Hi");
+      renderStatefulCard({
+        material: { ar: "Hello world. Hello again.", en: "" },
+        onAiAssist,
+      });
 
       const editable = await screen.findByRole("textbox");
       // Selects only the *first* "Hello" -- the identical "Hello" later in
@@ -911,13 +888,6 @@ describe("LearningMaterialModuleCard", () => {
         ).toBeEnabled(),
       );
       fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
-      // `insertMarkdown` settles asynchronously (see markdown-editor.test.
-      // tsx) -- awaited so the token has actually landed in `material.ar`
-      // before Generate runs, matching how much time a real user clicking
-      // through the now-open modal would naturally give it.
-      await vi.waitFor(() =>
-        expect(screen.queryByText("Hello world. Hello again.")).toBeNull(),
-      );
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
       expect(
@@ -925,12 +895,14 @@ describe("LearningMaterialModuleCard", () => {
       ).toBeInTheDocument();
     });
 
-    it("restores the original selected text and shows an error when generation fails, leaving no stray token behind", async () => {
+    it("leaves material completely unchanged and shows an error when generation fails -- nothing was ever mutated, so there is nothing to restore (PR review)", async () => {
+      const onMaterialChange = vi.fn();
       const onAiAssist = vi
         .fn()
         .mockRejectedValue(new Error("AI Assistant failed. Please try again."));
       renderStatefulCard({
         material: { ar: "Arabic content", en: "" },
+        onMaterialChange,
         onAiAssist,
       });
 
@@ -947,15 +919,16 @@ describe("LearningMaterialModuleCard", () => {
       expect(
         await screen.findByText("AI Assistant failed. Please try again."),
       ).toBeInTheDocument();
+      expect(onMaterialChange).not.toHaveBeenCalled();
       expect(screen.getByText("Arabic content")).toBeInTheDocument();
       expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
     });
 
     it("freezes the editor, language switcher, Delete, Translate, and drag handle while generating, then unfreezes on completion", async () => {
-      let resolveAiAssist: () => void = () => {};
+      let resolveAiAssist: (value: string) => void = () => {};
       const onAiAssist = vi.fn(
         () =>
-          new Promise<void>((resolve) => {
+          new Promise<string>((resolve) => {
             resolveAiAssist = resolve;
           }),
       );
@@ -1001,7 +974,7 @@ describe("LearningMaterialModuleCard", () => {
         ?.parentElement as HTMLElement;
       expect(grip).toHaveAttribute("aria-hidden", "true");
 
-      resolveAiAssist();
+      resolveAiAssist("Refined text");
 
       await vi.waitFor(() =>
         expect(
@@ -1014,8 +987,12 @@ describe("LearningMaterialModuleCard", () => {
       expect(grip).toHaveAttribute("aria-roledescription", "sortable");
     });
 
-    it("does nothing when onAiAssist is omitted -- Generate restores the original text and closes the dialog", async () => {
-      renderStatefulCard({ material: { ar: "Arabic content", en: "" } });
+    it("does nothing when onAiAssist is omitted -- Generate just closes the dialog, leaving material unchanged", async () => {
+      const onMaterialChange = vi.fn();
+      renderStatefulCard({
+        material: { ar: "Arabic content", en: "" },
+        onMaterialChange,
+      });
 
       const editable = await screen.findByRole("textbox");
       selectFirstCharacters(editable, 6);
@@ -1025,19 +1002,13 @@ describe("LearningMaterialModuleCard", () => {
         ).toBeEnabled(),
       );
       fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
-      // `insertMarkdown` settles asynchronously (see markdown-editor.test.
-      // tsx) -- awaited so the token has actually landed before Generate
-      // runs, matching how much time a real user clicking through the
-      // now-open modal would naturally give it.
-      await vi.waitFor(() =>
-        expect(screen.queryByText("Arabic content")).toBeNull(),
-      );
       fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
       expect(
         screen.queryByRole("dialog", { name: "AI Assistant" }),
       ).not.toBeInTheDocument();
-      expect(await screen.findByText("Arabic content")).toBeInTheDocument();
+      expect(onMaterialChange).not.toHaveBeenCalled();
+      expect(screen.getByText("Arabic content")).toBeInTheDocument();
     });
   });
 

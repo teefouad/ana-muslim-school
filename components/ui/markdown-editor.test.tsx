@@ -1,6 +1,6 @@
 import { type RefObject, createRef } from "react";
 import { MantineProvider } from "@mantine/core";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
@@ -135,7 +135,22 @@ test("returns the current selection as plain text and Markdown", async () => {
   expect(ref.current?.getSelectedMarkdown()).toBe("Hello");
 });
 
-test("insertMarkdown replaces the current selection, leaving the rest of the document untouched", async () => {
+test("captureSelection returns null when there is no selection, or it's collapsed", async () => {
+  const ref = createRef<MarkdownEditorHandle>();
+  renderWithProvider(
+    <MarkdownEditor
+      ref={ref as RefObject<MarkdownEditorHandle>}
+      markdown="Hello world"
+      onChange={vi.fn()}
+    />,
+  );
+
+  await screen.findByRole("textbox");
+
+  expect(ref.current?.captureSelection()).toBeNull();
+});
+
+test("replaceCapturedSelection replaces exactly the captured range, leaving the rest of the document untouched", async () => {
   const ref = createRef<MarkdownEditorHandle>();
   const onChange = vi.fn();
   renderWithProvider(
@@ -151,10 +166,79 @@ test("insertMarkdown replaces the current selection, leaving the rest of the doc
   selectFirstCharacters(editable, 5);
   await vi.waitFor(() => expect(ref.current?.getSelectedText()).toBe("Hello"));
 
-  ref.current?.insertMarkdown("Goodbye");
+  const capture = ref.current?.captureSelection();
+  expect(capture).not.toBeNull();
+
+  ref.current?.replaceCapturedSelection(capture!, "Goodbye");
 
   await vi.waitFor(() =>
     expect(onChange).toHaveBeenLastCalledWith("Goodbye world", false),
+  );
+});
+
+test("replaceCapturedSelection still targets the captured range after focus has moved elsewhere and the native selection has collapsed (regression: a dialog opening between capture and replace must not lose the target range)", async () => {
+  const ref = createRef<MarkdownEditorHandle>();
+  const onChange = vi.fn();
+  renderWithProvider(
+    <>
+      <MarkdownEditor
+        ref={ref as RefObject<MarkdownEditorHandle>}
+        markdown="Hello world"
+        onChange={onChange}
+      />
+      <input aria-label="Elsewhere" />
+    </>,
+  );
+
+  // The plain `<input>` below also carries an implicit role="textbox" --
+  // narrow to the editor's own contenteditable specifically.
+  const editable = (await screen.findAllByRole("textbox"))[0];
+  await userEvent.setup().click(editable);
+  selectFirstCharacters(editable, 5);
+  await vi.waitFor(() => expect(ref.current?.getSelectedText()).toBe("Hello"));
+
+  const capture = ref.current?.captureSelection();
+  expect(capture).not.toBeNull();
+
+  // Simulates a dialog stealing focus (and, with it, the native browser
+  // selection) between capturing the selection and applying its result --
+  // `captureSelection`'s own snapshot must not depend on the live
+  // selection still being there.
+  const elsewhere = screen.getByRole("textbox", { name: "Elsewhere" });
+  fireEvent.focus(elsewhere);
+  window.getSelection()?.removeAllRanges();
+  document.dispatchEvent(new Event("selectionchange"));
+
+  ref.current?.replaceCapturedSelection(capture!, "Goodbye");
+
+  await vi.waitFor(() =>
+    expect(onChange).toHaveBeenLastCalledWith("Goodbye world", false),
+  );
+});
+
+test("replaceCapturedSelection with duplicate text elsewhere in the document only touches the captured occurrence", async () => {
+  const ref = createRef<MarkdownEditorHandle>();
+  const onChange = vi.fn();
+  renderWithProvider(
+    <MarkdownEditor
+      ref={ref as RefObject<MarkdownEditorHandle>}
+      markdown="Hello world. Hello again."
+      onChange={onChange}
+    />,
+  );
+
+  const editable = await screen.findByRole("textbox");
+  await userEvent.setup().click(editable);
+  // Selects only the *first* "Hello" -- the identical "Hello" later in
+  // "Hello again." must survive untouched.
+  selectFirstCharacters(editable, 5);
+  await vi.waitFor(() => expect(ref.current?.getSelectedText()).toBe("Hello"));
+
+  const capture = ref.current?.captureSelection();
+  ref.current?.replaceCapturedSelection(capture!, "Hi");
+
+  await vi.waitFor(() =>
+    expect(onChange).toHaveBeenLastCalledWith("Hi world. Hello again.", false),
   );
 });
 

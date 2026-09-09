@@ -241,8 +241,8 @@ describe("SourceModulesPanel", () => {
     expect(onTranslateItem).toHaveBeenCalledWith("module-2");
   });
 
-  it("wires AI Assistant per item, keyed by getKey, forwarding the active language, instructions, selected Markdown, and a token (ANA-85, PR review)", async () => {
-    const onAiAssistItem = vi.fn().mockResolvedValue(undefined);
+  it("wires AI Assistant per item, keyed by getKey, forwarding the active language, instructions, and selected Markdown (ANA-85, PR review)", async () => {
+    const onAiAssistItem = vi.fn().mockResolvedValue("Refined text");
     renderStatefulPanel({ onAiAssistItem });
 
     const editors = await screen.findAllByRole("textbox");
@@ -254,9 +254,6 @@ describe("SourceModulesPanel", () => {
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: "AI Assistant" })[1]);
-    // `insertMarkdown` settles asynchronously (see markdown-editor.test.
-    // tsx) -- awaited so the token has landed before Generate runs.
-    await vi.waitFor(() => expect(screen.queryByText("ثاني")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
     await vi.waitFor(() => expect(onAiAssistItem).toHaveBeenCalledTimes(1));
@@ -265,8 +262,8 @@ describe("SourceModulesPanel", () => {
       "ar",
       undefined,
       "ثاني",
-      expect.stringMatching(/^AISELECTION/),
     );
+    expect(await screen.findByText("Refined text")).toBeInTheDocument();
   });
 
   it("disables an item's delete action per isDeleteDisabled(key)", () => {

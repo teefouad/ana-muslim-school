@@ -239,44 +239,25 @@ export function SavedSourceView({
 
   // AI Assistant for a single card's current selection (ANA-85, PR review)
   // -- sends only `selectedMarkdown` (the exact text the card captured, not
-  // the whole entry) to the AI, then applies the result through a
-  // functional update against whichever `entries` is current *when the
-  // request resolves*, replacing only `token` (the unique marker the card
-  // already substituted in place of the selection) within that entry's
-  // `material[language]` -- never re-searching for `selectedMarkdown`
-  // itself, which may recur elsewhere in the entry's text -- so a
-  // concurrent edit/reorder/delete to a *different* card survives this
-  // resolving late instead of being reverted by a stale snapshot (spec #6).
+  // the whole entry) to the AI and returns the replacement text. Unlike
+  // Translate/the earlier token-based design, this never touches `entries`
+  // itself: the calling card applies the result in place by restoring its
+  // own captured Lexical selection and replacing exactly that range, which
+  // fires the card's normal `onChange` -> `onMaterialChange` -- so
+  // `entries` is never in an intermediate state a concurrent Save changes
+  // could persist, and there is nothing here to key by `key`.
   async function handleAiAssistEntry(
-    key: string,
+    _key: string,
     language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
-    token: string,
-  ) {
-    const refined = await assistLearningMaterial({
+  ): Promise<string> {
+    return assistLearningMaterial({
       bookId,
       text: selectedMarkdown,
       language,
       additionalInstructions: instructions,
     });
-
-    onEntriesChange((current) =>
-      current.map((candidate) =>
-        candidate.key === key
-          ? {
-              ...candidate,
-              material: {
-                ...candidate.material,
-                [language]: candidate.material[language].replace(
-                  token,
-                  refined,
-                ),
-              },
-            }
-          : candidate,
-      ),
-    );
   }
 
   return (
