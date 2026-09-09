@@ -17,6 +17,7 @@ import type {
   WorkspaceModuleEntry,
 } from "./import-source-types";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import { buildSourceContent } from "./build-source-content";
 import { createMaterial, updateMaterial } from "./materials-client";
 import { ModuleBuilderView } from "./module-builder-view";
@@ -86,6 +87,24 @@ export interface ImportSourceModalProps {
    * Book's panel) should be revalidated here so the new Modules appear
    * immediately without a full-page reload. */
   onModulesCreated?: () => void;
+  /** The Module order currently displayed on the caller's own page (ANA-84)
+   * -- Edit Book passes its `moduleOrderDraft` (mapped to ids) when the user
+   * has an unsaved local reorder pending, so the saved-Source workspace
+   * seeds its initial card order from that instead of the persisted server
+   * order underneath it. `null`/`undefined` (no local draft on the caller's
+   * side) leaves seeding exactly as before -- the persisted order. Only
+   * consulted once, when the workspace is first seeded for a given Source
+   * (see the seeding block below): a later change to this prop while the
+   * workspace is already showing does not reseed it. */
+  outerModuleOrder?: string[] | null;
+  /** Called once the saved-Source workspace's Save changes has actually
+   * persisted a *new* Module order via `reorderModules` (ANA-84) -- lets
+   * the caller adopt that order as authoritative and drop/replace any local
+   * draft of its own that this save now supersedes. Not called when Save
+   * changes succeeds without touching the Module order (e.g. a
+   * Material/Source-text-only save), so an unrelated caller-side draft is
+   * never silently discarded. */
+  onModuleOrderPersisted?: () => void;
 }
 
 // The full PDF -> page selection -> Mistral OCR review -> Module-building
@@ -103,6 +122,8 @@ export function ImportSourceModal({
   onClose,
   bookId,
   onModulesCreated,
+  outerModuleOrder,
+  onModuleOrderPersisted,
 }: ImportSourceModalProps) {
   const [step, setStep] = useState<Step>("pick");
   const [file, setFile] = useState<File | null>(null);
@@ -303,10 +324,31 @@ export function ImportSourceModal({
       initialMaterialContents[material.moduleId] = material.content;
     }
 
+    // Seeds from the caller's currently-displayed order (Edit Book's own
+    // unsaved reorder draft, if any) rather than the raw fetch order,
+    // matched by Module id (ANA-84) -- `isValidReorder` guards against a
+    // stale/mismatched `outerModuleOrder` (e.g. it references a Module set
+    // that no longer matches this Source's), in which case seeding falls
+    // straight back to the persisted server order exactly as before.
+    const seededModuleOrder =
+      outerModuleOrder &&
+      isValidReorder(
+        outerModuleOrder,
+        workspaceModules.map((module) => module.id),
+      )
+        ? outerModuleOrder
+        : workspaceModules.map((module) => module.id);
+    const workspaceModuleById = new Map(
+      workspaceModules.map((module) => [module.id, module]),
+    );
+    const orderedWorkspaceModules = seededModuleOrder.map((id) =>
+      workspaceModuleById.get(id)!,
+    );
+
     setSeededSourceId(existingSource.id);
     setWorkspaceContent(existingSource.content);
     setWorkspaceEntries(
-      workspaceModules.map((module) => ({
+      orderedWorkspaceModules.map((module) => ({
         key: module.id,
         moduleId: module.id,
         material: materialByModuleId.get(module.id)?.content ?? EMPTY_MATERIAL,
@@ -315,7 +357,10 @@ export function ImportSourceModal({
     setSavedWorkspaceSourceContent(existingSource.content);
     setMaterialDocIdByModuleId(initialMaterialDocIds);
     setSavedMaterialContentByModuleId(initialMaterialContents);
-    setSavedWorkspaceModuleOrder(workspaceModules.map((module) => module.id));
+    // The inherited order is the baseline for this open session (ANA-84),
+    // not just the persisted order -- so simply inheriting an outer draft
+    // doesn't by itself make the workspace's own dirty check (below) fire.
+    setSavedWorkspaceModuleOrder(seededModuleOrder);
     setCreatedWorkspaceModuleKeys(new Set());
     setWorkspaceModuleIdMap({});
     setSaveWorkspaceError(null);
@@ -784,6 +829,12 @@ export function ImportSourceModal({
       ) {
         await reorderModules(bookId, finalModuleOrder);
         setSavedWorkspaceModuleOrder(finalModuleOrder);
+        // Tells the caller a new order actually persisted (ANA-84), so it
+        // can adopt it as authoritative over its own stale local draft --
+        // never called when this branch didn't run (order unchanged), so a
+        // Material/Source-text-only save can't discard an unrelated
+        // caller-side reorder draft.
+        onModuleOrderPersisted?.();
       }
 
       // Every write succeeded -- revalidate everything this screen could

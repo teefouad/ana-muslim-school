@@ -1250,6 +1250,153 @@ describe("ImportSourceModal", () => {
       expect(createModuleMock).not.toHaveBeenCalled();
       expect(createMaterialMock).not.toHaveBeenCalled();
     });
+
+    it("calls onModuleOrderPersisted once Save changes actually persists a new Module order (ANA-84)", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const onModuleOrderPersisted = vi.fn();
+      renderModal({ onModuleOrderPersisted });
+      await screen.findByLabelText("Source text");
+      stubItemRects(["module-1", "module-2"]);
+      await dragFirstCardDown();
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(onModuleOrderPersisted).toHaveBeenCalledTimes(1),
+      );
+    });
+
+    it("does not call onModuleOrderPersisted when the reorder PATCH fails, so the caller's own order draft is left untouched (ANA-84)", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const onModuleOrderPersisted = vi.fn();
+      renderModal({ onModuleOrderPersisted });
+      await screen.findByLabelText("Source text");
+      stubItemRects(["module-1", "module-2"]);
+      await dragFirstCardDown();
+
+      reorderModulesMock.mockRejectedValueOnce(new Error("Reorder failed."));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(await screen.findByText("Reorder failed.")).toBeInTheDocument();
+      expect(onModuleOrderPersisted).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Module order inherited from Edit Book (ANA-84)", () => {
+    // Same testid prefix as each card's own nested "-editor-scale" control
+    // (see learning-material-module-card.tsx), so a plain prefix match over-
+    // matches -- this keeps only the outer module-card container itself, in
+    // document order.
+    async function findModuleCardIds(): Promise<string[]> {
+      const cards = await screen.findAllByTestId(/^module-card-(?!overlay-)/);
+      return cards
+        .map((card) => card.getAttribute("data-testid") ?? "")
+        .filter((testId) => !testId.endsWith("-editor-scale"));
+    }
+
+    it("seeds the workspace's Module order from outerModuleOrder, matched by id, instead of the raw fetch order", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }, { id: "module-3" }],
+      });
+      renderModal({ outerModuleOrder: ["module-3", "module-1", "module-2"] });
+
+      await screen.findByLabelText("Source text");
+      expect(await findModuleCardIds()).toEqual([
+        "module-card-module-3",
+        "module-card-module-1",
+        "module-card-module-2",
+      ]);
+    });
+
+    it("falls back to the persisted order when there is no outerModuleOrder", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      renderModal();
+
+      await screen.findByLabelText("Source text");
+      expect(await findModuleCardIds()).toEqual([
+        "module-card-module-1",
+        "module-card-module-2",
+      ]);
+    });
+
+    it("falls back to the persisted order when outerModuleOrder doesn't match the current Module set", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      // References a Module id that isn't in this Source's current set --
+      // stale/mismatched input the seeding logic must not trust.
+      renderModal({ outerModuleOrder: ["module-9", "module-1"] });
+
+      await screen.findByLabelText("Source text");
+      expect(await findModuleCardIds()).toEqual([
+        "module-card-module-1",
+        "module-card-module-2",
+      ]);
+    });
+
+    it("opening with an outer draft performs no reorder persistence request", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      renderModal({ outerModuleOrder: ["module-2", "module-1"] });
+
+      await screen.findByLabelText("Source text");
+
+      expect(reorderModulesMock).not.toHaveBeenCalled();
+    });
+
+    it("does not send a reorder PATCH on Save changes when nothing but the inherited outer order differs from the raw fetch order", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      renderModal({ outerModuleOrder: ["module-2", "module-1"] });
+      await screen.findByLabelText("Source text");
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(deleteSourceMock).not.toHaveBeenCalled());
+      expect(reorderModulesMock).not.toHaveBeenCalled();
+    });
+
+    it("does not prompt to discard on immediate close, even with an inherited outer order (the inherited order alone isn't dirty)", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const { onClose } = renderModal({
+        outerModuleOrder: ["module-2", "module-1"],
+      });
+      await screen.findByLabelText("Source text");
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onModuleOrderPersisted when Save changes doesn't touch the Module order (a Source-text-only save)", async () => {
+      mockExistingSource({
+        modules: [{ id: "module-1" }, { id: "module-2" }],
+      });
+      const onModuleOrderPersisted = vi.fn();
+      renderModal({ onModuleOrderPersisted });
+      await screen.findByLabelText("Source text");
+
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "Edited text" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() => expect(updateSourceMock).toHaveBeenCalled());
+      expect(onModuleOrderPersisted).not.toHaveBeenCalled();
+    });
   });
 
   it("moves to the PDF viewer once a file is selected", async () => {

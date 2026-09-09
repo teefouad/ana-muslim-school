@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SWRConfig } from "swr";
@@ -642,6 +642,229 @@ describe("EditBookPage", () => {
             ([, init]) => init?.method === "PATCH",
           ),
         ).toBe(false);
+      });
+    });
+
+    describe("Import Modules order sync (ANA-84)", () => {
+      // Same keyboard-drag technique as the Reorder (ANA-79) tests above,
+      // for this page's own Modules panel (`list-item-<id>` testids).
+      function stubItemRects(order: string[], itemHeight = 60) {
+        return vi
+          .spyOn(Element.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: Element) {
+            const container = this.closest('[data-testid^="list-item-"]');
+            const id = container
+              ?.getAttribute("data-testid")
+              ?.replace("list-item-", "");
+            const index = id ? order.indexOf(id) : -1;
+            const top = index === -1 ? 0 : index * itemHeight;
+            return {
+              top,
+              bottom: top + itemHeight,
+              left: 0,
+              right: 300,
+              width: 300,
+              height: itemHeight,
+              x: 0,
+              y: top,
+              toJSON() {},
+            } as DOMRect;
+          });
+      }
+
+      async function dragFirstModuleDown() {
+        const grip = document.querySelector(
+          '[data-testid="list-item-module-1"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+      }
+
+      // Same technique as import-source-modal.test.tsx's own reorder tests,
+      // for the modal's saved-Source workspace cards (`module-card-<id>`
+      // testids).
+      function stubModalCardRects(order: string[], itemHeight = 60) {
+        return vi
+          .spyOn(Element.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: Element) {
+            const container = this.closest('[data-testid^="module-card-"]');
+            const id = container
+              ?.getAttribute("data-testid")
+              ?.replace("module-card-", "");
+            const index = id ? order.indexOf(id) : -1;
+            const top = index === -1 ? 0 : index * itemHeight;
+            return {
+              top,
+              bottom: top + itemHeight,
+              left: 0,
+              right: 300,
+              width: 300,
+              height: itemHeight,
+              x: 0,
+              y: top,
+              toJSON() {},
+            } as DOMRect;
+          });
+      }
+
+      async function dragFirstModalCardDown() {
+        const card = screen.getByTestId("module-card-module-2");
+        const handle = card.querySelector('span[role="button"]') as HTMLElement;
+        handle.focus();
+        fireEvent.keyDown(handle, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(handle, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(handle, { code: "Space", key: " " });
+      }
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      /** Routes fetch for these tests directly (rather than the shared
+       * `setupFetch`) since the Modules list must reflect the *result* of
+       * the modal's own reorder PATCH on the next GET -- `setupFetch`'s
+       * `modules` option is a fixed snapshot, not something a PATCH handler
+       * can mutate and have later GETs observe. Also serves the modal's own
+       * saved-Source workspace reads (Source lookup + Materials), which
+       * `setupFetch` doesn't cover. */
+      function setupSyncFetch(initialModules: Module[]) {
+        let modulesState = initialModules;
+
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+          (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (method === "GET" && url === "/api/v1/books/book-1") {
+              return Promise.resolve(
+                jsonResponse({ data: buildBookFixture() }),
+              );
+            }
+            if (method === "GET" && url === "/api/v1/books/book-1/modules") {
+              return Promise.resolve(jsonResponse({ data: modulesState }));
+            }
+            if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+              return Promise.resolve(
+                jsonResponse({
+                  data: [
+                    { id: "source-1", bookId: "book-1", content: "Saved text" },
+                  ],
+                }),
+              );
+            }
+            if (method === "GET" && url === "/api/v1/materials?bookId=book-1") {
+              return Promise.resolve(jsonResponse({ data: [] }));
+            }
+            if (method === "PATCH" && url === "/api/v1/books/book-1") {
+              const body = JSON.parse(init?.body as string) as {
+                modules?: string[];
+              };
+
+              if (body.modules) {
+                const byId = new Map(
+                  modulesState.map((module) => [module.id, module]),
+                );
+                modulesState = body.modules.map((id) => byId.get(id)!);
+              }
+
+              return Promise.resolve(
+                jsonResponse({ data: buildBookFixture() }),
+              );
+            }
+
+            throw new Error(`Unhandled fetch: ${method} ${url}`);
+          },
+        );
+      }
+
+      it("opens Import Modules seeded with the page's own unsaved reorder draft, matched by id", async () => {
+        setupSyncFetch([
+          buildModuleFixture({ id: "module-1", title: { ar: "", en: "A" } }),
+          buildModuleFixture({ id: "module-2", title: { ar: "", en: "B" } }),
+          buildModuleFixture({ id: "module-3", title: { ar: "", en: "C" } }),
+        ]);
+        renderPage();
+
+        await screen.findByText("A");
+        stubItemRects(["module-1", "module-2", "module-3"]);
+        await dragFirstModuleDown();
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[ABC]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["B", "A", "C"]);
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Import Modules" }));
+        await screen.findByRole("dialog", { name: "Import Modules" });
+
+        const cards = await screen.findAllByTestId(/^module-card-(?!overlay-)/);
+        const ids = cards
+          .map((card) => card.getAttribute("data-testid") ?? "")
+          .filter((testId) => !testId.endsWith("-editor-scale"));
+        expect(ids).toEqual([
+          "module-card-module-2",
+          "module-card-module-1",
+          "module-card-module-3",
+        ]);
+        // Merely opening, seeded from the outer draft, made no reorder
+        // persistence request.
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, patchInit]) => patchInit?.method === "PATCH",
+          ),
+        ).toBe(false);
+      });
+
+      it("a Module order saved inside Import Modules becomes this page's displayed order, superseding the stale outer draft", async () => {
+        setupSyncFetch([
+          buildModuleFixture({ id: "module-1", title: { ar: "", en: "A" } }),
+          buildModuleFixture({ id: "module-2", title: { ar: "", en: "B" } }),
+          buildModuleFixture({ id: "module-3", title: { ar: "", en: "C" } }),
+        ]);
+        renderPage();
+
+        // 1. Local, unsaved reorder draft on this page: A,B,C -> B,A,C.
+        await screen.findByText("A");
+        stubItemRects(["module-1", "module-2", "module-3"]);
+        await dragFirstModuleDown();
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[ABC]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["B", "A", "C"]);
+        });
+
+        // 2. Opens Import Modules -- correctly seeded from that draft
+        // (B,A,C), per the previous test.
+        fireEvent.click(screen.getByRole("button", { name: "Import Modules" }));
+        const dialog = await screen.findByRole("dialog", {
+          name: "Import Modules",
+        });
+        await screen.findByTestId("module-card-module-2");
+
+        // 3. Reorders again inside the modal: B,A,C -> A,B,C (dragging the
+        // modal's own first card, "B", down one position).
+        stubModalCardRects(["module-2", "module-1", "module-3"]);
+        await dragFirstModalCardDown();
+        // Scoped to the modal -- the Book form's own submit button shares
+        // this same label ("Save changes").
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        // 4. Once the modal's save succeeds and it closes, this page must
+        // show the modal's newly saved order (A,B,C) -- not the stale outer
+        // draft (B,A,C) it started with, even though A,B,C happens to also
+        // be this fixture's original persisted order (proving the page
+        // adopted the modal's save, not merely "reverted" the untouched
+        // draft: a bug that left the stale B,A,C draft in place would still
+        // display B,A,C here).
+        await screen.findByRole("button", { name: "Import Modules" });
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[ABC]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["A", "B", "C"]);
+        });
       });
     });
 

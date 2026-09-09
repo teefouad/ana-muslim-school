@@ -316,6 +316,25 @@ export default function EditBookPage() {
           onClose={() => setImportSourceOpened(false)}
           bookId={book.id}
           onModulesCreated={() => mutateModules()}
+          // Lets the modal's saved-Source workspace seed its own initial
+          // order from whatever is currently displayed here, including an
+          // unsaved drag reorder (ANA-84) -- `null` (not this page's own
+          // `modules`) when there's no local draft, so the modal falls back
+          // to its usual persisted-order seeding unchanged.
+          outerModuleOrder={
+            moduleOrderDraft
+              ? moduleOrderDraft.map((module) => module.id)
+              : null
+          }
+          // The modal only calls this once its own Save changes has
+          // actually persisted a new Module order -- adopts that as this
+          // page's own order and clears the local draft it just
+          // superseded, instead of leaving a stale draft to later
+          // resurrect an older order once modulesData revalidates.
+          onModuleOrderPersisted={async () => {
+            await mutateModules();
+            setModuleOrderDraft(null);
+          }}
         />
       )}
     </Stack>
