@@ -24,6 +24,33 @@ export async function createModule(
   return data;
 }
 
+/** Updates a Module's writable fields via
+ * `PATCH /api/v1/books/{bookId}/modules/{moduleId}` (ANA-94) -- every field
+ * is optional server-side (an omitted one is left unchanged), so callers
+ * only send the subset they actually edited. The Edit Module modal always
+ * sends `title`/`description`/`color` together and never `isLocked`/
+ * `isPublished` (it has no UI for those), so a save can never clobber
+ * them. */
+export async function updateModule(
+  bookId: string,
+  moduleId: string,
+  fields: Partial<ModuleWritableFields>,
+): Promise<Module> {
+  const response = await fetch(`/api/v1/books/${bookId}/modules/${moduleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  const { data } = (await response.json()) as { data: Module };
+
+  return data;
+}
+
 /** Deletes a Module via `DELETE /api/v1/books/{bookId}/modules/{moduleId}`
  * (ANA-77) -- the service layer cascades this to delete any Learning
  * Material referencing the Module (still `409`s for Lessons/Questions); the

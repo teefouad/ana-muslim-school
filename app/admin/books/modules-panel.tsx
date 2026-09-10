@@ -29,6 +29,12 @@ export interface ModulesPanelProps {
    * itself. Omitted entirely leaves the edit action a no-op, matching the
    * pre-ANA-91 behavior. */
   onEditModule?: (module: MockModule) => void;
+  /** Fired when Add module is clicked (ANA-94) -- opens the caller's own
+   * top-level Module modal in create mode; this panel never inserts a
+   * client-generated blank Module into `modules` itself (there is no longer
+   * a temporary client-side id to reconcile once the backend create
+   * succeeds). Omitted entirely leaves Add a no-op. */
+  onAddModule?: () => void;
 }
 
 function getModuleLabel(module: MockModule, index: number): string {
@@ -38,19 +44,18 @@ function getModuleLabel(module: MockModule, index: number): string {
 // The Modules side panel shared by the Add Book and Edit Book pages
 // (ANA-61, renamed from Sections in ANA-68 to match the canonical School
 // domain model). Wraps the reusable ItemList (ANA-58) around a
-// caller-provided `modules` list -- reorder, add, and delete only update
-// the caller's own state; this component owns no persistence itself.
-// Add Book still passes local, pre-save `MockModule[]` state. Edit Book (as
-// of ANA-70) instead maps its real, API-backed Modules into this same
-// `MockModule` shape for display and creates Modules through the Import
-// Source flow's Finish action -- reorder and add from this panel are still
-// local-only for it (`onModulesChange` just updates a client-side draft,
-// see `[id]/edit/page.tsx`'s `moduleOrderDraft`; ANA-91 keeps Add frontend-
-// only, with no `/api/v1/books/{bookId}/modules` POST), but Delete is real
-// (ANA-77): passing `onDeleteModule` persists it through the Module DELETE
-// API instead of the panel's default local-only removal. Edit (ANA-91)
-// opens the caller's own top-level modal via `onEditModule` -- also
-// frontend-only, no PATCH.
+// caller-provided `modules` list -- reorder only updates the caller's own
+// state; this component owns no persistence itself. Add Book still passes
+// local, pre-save `MockModule[]` state. Edit Book (as of ANA-70) instead
+// maps its real, API-backed Modules into this same `MockModule` shape for
+// display -- reorder from this panel is still local-only for it
+// (`onModulesChange` just updates a client-side draft, see
+// `[id]/edit/page.tsx`'s `moduleOrderDraft`). Add, Edit, and Delete are all
+// real backend operations as of ANA-94: Add opens the caller's own
+// top-level Module modal via `onAddModule` (this panel never inserts a
+// client-generated blank Module into `modules` itself), Edit opens it via
+// `onEditModule`, and Delete persists through the Module DELETE API via
+// `onDeleteModule` instead of the panel's default local-only removal.
 export function ModulesPanel({
   modules,
   onModulesChange,
@@ -58,6 +63,7 @@ export function ModulesPanel({
   className,
   onDeleteModule,
   onEditModule,
+  onAddModule,
 }: ModulesPanelProps) {
   // The real Module currently pending a confirmed delete -- only ever set
   // when `onDeleteModule` is provided (Edit Book's persisted Modules,
@@ -66,10 +72,6 @@ export function ModulesPanel({
   const [pendingDelete, setPendingDelete] = useState<MockModule | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  function handleAdd() {
-    onModulesChange([...modules, { id: crypto.randomUUID(), title: "" }]);
-  }
 
   function handleDeleteRequest(module: MockModule) {
     if (onDeleteModule) {
@@ -138,7 +140,11 @@ export function ModulesPanel({
         deletingItemId={pendingDelete && isDeleting ? pendingDelete.id : null}
         error={deleteError}
         addLabel="Add module"
-        onAdd={handleAdd}
+        // Opens the caller's own top-level Module modal in create mode
+        // (ANA-94) -- this panel never inserts anything into `modules`
+        // itself; the caller adds the real, backend-created Module only
+        // once that modal's own create request succeeds.
+        onAdd={() => onAddModule?.()}
         addDisabled={disabled}
       />
       {pendingDelete && (

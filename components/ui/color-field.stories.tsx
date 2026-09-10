@@ -17,13 +17,22 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function ControlledField(props: { initialValue?: string; label?: string }) {
+function ControlledField(props: {
+  initialValue?: string;
+  label?: string;
+  disabled?: boolean;
+}) {
   const [value, setValue] = useState(
     props.initialValue ?? DEFAULT_APPLICATION_COLOR,
   );
   return (
     <div style={{ width: 420 }}>
-      <ColorField label={props.label} value={value} onChange={setValue} />
+      <ColorField
+        label={props.label}
+        value={value}
+        onChange={setValue}
+        disabled={props.disabled}
+      />
     </div>
   );
 }
@@ -38,6 +47,12 @@ export const NamedTokenSelected: Story = {
 
 export const FreeFormValue: Story = {
   render: () => <ControlledField initialValue="#7c3aed" />,
+};
+
+// Suspends editing (ANA-94) -- e.g. while the Edit Module modal's AI
+// Translate/Suggest is in flight and could still overwrite the value.
+export const Disabled: Story = {
+  render: () => <ControlledField initialValue="cyan.6" disabled />,
 };
 
 // Two independent instances on the same page (e.g. a Book form and a Module

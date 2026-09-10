@@ -3,6 +3,11 @@
   flex-wrap: wrap;
   border-radius: 8px;
   overflow: hidden;
+  width: 280px;
+}
+
+.disabled {
+  opacity: 0.6;
 }
 
 .swatch {
@@ -13,6 +18,10 @@
   cursor: pointer;
   height: 18;
   flex: 0 0 35px;
+}
+
+.disabled .swatch {
+  cursor: not-allowed;
 }
 
 .swatch:focus-visible {

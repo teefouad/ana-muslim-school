@@ -42,14 +42,25 @@ export interface ColorSwatchPickerProps {
    * different shade, a free-form hex) leaves every swatch unselected. */
   value: string;
   onChange: (value: string) => void;
+  /** Suspends selection (e.g. while an in-flight save/AI request could
+   * still overwrite `value`, ANA-94) without unmounting the swatches --
+   * matches ItemList's own disabled-row convention: no tabbing to a
+   * swatch, and clicks/keys are ignored. */
+  disabled?: boolean;
 }
 
 // 15 adjacent, fixed-width color swatches (ANA-89) replacing the old single
 // preview box next to the Book form's "Color" field. Each swatch paints
 // shade `6` of one of the supported application colors; clicking one sets
 // the field to that swatch's `<name>.6` token.
-export function ColorSwatchPicker({ value, onChange }: ColorSwatchPickerProps) {
+export function ColorSwatchPicker({
+  value,
+  onChange,
+  disabled = false,
+}: ColorSwatchPickerProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>, token: string) {
+    if (disabled) return;
+
     if (event.key === " " || event.key === "Enter") {
       event.preventDefault();
       // A held key repeats keydown events -- only the initial press should
@@ -61,7 +72,14 @@ export function ColorSwatchPicker({ value, onChange }: ColorSwatchPickerProps) {
   }
 
   return (
-    <div role="radiogroup" aria-label="Color" className={styles.group}>
+    <div
+      role="radiogroup"
+      aria-label="Color"
+      aria-disabled={disabled}
+      className={[styles.group, disabled && styles.disabled]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {SWATCH_COLOR_NAMES.map((name) => {
         const token: ApplicationColorToken = `${name}.6`;
         const selected = value === token;
@@ -70,14 +88,17 @@ export function ColorSwatchPicker({ value, onChange }: ColorSwatchPickerProps) {
           <div
             key={name}
             role="radio"
-            tabIndex={0}
+            tabIndex={disabled ? -1 : 0}
             aria-checked={selected}
+            aria-disabled={disabled}
             aria-label={swatchLabel(name)}
             className={styles.swatch}
             style={{
               backgroundColor: APPLICATION_COLORS[token],
             }}
-            onClick={() => onChange(token)}
+            onClick={() => {
+              if (!disabled) onChange(token);
+            }}
             onKeyDown={(event) => handleKeyDown(event, token)}
           >
             {selected && (

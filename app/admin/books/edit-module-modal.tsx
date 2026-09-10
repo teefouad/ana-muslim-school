@@ -23,7 +23,10 @@ import type {
 } from "@/components/ui/translatable-value";
 import { assistLearningMaterial } from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
-import type { ModuleFieldsValues } from "./module-fields";
+import {
+  createEmptyModuleFieldsValues,
+  type ModuleFieldsValues,
+} from "./module-fields";
 
 const LANGUAGES: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -164,48 +167,68 @@ function useSuggestAction(
   };
 }
 
+/** `"create"` opens the modal empty, with Save Module as its primary action
+ * (ANA-94) -- clicking Add Module no longer inserts anything into the
+ * Module list itself; that only happens once this modal's own backend
+ * create request succeeds (see `[id]/edit/page.tsx`'s `handleCreateModule`).
+ * `"edit"` seeds it from an existing, real Module's current fields, primary
+ * action Save changes -- unchanged from ANA-91 except that saving now
+ * persists through the backend instead of only updating local state. */
+export type EditModuleModalState =
+  { mode: "create" } | { mode: "edit"; id: string; fields: ModuleFieldsValues };
+
 export interface EditModuleModalProps {
-  /** `null` closes the modal. Set to open it, seeded with that Module's
-   * current field values -- see `getInitialModuleFields` in
-   * `[id]/edit/page.tsx`. */
-  module: (ModuleFieldsValues & { id: string }) | null;
-  /** The owning Book, needed for AI Suggest's `/api/v1/ai/assist` request
-   * (it loads Book context server-side). */
+  /** `null` closes the modal. */
+  state: EditModuleModalState | null;
+  /** The owning Book -- needed for AI Suggest's `/api/v1/ai/assist` request
+   * (it loads Book context server-side) and for the caller's own
+   * create/save requests. */
   bookId: string;
   onClose: () => void;
-  /** Save changes never persists to the backend (ANA-91, frontend-only) --
-   * this only hands the edited values back to the caller's own local
-   * state. */
-  onSave: (id: string, fields: ModuleFieldsValues) => void;
+  /** Called with the modal's current field values when Save Module is
+   * clicked in create mode. The modal awaits this -- resolving creates the
+   * Module through the backend and closes the modal; rejecting keeps the
+   * modal open and shows the error, without ever calling `onClose` itself
+   * (ANA-94: "only add the Module to the list after creation succeeds"). */
+  onCreate: (fields: ModuleFieldsValues) => Promise<void>;
+  /** Called with the modal's current field values when Save changes is
+   * clicked in edit mode. Same awaited resolve/reject contract as
+   * `onCreate`. */
+  onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
 // -- deliberately a sibling of, not nested inside, the Module Builder modal
-// (ImportSourceModal). Title, Description, Color, and Content are fully
-// controlled from a local copy of `module`'s fields, initialized once per
-// mount (remounted by `module.id` changing, matching BookForm/DeleteConfirm
-// Modal's own "T | null` as the open signal" pattern) -- editing here never
-// touches the caller's data until Save changes.
+// (ImportSourceModal). Reused for both Add Module (create mode) and the
+// pencil action (edit mode) rather than duplicating the form (ANA-94) --
+// only the title, primary action label, and which callback Save invokes
+// differ between the two.
 export function EditModuleModal({
-  module,
+  state,
   bookId,
   onClose,
+  onCreate,
   onSave,
 }: EditModuleModalProps) {
   return (
     <Modal
-      opened={module !== null}
+      opened={state !== null}
       onClose={onClose}
-      title="Edit Module"
+      title={state?.mode === "create" ? "Add Module" : "Edit Module"}
       size="lg"
       centered
     >
-      {module && (
+      {state && (
         <EditModuleModalBody
-          key={module.id}
-          module={module}
+          // Remounts (a fresh local draft) per distinct edit target, and
+          // whenever create mode is (re-)entered after a different state --
+          // matching BookForm/DeleteConfirmModal's own "T | null as the open
+          // signal" pattern.
+          key={state.mode === "create" ? "create" : state.id}
+          state={state}
           bookId={bookId}
           onClose={onClose}
+          onCreate={onCreate}
           onSave={onSave}
         />
       )}
@@ -214,22 +237,31 @@ export function EditModuleModal({
 }
 
 function EditModuleModalBody({
-  module,
+  state,
   bookId,
   onClose,
+  onCreate,
   onSave,
 }: {
-  module: ModuleFieldsValues & { id: string };
+  state: EditModuleModalState;
   bookId: string;
   onClose: () => void;
-  onSave: (id: string, fields: ModuleFieldsValues) => void;
+  onCreate: (fields: ModuleFieldsValues) => Promise<void>;
+  onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
 }) {
-  const [title, setTitle] = useState<TranslatedValue>(module.title);
+  const initialFields =
+    state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
+
+  const [title, setTitle] = useState<TranslatedValue>(initialFields.title);
   const [description, setDescription] = useState<TranslatedValue>(
-    module.description,
+    initialFields.description,
   );
-  const [color, setColor] = useState(module.color);
-  const [content, setContent] = useState<TranslatedValue>(module.content);
+  const [color, setColor] = useState(initialFields.color);
+  const [content, setContent] = useState<TranslatedValue>(
+    initialFields.content,
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const titleTranslate = useTranslateAction(title, setTitle);
   const descriptionTranslate = useTranslateAction(description, setDescription);
@@ -239,8 +271,37 @@ function EditModuleModalBody({
     setDescription,
   );
 
-  function handleSave() {
-    onSave(module.id, { title, description, color, content });
+  // While either AI action is in flight, its response can still land and
+  // overwrite Title/Description at any moment -- disabling every field
+  // (not just the field the AI action targets) for that whole window is
+  // what ANA-94 fixes: previously only the action buttons themselves
+  // showed a loading state, leaving every field, including Color and
+  // Content, freely editable underneath an in-flight request that could
+  // clobber it seconds later.
+  const aiBusy =
+    titleTranslate.loading ||
+    descriptionTranslate.loading ||
+    descriptionSuggest.loading;
+
+  async function handlePrimaryAction() {
+    setSaveError(null);
+    setIsSaving(true);
+
+    try {
+      const fields: ModuleFieldsValues = { title, description, color, content };
+
+      if (state.mode === "create") {
+        await onCreate(fields);
+      } else {
+        await onSave(state.id, fields);
+      }
+
+      onClose();
+    } catch (err) {
+      setSaveError(errorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -250,11 +311,12 @@ function EditModuleModalBody({
         languages={LANGUAGES}
         value={title}
         onChange={setTitle}
+        disabled={aiBusy}
         actions={() => (
           <ActionIcon
             variant="subtle"
             aria-label="Translate title to English"
-            disabled={titleTranslate.disabled}
+            disabled={titleTranslate.disabled || isSaving}
             loading={titleTranslate.loading}
             onClick={titleTranslate.handleClick}
           >
@@ -269,17 +331,18 @@ function EditModuleModalBody({
       )}
       {titleTranslate.dialog}
 
-      <TranslatableTextArea
+      <TranslatableTextInput
         label="Description"
         languages={LANGUAGES}
         value={description}
         onChange={setDescription}
+        disabled={aiBusy}
         actions={(activeSlug) => (
           <Group gap="xs" wrap="nowrap">
             <ActionIcon
               variant="subtle"
               aria-label="AI Suggest description"
-              disabled={descriptionSuggest.isDisabled(activeSlug)}
+              disabled={descriptionSuggest.isDisabled(activeSlug) || isSaving}
               loading={descriptionSuggest.loading}
               onClick={() => descriptionSuggest.handleClick(activeSlug)}
             >
@@ -288,7 +351,7 @@ function EditModuleModalBody({
             <ActionIcon
               variant="subtle"
               aria-label="Translate description to English"
-              disabled={descriptionTranslate.disabled}
+              disabled={descriptionTranslate.disabled || isSaving}
               loading={descriptionTranslate.loading}
               onClick={descriptionTranslate.handleClick}
             >
@@ -310,20 +373,33 @@ function EditModuleModalBody({
       {descriptionTranslate.dialog}
       {descriptionSuggest.dialog}
 
-      <ColorField value={color} onChange={setColor} />
-
       <TranslatableTextArea
         label="Content"
         languages={LANGUAGES}
         value={content}
         onChange={setContent}
+        disabled={aiBusy}
       />
 
+      <ColorField value={color} onChange={setColor} disabled={aiBusy} />
+
+      {saveError && (
+        <Alert color="red" role="alert">
+          {saveError}
+        </Alert>
+      )}
+
       <Group justify="flex-end" gap="sm">
-        <Button variant="default" onClick={onClose}>
+        <Button variant="default" onClick={onClose} disabled={isSaving}>
           Cancel
         </Button>
-        <Button onClick={handleSave}>Save changes</Button>
+        <Button
+          onClick={() => void handlePrimaryAction()}
+          loading={isSaving}
+          disabled={aiBusy}
+        >
+          {state.mode === "create" ? "Save Module" : "Save changes"}
+        </Button>
       </Group>
     </Stack>
   );

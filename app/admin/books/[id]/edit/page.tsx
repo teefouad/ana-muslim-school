@@ -26,16 +26,28 @@ import {
 import { EditModuleModal } from "../../edit-module-modal";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
-import { deleteModule } from "../../import-source/modules-client";
+import {
+  createMaterial,
+  updateMaterial,
+} from "../../import-source/materials-client";
+import {
+  createModule,
+  deleteModule,
+  updateModule,
+} from "../../import-source/modules-client";
 import type { MockModule } from "../../mock-modules";
 import {
   createEmptyModuleFieldsValues,
+  toMaterialContent,
+  toModuleCreateFields,
   toModuleFieldsValues,
+  toModulePatchFields,
   type ModuleFieldsValues,
 } from "../../module-fields";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
+import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 import type { Source } from "@/lib/sources/types";
 
@@ -45,6 +57,12 @@ function getModuleLabel(module: Module): string {
   // that fallback do the last step instead of duplicating it here.
   return module.title.ar || module.title.en || "";
 }
+
+/** Which Module modal (ANA-94) is open, if any -- `"create"` needs nothing
+ * else; `"edit"` only carries the target Module's id, since its current
+ * fields are read fresh from `modulesData` at render time (see
+ * `getModuleFields` below) rather than snapshotted into this state. */
+type ModuleModalTarget = { mode: "create" } | { mode: "edit"; id: string };
 
 const BOOK_FORM_ID = "edit-book-form";
 
@@ -76,6 +94,25 @@ export default function EditBookPage() {
   } = useSWR(book ? `/api/v1/books/${book.id}/modules` : null, (url) =>
     fetchJson<{ data: Module[] }>(url).then((response) => response.data),
   );
+  // Each Module's Learning Material (ANA-94 PR review) -- the Edit Module
+  // modal's Content field is this, not a field on Module itself (see
+  // module-fields.ts). Book-filtered via `?bookId=`, using the exact same
+  // key AND raw (unwrapped) fetcher as the Module Builder workspace's own
+  // Materials fetch (import-source-modal.tsx) -- SWR dedupes/shares one
+  // cache entry per key, so a different fetcher shape here would have the
+  // two consumers racing to write mismatched cached data under the same
+  // key (PR review debugging: this modal reads `workspaceMaterialsData
+  // .data`, so this hook must produce that same `{ data: Material[] }`
+  // shape, not unwrap it).
+  const {
+    data: materialsData,
+    error: materialsError,
+    isLoading: materialsLoading,
+    mutate: mutateMaterials,
+  } = useSWR<{ data: Material[] }>(
+    book ? `/api/v1/materials?bookId=${encodeURIComponent(book.id)}` : null,
+    fetchJson,
+  );
   const serverModules: MockModule[] = (modulesData ?? []).map((module) => ({
     id: module.id,
     title: getModuleLabel(module),
@@ -90,65 +127,62 @@ export default function EditBookPage() {
   const [moduleOrderDraft, setModuleOrderDraft] = useState<MockModule[] | null>(
     null,
   );
-  // Ids of Modules added locally through this panel's Add action (ANA-91) --
-  // they exist only in `moduleOrderDraft`/`localModuleFields`, never on the
-  // server (this task stays frontend-only, no
-  // `/api/v1/books/{bookId}/modules` POST), so the stale-draft check below
-  // must not treat them as evidence the draft has fallen out of sync with
-  // the server's real Module set.
-  const [addedModuleIds, setAddedModuleIds] = useState<string[]>([]);
-  // Local-only field edits (ANA-91): every Added Module always has an entry
-  // here (there's nothing server-side to seed it from); an existing,
-  // server-backed Module only gets one once its Edit Module modal has been
-  // saved at least once -- until then its fields are read straight from
-  // `modulesData` (see `getInitialModuleFields`).
-  const [localModuleFields, setLocalModuleFields] = useState<
-    Record<string, ModuleFieldsValues>
-  >({});
-  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
+  const [modalTarget, setModalTarget] = useState<ModuleModalTarget | null>(
+    null,
+  );
+  // Retry-safety for Create Module's two-step Module-then-Material create
+  // (ANA-94 PR review): once the Module itself has been created, its real
+  // id is remembered here so a retried Save Module (after a Material-
+  // creation failure) only retries `createMaterial`, never creates a
+  // second Module. Reset whenever a fresh create session actually starts
+  // (see `onAddModule` below) -- otherwise a later, unrelated Add Module
+  // click could attach its Material to a stale id left over from an
+  // earlier, abandoned attempt.
+  const [pendingCreatedModuleId, setPendingCreatedModuleId] = useState<
+    string | null
+  >(null);
 
   // If the server's Module *set* has changed since the draft was built --
   // e.g. a Module was created or deleted elsewhere (Import Source's Finish/
-  // Save changes, or this page's own Delete) while a reorder was pending --
-  // the draft can no longer be trusted to cover every current Module, so
-  // fall back to the fresh server order rather than risk submitting a
-  // stale/incomplete reorder. A same-set reorder of the *same* Modules is
-  // exactly what `isValidReorder` already checks (ANA-62) -- locally added
-  // ids (ANA-91) are excluded from that comparison first, since the server
-  // was never going to know about them. Runs during render (React's
-  // documented "adjusting state when a prop changes" pattern) rather than a
+  // Save changes, this page's own Delete, or Add Module's own backend
+  // create, ANA-94) while a reorder was pending -- the draft can no longer
+  // be trusted to cover every current Module, so fall back to the fresh
+  // server order rather than risk submitting a stale/incomplete reorder. A
+  // same-set reorder of the *same* Modules is exactly what `isValidReorder`
+  // already checks (ANA-62). Runs during render (React's documented
+  // "adjusting state when a prop changes" pattern) rather than a
   // `useEffect`, which this project's lint config flags any state update
   // inside as an error (see AGENTS.md).
   if (
     modulesData &&
     moduleOrderDraft &&
     !isValidReorder(
-      moduleOrderDraft
-        .map((module) => module.id)
-        .filter((id) => !addedModuleIds.includes(id)),
+      moduleOrderDraft.map((module) => module.id),
       modulesData.map((module) => module.id),
     )
   ) {
     setModuleOrderDraft(null);
-    setAddedModuleIds([]);
   }
 
   const modules: MockModule[] = moduleOrderDraft ?? serverModules;
 
-  // Resolves a Module's current field values for the Edit Module modal
-  // (ANA-91) -- a locally-added or previously-edited Module reads from its
-  // own local draft; an untouched, server-backed Module is seeded fresh
-  // from `modulesData`.
-  function getInitialModuleFields(id: string): ModuleFieldsValues {
-    const override = localModuleFields[id];
-    if (override) {
-      return override;
+  // Resolves an existing Module's current field values for the Edit Module
+  // modal (ANA-94) -- always read fresh from `modulesData`/`materialsData`,
+  // the one source of truth now that Save changes persists through the
+  // backend instead of a local-only draft (ANA-91). Content is seeded from
+  // this Module's existing Learning Material, if it has one (ANA-94 PR
+  // review) -- previously this always started blank, discarding content
+  // Module Builder had already saved for it.
+  function getModuleFields(id: string): ModuleFieldsValues {
+    const serverModule = modulesData?.find((module) => module.id === id);
+    if (!serverModule) {
+      return createEmptyModuleFieldsValues();
     }
 
-    const serverModule = modulesData?.find((module) => module.id === id);
-    return serverModule
-      ? toModuleFieldsValues(serverModule)
-      : createEmptyModuleFieldsValues();
+    const material = materialsData?.data.find(
+      (candidate) => candidate.moduleId === id,
+    );
+    return toModuleFieldsValues(serverModule, material?.content);
   }
   // Whether this Book already has a saved Source (ANA-71) -- fetched here,
   // not gated on the Module Builder modal being open, since which internal
@@ -180,11 +214,14 @@ export default function EditBookPage() {
   // `book` is always set here: ModulesPanel only renders once it has loaded
   // (see the render below). Revalidates the Modules SWR data on success so
   // the row disappears without a page reload; a rejection propagates to
-  // ModulesPanel, which keeps the row visible and shows the error. Clears
-  // any pending reorder draft -- it necessarily referenced the now-deleted
-  // Module, so it can no longer be replayed as-is (the render-time check
-  // above would also catch this once `modulesData` revalidates, but
-  // clearing it immediately avoids a stale drag order flashing first).
+  // ModulesPanel, which keeps the row visible and shows the error. If a
+  // reorder draft is pending, drops only the deleted Module's id from it
+  // rather than resetting the whole draft (ANA-94 PR review) -- discarding
+  // it entirely would also throw away an unrelated, still-unsaved reorder
+  // of the *other* Modules; the render-time staleness check above can't
+  // help here since it only fires once `modulesData` has already
+  // revalidated, and would otherwise show the pre-delete server order
+  // flash first.
   async function handleDeleteModule(module: MockModule) {
     if (!book) {
       return;
@@ -192,40 +229,22 @@ export default function EditBookPage() {
 
     await deleteModule(book.id, module.id);
     await mutateModules();
-    setModuleOrderDraft(null);
+    setModuleOrderDraft((draft) =>
+      draft ? draft.filter((candidate) => candidate.id !== module.id) : draft,
+    );
   }
 
   // Updates the local Module order draft (ANA-79) -- a plain client-side
-  // state change, no network request. `ModulesPanel`'s Add action funnels
-  // through this same prop, appending exactly one new blank Module (ANA-91)
-  // -- accepted here as a local-only addition (never persisted, matching
-  // this task's frontend-only scope) rather than rejected as an invalid
-  // reorder. Anything else is validated as a same-set reorder of whatever is
-  // *currently displayed* (the draft if one exists, otherwise the server
-  // order), unchanged from before ANA-91.
+  // state change, no network request. Validated as a same-set reorder of
+  // whatever is *currently displayed* (the draft if one exists, otherwise
+  // the server order); Add no longer funnels through this prop (ANA-94 --
+  // it opens the Module modal instead, see `onAddModule` below), so this is
+  // exactly the original ANA-79 reorder-only behavior.
   function handleReorderModules(reordered: MockModule[]) {
-    const currentIds = modules.map((module) => module.id);
-    const addedIds = reordered
-      .map((module) => module.id)
-      .filter((id) => !currentIds.includes(id));
-
-    if (addedIds.length > 0) {
-      setAddedModuleIds((prev) => [...prev, ...addedIds]);
-      setLocalModuleFields((prev) => {
-        const next = { ...prev };
-        for (const id of addedIds) {
-          next[id] = createEmptyModuleFieldsValues();
-        }
-        return next;
-      });
-      setModuleOrderDraft(reordered);
-      return;
-    }
-
     if (
       !isValidReorder(
         reordered.map((module) => module.id),
-        currentIds,
+        modules.map((module) => module.id),
       )
     ) {
       return;
@@ -234,21 +253,91 @@ export default function EditBookPage() {
     setModuleOrderDraft(reordered);
   }
 
-  // Save changes in the Edit Module modal (ANA-91) never persists to the
-  // backend -- it only updates this page's own local draft, both the full
-  // field values (for the next time this Module is edited) and the display
-  // title `ModulesPanel` renders (falling back to its own "Module N" copy
-  // when both languages are blank, same as a freshly Added Module).
-  function handleSaveModuleFields(id: string, fields: ModuleFieldsValues) {
-    setLocalModuleFields((prev) => ({ ...prev, [id]: fields }));
-    setModuleOrderDraft(
-      (moduleOrderDraft ?? serverModules).map((module) =>
-        module.id === id
-          ? { ...module, title: fields.title.ar || fields.title.en || "" }
-          : module,
-      ),
+  // Creates a new Module through the backend (ANA-94) -- the Module modal
+  // (in create mode) awaits this and only closes/considers the Module
+  // "added" once it resolves; a rejection leaves the modal open showing the
+  // error, and nothing is added to the displayed list. The Content field
+  // is this Module's Learning Material, not a Module field itself, so it's
+  // always persisted separately via `createMaterial` (ANA-94 PR review) --
+  // matching Module Builder's own Module+Material creation pattern
+  // (import-source-modal.tsx) -- once the Module itself exists and its
+  // real id is known; every new Module gets a Material this way, even one
+  // whose Content was left blank.
+  //
+  // Retry-safe (ANA-94 PR review): if `createModule` succeeds but the
+  // following `createMaterial` fails, the Module already exists in the
+  // backend -- `pendingCreatedModuleId` remembers its real id so a retried
+  // Save Module (the modal never closes on failure) only retries
+  // `createMaterial` against that same Module, instead of calling
+  // `createModule` again and orphaning the first one as a duplicate.
+  // Revalidates the Modules and Materials SWR data on success so the new
+  // id and its fields show up without a page reload, and drops any
+  // pending reorder draft -- it necessarily predates this Module and so
+  // can no longer be replayed as a valid same-set reorder (the render-time
+  // check above would also catch this once `modulesData` revalidates, but
+  // clearing it immediately avoids a stale order flashing first).
+  async function handleCreateModule(fields: ModuleFieldsValues) {
+    if (!book) {
+      return;
+    }
+
+    let moduleId = pendingCreatedModuleId;
+
+    if (moduleId === null) {
+      const created = await createModule(book.id, toModuleCreateFields(fields));
+      moduleId = created.id;
+      setPendingCreatedModuleId(moduleId);
+    }
+
+    await createMaterial(book.id, moduleId, toMaterialContent(fields));
+
+    setPendingCreatedModuleId(null);
+    await mutateModules();
+    await mutateMaterials();
+    setModuleOrderDraft(null);
+  }
+
+  // Persists an existing Module's edited fields through the backend
+  // (ANA-94) -- the Module modal awaits this the same way it awaits
+  // `handleCreateModule`. Content is persisted the same way: `updateMaterial`
+  // when this Module already has one (the common case), `createMaterial`
+  // when it doesn't yet (e.g. a Module that predates this feature) -- the
+  // same existing-id branch Module Builder's own Finish step uses (PR
+  // review). Revalidates the Modules and Materials SWR data on success. If
+  // a reorder draft is currently pending (the id set is unaffected by an
+  // edit, so the render-time staleness check above won't reset it), its
+  // matching entry's display title is patched too -- otherwise the panel
+  // would keep showing this Module's pre-edit title, read from the now-
+  // stale draft, until that reorder is either saved or abandoned.
+  async function handleSaveModule(id: string, fields: ModuleFieldsValues) {
+    if (!book) {
+      return;
+    }
+
+    await updateModule(book.id, id, toModulePatchFields(fields));
+
+    const existingMaterial = materialsData?.data.find(
+      (material) => material.moduleId === id,
     );
-    setEditingModuleId(null);
+    const content = toMaterialContent(fields);
+
+    if (existingMaterial) {
+      await updateMaterial(existingMaterial.id, content);
+    } else {
+      await createMaterial(book.id, id, content);
+    }
+
+    await mutateModules();
+    await mutateMaterials();
+    setModuleOrderDraft((draft) =>
+      draft
+        ? draft.map((module) =>
+            module.id === id
+              ? { ...module, title: fields.title.ar || fields.title.en || "" }
+              : module,
+          )
+        : draft,
+    );
   }
 
   async function handleSubmit(values: BookFormValues) {
@@ -360,31 +449,54 @@ export default function EditBookPage() {
             />
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
-            {modulesLoading ? (
+            {modulesLoading || materialsLoading ? (
               <Group gap="sm">
                 <Loader size="sm" />
                 <Text size="sm" c="dimmed">
                   Loading modules…
                 </Text>
               </Group>
+            ) : materialsError ? (
+              // Blocks the whole panel rather than rendering it with
+              // `materialsData` left `undefined` (ANA-94 PR review) --
+              // treating a failed Materials lookup as "this Module has no
+              // Material" is exactly the bug that opened Edit Module with
+              // blank Content and made Save create a duplicate Material
+              // instead of updating the real one. The Material service
+              // doesn't enforce one Material per Module, so nothing short
+              // of blocking here prevents that.
+              <Alert color="red">
+                Couldn&rsquo;t load this book&rsquo;s Learning Material (
+                {materialsError.message}). Reload the page to try again.
+              </Alert>
             ) : (
               // Reorder is a local draft only (ANA-79): `onModulesChange`
               // just updates `moduleOrderDraft`, with no network request --
               // Save changes (the Book form's own submit, above) is what
-              // persists the final order, bundled into that same PATCH. Add
-              // (ANA-91) is also local-only: handleReorderModules appends
-              // the new blank Module to that same draft instead of treating
-              // it as an invalid reorder, with no backend persistence.
-              // Delete is real and immediate (ANA-77, unchanged):
-              // `onDeleteModule` persists it through the Module DELETE API
-              // and revalidates this page's own Modules SWR data on
-              // success. Edit (ANA-91) opens this page's own top-level Edit
-              // Module modal, also local-only.
+              // persists the final order, bundled into that same PATCH. Add,
+              // Edit, and Delete are all real backend operations (ANA-94/
+              // ANA-77): Add and Edit open this page's own top-level Module
+              // modal (create/edit mode respectively), which persists
+              // through `handleCreateModule`/`handleSaveModule`; Delete
+              // persists immediately through the Module DELETE API via
+              // `onDeleteModule`. All three revalidate this page's own
+              // Modules SWR data on success.
               <ModulesPanel
                 modules={modules}
                 onModulesChange={handleReorderModules}
                 onDeleteModule={handleDeleteModule}
-                onEditModule={(module) => setEditingModuleId(module.id)}
+                onEditModule={(module) =>
+                  setModalTarget({ mode: "edit", id: module.id })
+                }
+                onAddModule={() => {
+                  // A genuinely new create session -- forget any Module id
+                  // left over from a previous, abandoned create attempt
+                  // (see `pendingCreatedModuleId` above), or this one would
+                  // wrongly attach its Material to that stale Module
+                  // instead of creating its own.
+                  setPendingCreatedModuleId(null);
+                  setModalTarget({ mode: "create" });
+                }}
               />
             )}
           </Box>
@@ -393,17 +505,21 @@ export default function EditBookPage() {
 
       {book && (
         <EditModuleModal
-          module={
-            editingModuleId
-              ? {
-                  id: editingModuleId,
-                  ...getInitialModuleFields(editingModuleId),
-                }
-              : null
+          state={
+            modalTarget === null
+              ? null
+              : modalTarget.mode === "create"
+                ? { mode: "create" }
+                : {
+                    mode: "edit",
+                    id: modalTarget.id,
+                    fields: getModuleFields(modalTarget.id),
+                  }
           }
           bookId={book.id}
-          onClose={() => setEditingModuleId(null)}
-          onSave={handleSaveModuleFields}
+          onClose={() => setModalTarget(null)}
+          onCreate={handleCreateModule}
+          onSave={handleSaveModule}
         />
       )}
 
@@ -412,7 +528,15 @@ export default function EditBookPage() {
           opened={importSourceOpened}
           onClose={() => setImportSourceOpened(false)}
           bookId={book.id}
-          onModulesCreated={() => mutateModules()}
+          onModulesCreated={() => {
+            mutateModules();
+            // Module Builder's own Finish step creates each new Module's
+            // Learning Material in the same operation -- revalidate it
+            // here too, or the Edit Module modal's Content field would
+            // show stale (blank) content for one of these Modules until
+            // an unrelated action happened to revalidate it.
+            mutateMaterials();
+          }}
           // Lets the modal's saved-Source workspace seed its own initial
           // order from whatever is currently displayed here, including an
           // unsaved drag reorder (ANA-84) -- `null` (not this page's own
