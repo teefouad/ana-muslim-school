@@ -70,6 +70,8 @@ function setupFetch(
     bookStatus?: number;
     modules?: Module[];
     materials?: Material[];
+    /** Simulates a failed Materials lookup (ANA-94 PR review) -- e.g. 500. */
+    materialsStatus?: number;
     hasSource?: boolean;
     onPatch?: (body: unknown) => { status: number; body: unknown };
     onCreateModule?: (body: unknown) => { status: number; body: unknown };
@@ -89,6 +91,7 @@ function setupFetch(
     bookStatus = 200,
     modules = [],
     materials = [],
+    materialsStatus = 200,
     hasSource = false,
     onPatch,
     onCreateModule,
@@ -161,7 +164,14 @@ function setupFetch(
       }
 
       if (method === "GET" && url === "/api/v1/materials?bookId=book-1") {
-        return Promise.resolve(jsonResponse({ data: materials }));
+        return Promise.resolve(
+          materialsStatus === 200
+            ? jsonResponse({ data: materials })
+            : jsonResponse(
+                { error: "Materials are unavailable." },
+                materialsStatus,
+              ),
+        );
       }
 
       if (
@@ -1113,6 +1123,30 @@ describe("EditBookPage", () => {
       });
     });
 
+    describe("Materials load failure (ANA-94 PR review)", () => {
+      it("blocks the Modules panel with an error instead of rendering it as if there were no Materials", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          materialsStatus: 500,
+        });
+        renderPage();
+
+        expect(
+          await screen.findByText(
+            /Couldn.t load this book.s Learning Material/,
+          ),
+        ).toBeInTheDocument();
+        // Neither the row nor Add module -- the whole panel, including its
+        // Edit/Delete/Add actions -- ever renders while this is unresolved.
+        expect(screen.queryByText("أ")).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "Add module" }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
     describe("Create Module (ANA-94)", () => {
       it("opens the Add Module modal blank, with the default color", async () => {
         setupFetch(buildBookFixture(), { modules: [] });
@@ -1276,6 +1310,143 @@ describe("EditBookPage", () => {
 
         await vi.waitFor(() => expect(createBody).not.toBeNull());
         expect(createBody).not.toHaveProperty("id");
+      });
+
+      it("does not create a second Module when Save Module is retried after a Material-creation failure (ANA-94 PR review)", async () => {
+        let createModuleCalls = 0;
+        let createMaterialCalls = 0;
+        setupFetch(buildBookFixture(), {
+          modules: [],
+          onCreateModule: () => {
+            createModuleCalls += 1;
+            return {
+              status: 201,
+              body: { data: buildModuleFixture({ id: "server-generated-id" }) },
+            };
+          },
+          onCreateMaterial: () => {
+            createMaterialCalls += 1;
+            // Fails the first attempt; a retry (same Save Module click
+            // again) should succeed without a second Module create.
+            return createMaterialCalls === 1
+              ? { status: 500, body: { error: "Something went wrong." } }
+              : {
+                  status: 201,
+                  body: {
+                    data: buildMaterialFixture({
+                      id: "material-1",
+                      moduleId: "server-generated-id",
+                    }),
+                  },
+                };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+        const dialog = await screen.findByRole("dialog", {
+          name: "Add Module",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+
+        expect(
+          await within(dialog).findByText("Something went wrong."),
+        ).toBeInTheDocument();
+        expect(createModuleCalls).toBe(1);
+        expect(createMaterialCalls).toBe(1);
+
+        // Re-routes the Modules GET to report the Module, matching what a
+        // real revalidation after the retry succeeds would return.
+        setupFetch(buildBookFixture(), {
+          modules: [buildModuleFixture({ id: "server-generated-id" })],
+          onCreateModule: () => {
+            createModuleCalls += 1;
+            return {
+              status: 201,
+              body: { data: buildModuleFixture({ id: "server-generated-id" }) },
+            };
+          },
+          onCreateMaterial: () => {
+            createMaterialCalls += 1;
+            return {
+              status: 201,
+              body: {
+                data: buildMaterialFixture({
+                  id: "material-1",
+                  moduleId: "server-generated-id",
+                }),
+              },
+            };
+          },
+        });
+
+        // Retries by clicking Save Module again -- must reuse the Module
+        // already created above, never call createModule a second time.
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Add Module" }),
+          ).not.toBeInTheDocument(),
+        );
+        expect(createModuleCalls).toBe(1);
+        expect(createMaterialCalls).toBe(2);
+      });
+
+      it("starts a genuinely new create (calls createModule again) if a failed attempt is abandoned via Cancel", async () => {
+        let createModuleCalls = 0;
+        setupFetch(buildBookFixture(), {
+          modules: [],
+          onCreateModule: () => {
+            createModuleCalls += 1;
+            return {
+              status: 201,
+              body: {
+                data: buildModuleFixture({
+                  id: `server-generated-id-${createModuleCalls}`,
+                }),
+              },
+            };
+          },
+          onCreateMaterial: () => ({
+            status: 500,
+            body: { error: "Something went wrong." },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+        let dialog = await screen.findByRole("dialog", {
+          name: "Add Module",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+        await within(dialog).findByText("Something went wrong.");
+        expect(createModuleCalls).toBe(1);
+
+        fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Add Module" }),
+          ).not.toBeInTheDocument(),
+        );
+
+        // A genuinely new Add Module session -- must not reuse the id
+        // left over from the abandoned attempt above.
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+        dialog = await screen.findByRole("dialog", { name: "Add Module" });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+
+        await vi.waitFor(() => expect(createModuleCalls).toBe(2));
       });
     });
 

@@ -106,6 +106,7 @@ export default function EditBookPage() {
   // shape, not unwrap it).
   const {
     data: materialsData,
+    error: materialsError,
     isLoading: materialsLoading,
     mutate: mutateMaterials,
   } = useSWR<{ data: Material[] }>(
@@ -129,6 +130,17 @@ export default function EditBookPage() {
   const [modalTarget, setModalTarget] = useState<ModuleModalTarget | null>(
     null,
   );
+  // Retry-safety for Create Module's two-step Module-then-Material create
+  // (ANA-94 PR review): once the Module itself has been created, its real
+  // id is remembered here so a retried Save Module (after a Material-
+  // creation failure) only retries `createMaterial`, never creates a
+  // second Module. Reset whenever a fresh create session actually starts
+  // (see `onAddModule` below) -- otherwise a later, unrelated Add Module
+  // click could attach its Material to a stale id left over from an
+  // earlier, abandoned attempt.
+  const [pendingCreatedModuleId, setPendingCreatedModuleId] = useState<
+    string | null
+  >(null);
 
   // If the server's Module *set* has changed since the draft was built --
   // e.g. a Module was created or deleted elsewhere (Import Source's Finish/
@@ -250,20 +262,36 @@ export default function EditBookPage() {
   // matching Module Builder's own Module+Material creation pattern
   // (import-source-modal.tsx) -- once the Module itself exists and its
   // real id is known; every new Module gets a Material this way, even one
-  // whose Content was left blank. Revalidates the Modules and Materials
-  // SWR data on success so the new, backend-generated id and its fields
-  // show up without a page reload, and drops any pending reorder draft --
-  // it necessarily predates this Module and so can no longer be replayed
-  // as a valid same-set reorder (the render-time check above would also
-  // catch this once `modulesData` revalidates, but clearing it immediately
-  // avoids a stale order flashing first).
+  // whose Content was left blank.
+  //
+  // Retry-safe (ANA-94 PR review): if `createModule` succeeds but the
+  // following `createMaterial` fails, the Module already exists in the
+  // backend -- `pendingCreatedModuleId` remembers its real id so a retried
+  // Save Module (the modal never closes on failure) only retries
+  // `createMaterial` against that same Module, instead of calling
+  // `createModule` again and orphaning the first one as a duplicate.
+  // Revalidates the Modules and Materials SWR data on success so the new
+  // id and its fields show up without a page reload, and drops any
+  // pending reorder draft -- it necessarily predates this Module and so
+  // can no longer be replayed as a valid same-set reorder (the render-time
+  // check above would also catch this once `modulesData` revalidates, but
+  // clearing it immediately avoids a stale order flashing first).
   async function handleCreateModule(fields: ModuleFieldsValues) {
     if (!book) {
       return;
     }
 
-    const created = await createModule(book.id, toModuleCreateFields(fields));
-    await createMaterial(book.id, created.id, toMaterialContent(fields));
+    let moduleId = pendingCreatedModuleId;
+
+    if (moduleId === null) {
+      const created = await createModule(book.id, toModuleCreateFields(fields));
+      moduleId = created.id;
+      setPendingCreatedModuleId(moduleId);
+    }
+
+    await createMaterial(book.id, moduleId, toMaterialContent(fields));
+
+    setPendingCreatedModuleId(null);
     await mutateModules();
     await mutateMaterials();
     setModuleOrderDraft(null);
@@ -428,6 +456,19 @@ export default function EditBookPage() {
                   Loading modules…
                 </Text>
               </Group>
+            ) : materialsError ? (
+              // Blocks the whole panel rather than rendering it with
+              // `materialsData` left `undefined` (ANA-94 PR review) --
+              // treating a failed Materials lookup as "this Module has no
+              // Material" is exactly the bug that opened Edit Module with
+              // blank Content and made Save create a duplicate Material
+              // instead of updating the real one. The Material service
+              // doesn't enforce one Material per Module, so nothing short
+              // of blocking here prevents that.
+              <Alert color="red">
+                Couldn&rsquo;t load this book&rsquo;s Learning Material (
+                {materialsError.message}). Reload the page to try again.
+              </Alert>
             ) : (
               // Reorder is a local draft only (ANA-79): `onModulesChange`
               // just updates `moduleOrderDraft`, with no network request --
@@ -447,7 +488,15 @@ export default function EditBookPage() {
                 onEditModule={(module) =>
                   setModalTarget({ mode: "edit", id: module.id })
                 }
-                onAddModule={() => setModalTarget({ mode: "create" })}
+                onAddModule={() => {
+                  // A genuinely new create session -- forget any Module id
+                  // left over from a previous, abandoned create attempt
+                  // (see `pendingCreatedModuleId` above), or this one would
+                  // wrongly attach its Material to that stale Module
+                  // instead of creating its own.
+                  setPendingCreatedModuleId(null);
+                  setModalTarget({ mode: "create" });
+                }}
               />
             )}
           </Box>
