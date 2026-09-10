@@ -50,8 +50,8 @@ function buildModuleFixture(overrides: Partial<Module> = {}): Module {
  * request this page makes: `GET` the Book, `GET` its Modules (only once the
  * Book has loaded -- see page.tsx's conditional SWR key), the page's own
  * Source-by-bookId lookup (which drives the header button's label),
- * optionally `PATCH` the Book on save, and optionally `DELETE` a Module
- * (ANA-77). */
+ * optionally `PATCH` the Book on save, and optionally `POST`/`PATCH`/
+ * `DELETE` a Module (ANA-77/ANA-94). */
 function setupFetch(
   book: ReturnType<typeof buildBookFixture> | null,
   options: {
@@ -59,6 +59,11 @@ function setupFetch(
     modules?: Module[];
     hasSource?: boolean;
     onPatch?: (body: unknown) => { status: number; body: unknown };
+    onCreateModule?: (body: unknown) => { status: number; body: unknown };
+    onUpdateModule?: (
+      moduleId: string,
+      body: unknown,
+    ) => { status: number; body: unknown };
     onDeleteModule?: (moduleId: string) => { status: number; body: unknown };
   } = {},
 ) {
@@ -67,6 +72,8 @@ function setupFetch(
     modules = [],
     hasSource = false,
     onPatch,
+    onCreateModule,
+    onUpdateModule,
     onDeleteModule,
   } = options;
 
@@ -106,11 +113,29 @@ function setupFetch(
         return Promise.resolve(jsonResponse(body, status));
       }
 
-      const deleteModuleMatch =
-        /^\/api\/v1\/books\/book-1\/modules\/(.+)$/.exec(url);
+      if (
+        method === "POST" &&
+        url === "/api/v1/books/book-1/modules" &&
+        onCreateModule
+      ) {
+        const { status, body } = onCreateModule(
+          JSON.parse(init?.body as string),
+        );
+        return Promise.resolve(jsonResponse(body, status));
+      }
 
-      if (method === "DELETE" && deleteModuleMatch && onDeleteModule) {
-        const { status, body } = onDeleteModule(deleteModuleMatch[1]);
+      const moduleMatch = /^\/api\/v1\/books\/book-1\/modules\/(.+)$/.exec(url);
+
+      if (method === "PATCH" && moduleMatch && onUpdateModule) {
+        const { status, body } = onUpdateModule(
+          moduleMatch[1],
+          JSON.parse(init?.body as string),
+        );
+        return Promise.resolve(jsonResponse(body, status));
+      }
+
+      if (method === "DELETE" && moduleMatch && onDeleteModule) {
+        const { status, body } = onDeleteModule(moduleMatch[1]);
         return Promise.resolve(jsonResponse(body, status));
       }
 
@@ -427,7 +452,7 @@ describe("EditBookPage", () => {
       expect(screen.queryByText("Summary")).not.toBeInTheDocument();
     });
 
-    it("adds a new blank Module locally when Add module is clicked, with no persistence (ANA-91)", async () => {
+    it("opens the Add Module modal instead of inserting a blank Module directly (ANA-94)", async () => {
       setupFetch(buildBookFixture(), { modules: [] });
       renderPage();
 
@@ -435,11 +460,16 @@ describe("EditBookPage", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Add module" }));
 
-      expect(screen.getByText("1 module")).toBeInTheDocument();
-      expect(screen.getByText("Module 1")).toBeInTheDocument();
+      expect(
+        await screen.findByRole("dialog", { name: "Add Module" }),
+      ).toBeInTheDocument();
+      // Nothing is added to the list merely by opening the modal -- only a
+      // successful create does that (see the "Create Module" describe
+      // below).
+      expect(screen.getByText("0 modules")).toBeInTheDocument();
       expect(
         (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
-          ([, init]) => init?.method === "PATCH",
+          ([, init]) => init?.method === "POST",
         ),
       ).toBe(false);
     });
@@ -628,7 +658,7 @@ describe("EditBookPage", () => {
         expect(modulesGetCallsAfter).toBeGreaterThan(modulesGetCallsBefore);
       });
 
-      it("appends Add module's new blank entry after the existing Modules, with no immediate PATCH (ANA-91)", async () => {
+      it("opening Add Module doesn't touch the current Module order or count (ANA-94)", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -638,10 +668,10 @@ describe("EditBookPage", () => {
 
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+        await screen.findByRole("dialog", { name: "Add Module" });
 
         expect(screen.getByText("أ")).toBeInTheDocument();
-        expect(screen.getByText("2 modules")).toBeInTheDocument();
-        expect(screen.getByText("Module 2")).toBeInTheDocument();
+        expect(screen.getByText("1 module")).toBeInTheDocument();
         expect(
           (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
             ([, init]) => init?.method === "PATCH",
@@ -953,7 +983,148 @@ describe("EditBookPage", () => {
       });
     });
 
-    describe("Edit Module modal (ANA-91)", () => {
+    describe("Create Module (ANA-94)", () => {
+      it("opens the Add Module modal blank, with the default color", async () => {
+        setupFetch(buildBookFixture(), { modules: [] });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Add Module",
+        });
+        expect(within(dialog).getByLabelText("Title")).toHaveValue("");
+        expect(
+          within(dialog).getByRole("combobox", { name: "Color" }),
+        ).toHaveValue(DEFAULT_APPLICATION_COLOR);
+      });
+
+      it("POSTs the entered fields and adds the backend-generated Module to the list only once creation succeeds", async () => {
+        let createBody: unknown = null;
+        setupFetch(buildBookFixture(), {
+          modules: [],
+          onCreateModule: (body) => {
+            createBody = body;
+            return {
+              status: 201,
+              body: {
+                data: buildModuleFixture({
+                  id: "server-generated-id",
+                  title: { ar: "وحدة جديدة", en: "" },
+                  color: "pink.6",
+                }),
+              },
+            };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Add Module",
+        });
+        fireEvent.change(within(dialog).getByLabelText("Title"), {
+          target: { value: "وحدة جديدة" },
+        });
+        fireEvent.click(within(dialog).getByRole("radio", { name: "Pink" }));
+
+        // Re-routes the Modules GET to report the newly created Module,
+        // matching what a real revalidation after a successful POST would
+        // return -- the backend, not this page, decides the final id.
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({
+              id: "server-generated-id",
+              title: { ar: "وحدة جديدة", en: "" },
+              color: "pink.6",
+            }),
+          ],
+          onCreateModule: (body) => {
+            createBody = body;
+            return {
+              status: 201,
+              body: { data: buildModuleFixture({ id: "server-generated-id" }) },
+            };
+          },
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+
+        expect(await screen.findByText("وحدة جديدة")).toBeInTheDocument();
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Add Module" }),
+          ).not.toBeInTheDocument(),
+        );
+        expect(createBody).toMatchObject({
+          title: { ar: "وحدة جديدة", en: "" },
+          color: "pink.6",
+          isLocked: false,
+          isPublished: false,
+        });
+      });
+
+      it("keeps the modal open and shows the error when creation fails, adding nothing to the list", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [],
+          onCreateModule: () => ({
+            status: 500,
+            body: { error: "Something went wrong." },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Add Module",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+
+        expect(
+          await within(dialog).findByText("Something went wrong."),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText("This book has no modules yet."),
+        ).toBeInTheDocument();
+      });
+
+      it("never generates or sends a client-side Module id", async () => {
+        let createBody: Record<string, unknown> | null = null;
+        setupFetch(buildBookFixture(), {
+          modules: [],
+          onCreateModule: (body) => {
+            createBody = body as Record<string, unknown>;
+            return {
+              status: 201,
+              body: { data: buildModuleFixture({ id: "server-generated-id" }) },
+            };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+        const dialog = await screen.findByRole("dialog", {
+          name: "Add Module",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save Module" }),
+        );
+
+        await vi.waitFor(() => expect(createBody).not.toBeNull());
+        expect(createBody).not.toHaveProperty("id");
+      });
+    });
+
+    describe("Edit Module modal", () => {
       it("opens seeded with the Module's Title, Description, and Color", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
@@ -980,28 +1151,79 @@ describe("EditBookPage", () => {
         ).toHaveValue("cyan.6");
       });
 
-      it("seeds a locally-added Module's modal with blank fields and the default color", async () => {
-        setupFetch(buildBookFixture(), { modules: [] });
-        renderPage();
-
-        await screen.findByText("This book has no modules yet.");
-        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
-        fireEvent.click(screen.getByRole("button", { name: "Edit Module 1" }));
-
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
-        expect(within(dialog).getByLabelText("Title")).toHaveValue("");
-        expect(
-          within(dialog).getByRole("combobox", { name: "Color" }),
-        ).toHaveValue(DEFAULT_APPLICATION_COLOR);
-      });
-
-      it("Save changes updates the displayed Module title locally, with no network request", async () => {
+      it("PATCHes the edited fields and updates the displayed title only once saving succeeds", async () => {
+        let patchBody: unknown = null;
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
           ],
+          onUpdateModule: (moduleId, body) => {
+            patchBody = body;
+            return {
+              status: 200,
+              body: {
+                data: buildModuleFixture({
+                  id: moduleId,
+                  title: { ar: "المقدمة", en: "" },
+                }),
+              },
+            };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.change(within(dialog).getByLabelText("Title"), {
+          target: { value: "المقدمة" },
+        });
+
+        // Re-routes the Modules GET to report the edited title, matching
+        // what a real revalidation after a successful PATCH would return.
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({
+              id: "module-1",
+              title: { ar: "المقدمة", en: "" },
+            }),
+          ],
+          onUpdateModule: (moduleId, body) => {
+            patchBody = body;
+            return {
+              status: 200,
+              body: { data: buildModuleFixture({ id: moduleId }) },
+            };
+          },
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        expect(await screen.findByText("المقدمة")).toBeInTheDocument();
+        expect(screen.queryByText("أ")).not.toBeInTheDocument();
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Edit Module" }),
+          ).not.toBeInTheDocument(),
+        );
+        expect(patchBody).toMatchObject({ title: { ar: "المقدمة", en: "" } });
+        expect(patchBody).not.toHaveProperty("isLocked");
+        expect(patchBody).not.toHaveProperty("isPublished");
+      });
+
+      it("keeps the modal open and shows the error when saving fails, without changing the displayed title", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          onUpdateModule: () => ({
+            status: 500,
+            body: { error: "Something went wrong." },
+          }),
         });
         renderPage();
 
@@ -1018,25 +1240,13 @@ describe("EditBookPage", () => {
           within(dialog).getByRole("button", { name: "Save changes" }),
         );
 
-        expect(await screen.findByText("المقدمة")).toBeInTheDocument();
-        expect(screen.queryByText("أ")).not.toBeInTheDocument();
-        // The Modal's own close transition keeps it mounted for a moment
-        // after `opened` flips false (matching Mantine's default
-        // `transitionProps`), so this waits rather than asserting
-        // synchronously.
-        await vi.waitFor(() =>
-          expect(
-            screen.queryByRole("dialog", { name: "Edit Module" }),
-          ).not.toBeInTheDocument(),
-        );
         expect(
-          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
-            ([, init]) => init?.method === "PATCH",
-          ),
-        ).toBe(false);
+          await within(dialog).findByText("Something went wrong."),
+        ).toBeInTheDocument();
+        expect(screen.getByText("أ")).toBeInTheDocument();
       });
 
-      it("Cancel closes the modal without changing the displayed title", async () => {
+      it("Cancel closes the modal without changing the displayed title or making a network request", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -1055,13 +1265,17 @@ describe("EditBookPage", () => {
         });
         fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-        // See the same note above about the Modal's close transition.
         await vi.waitFor(() =>
           expect(
             screen.queryByRole("dialog", { name: "Edit Module" }),
           ).not.toBeInTheDocument(),
         );
         expect(screen.getByText("أ")).toBeInTheDocument();
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, init]) => init?.method === "PATCH",
+          ),
+        ).toBe(false);
       });
     });
   });

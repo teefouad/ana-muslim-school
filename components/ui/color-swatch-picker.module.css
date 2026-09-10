@@ -5,6 +5,10 @@
   overflow: hidden;
 }
 
+.disabled {
+  opacity: 0.6;
+}
+
 .swatch {
   position: relative;
   display: flex;
@@ -13,6 +17,10 @@
   cursor: pointer;
   height: 18;
   flex: 0 0 35px;
+}
+
+.disabled .swatch {
+  cursor: not-allowed;
 }
 
 .swatch:focus-visible {

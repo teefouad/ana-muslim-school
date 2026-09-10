@@ -95,4 +95,31 @@ describe("ColorSwatchPicker", () => {
     expect(onChange).toHaveBeenNthCalledWith(1, "cyan.6");
     expect(onChange).toHaveBeenNthCalledWith(2, "cyan.6");
   });
+
+  describe("disabled (ANA-94)", () => {
+    it("marks the group and every swatch aria-disabled, and removes them from tab order", () => {
+      render(<ColorSwatchPicker value="pink.6" onChange={vi.fn()} disabled />);
+
+      expect(screen.getByRole("radiogroup", { name: "Color" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+      for (const swatch of screen.getAllByRole("radio")) {
+        expect(swatch).toHaveAttribute("aria-disabled", "true");
+        expect(swatch).toHaveAttribute("tabindex", "-1");
+      }
+    });
+
+    it("ignores clicks and keyboard selection while disabled", () => {
+      const onChange = vi.fn();
+      render(<ColorSwatchPicker value="pink.6" onChange={onChange} disabled />);
+
+      const cyan = screen.getByRole("radio", { name: "Cyan" });
+      fireEvent.click(cyan);
+      fireEvent.keyDown(cyan, { key: "Enter" });
+      fireEvent.keyDown(cyan, { key: " " });
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createModule, deleteModule, reorderModules } from "./modules-client";
+import {
+  createModule,
+  deleteModule,
+  reorderModules,
+  updateModule,
+} from "./modules-client";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -53,6 +58,55 @@ describe("createModule", () => {
         isLocked: false,
         isPublished: false,
       }),
+    ).rejects.toThrow("Something went wrong.");
+  });
+});
+
+describe("updateModule", () => {
+  it("PATCHes the given fields to /api/v1/books/{bookId}/modules/{moduleId}", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { id: "module-1", color: "pink.6" } }),
+    );
+
+    const fields = {
+      title: { ar: "أ", en: "A" },
+      description: { ar: "", en: "" },
+      color: "pink.6",
+    };
+    const result = await updateModule("book-1", "module-1", fields);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/books/book-1/modules/module-1",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      },
+    );
+    expect(result).toEqual({ id: "module-1", color: "pink.6" });
+  });
+
+  it("never sends isLocked/isPublished when the caller omits them", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { id: "module-1" } }),
+    );
+
+    await updateModule("book-1", "module-1", { color: "cyan.6" });
+
+    const body = JSON.parse(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string,
+    );
+    expect(body).not.toHaveProperty("isLocked");
+    expect(body).not.toHaveProperty("isPublished");
+  });
+
+  it("throws the server's error message on failure", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: "Something went wrong." }, 500),
+    );
+
+    await expect(
+      updateModule("book-1", "module-1", { color: "cyan.6" }),
     ).rejects.toThrow("Something went wrong.");
   });
 });

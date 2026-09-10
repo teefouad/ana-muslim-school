@@ -101,3 +101,12 @@ export const EditableRows: Story = {
     onEditModule: () => {},
   },
 };
+
+// Add module opens the caller's own top-level Module modal in create mode
+// (ANA-94) instead of inserting a blank row into this list directly.
+export const AddOpensModal: Story = {
+  args: {
+    modules: SAMPLE_MODULES,
+    onAddModule: () => {},
+  },
+};

@@ -42,3 +42,12 @@ export const Interactive: Story = {
     return <Wrapper />;
   },
 };
+
+// Suspends selection (ANA-94) -- e.g. while an in-flight save/AI request in
+// the Edit Module modal could still overwrite the field's value.
+export const Disabled: Story = {
+  args: {
+    value: "pink.6",
+    disabled: true,
+  },
+};

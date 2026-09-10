@@ -59,16 +59,25 @@ describe("ModulesPanel", () => {
     expect(screen.getByRole("button", { name: "Add module" })).toBeEnabled();
   });
 
-  it("appends a new blank module through onModulesChange when Add module is clicked", () => {
+  it("calls onAddModule, not onModulesChange, when Add module is clicked (ANA-94)", () => {
+    const onAddModule = vi.fn();
+    const onModulesChange = vi.fn();
+    renderPanel({ onAddModule, onModulesChange });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+
+    expect(onAddModule).toHaveBeenCalledWith();
+    expect(onModulesChange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when Add module is clicked without onAddModule", () => {
     const onModulesChange = vi.fn();
     renderPanel({ onModulesChange });
 
     fireEvent.click(screen.getByRole("button", { name: "Add module" }));
 
-    expect(onModulesChange).toHaveBeenCalledWith([
-      ...MODULES,
-      expect.objectContaining({ title: "" }),
-    ]);
+    expect(onModulesChange).not.toHaveBeenCalled();
   });
 
   it("exposes edit and delete icon actions on every row via ItemList", () => {

@@ -9,6 +9,7 @@ export interface ColorFieldProps {
   label?: string;
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }
 
 // The Book form's Color field (ANA-63/ANA-89), extracted as a shared
@@ -22,6 +23,7 @@ export function ColorField({
   label = "Color",
   value,
   onChange,
+  disabled,
 }: ColorFieldProps) {
   return (
     <Group style={{ alignItems: "flex-end" }}>
@@ -30,6 +32,7 @@ export function ColorField({
         data={APPLICATION_COLOR_TOKENS}
         value={value}
         onChange={onChange}
+        disabled={disabled}
         style={{ flex: "0 0 100px" }}
       />
       <div
@@ -41,7 +44,11 @@ export function ColorField({
           overflow: "hidden",
         }}
       >
-        <ColorSwatchPicker value={value} onChange={onChange} />
+        <ColorSwatchPicker
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+        />
       </div>
     </Group>
   );

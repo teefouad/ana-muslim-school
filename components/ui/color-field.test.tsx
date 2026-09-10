@@ -68,6 +68,15 @@ describe("ColorField", () => {
     ).toBeInTheDocument();
   });
 
+  it("disables both the Autocomplete and the swatch picker when disabled (ANA-94)", () => {
+    const onChange = vi.fn();
+    renderField({ disabled: true, onChange });
+
+    expect(screen.getByRole("combobox", { name: "Color" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: "Cyan" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("keeps two instances' values fully independent", () => {
     function TwoFields() {
       return (
