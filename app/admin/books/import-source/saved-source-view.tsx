@@ -8,6 +8,7 @@ import type {
   TextDirection,
   WorkspaceModuleEntry,
 } from "./import-source-types";
+import { assistLearningMaterial } from "./ai-assist-client";
 import { deleteModule } from "./modules-client";
 import { translateArabicToEnglish } from "./translate-client";
 import { FontSizeControl } from "./font-size-control";
@@ -236,6 +237,29 @@ export function SavedSourceView({
     );
   }
 
+  // AI Assistant for a single card's current selection (ANA-85, PR review)
+  // -- sends only `selectedMarkdown` (the exact text the card captured, not
+  // the whole entry) to the AI and returns the replacement text. Unlike
+  // Translate/the earlier token-based design, this never touches `entries`
+  // itself: the calling card applies the result in place by restoring its
+  // own captured Lexical selection and replacing exactly that range, which
+  // fires the card's normal `onChange` -> `onMaterialChange` -- so
+  // `entries` is never in an intermediate state a concurrent Save changes
+  // could persist, and there is nothing here to key by `key`.
+  async function handleAiAssistEntry(
+    _key: string,
+    language: "ar" | "en",
+    instructions: string | undefined,
+    selectedMarkdown: string,
+  ): Promise<string> {
+    return assistLearningMaterial({
+      bookId,
+      text: selectedMarkdown,
+      language,
+      additionalInstructions: instructions,
+    });
+  }
+
   return (
     <div className={styles.shell}>
       <div className={styles.header}>
@@ -315,6 +339,7 @@ export function SavedSourceView({
           }}
           isDeleteDisabled={() => isSaving || deletingKey !== null}
           onTranslateItem={handleTranslateEntry}
+          onAiAssistItem={handleAiAssistEntry}
         />
       </div>
 

@@ -13,6 +13,7 @@ import { ArrowLeft } from "lucide-react";
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule, TextDirection } from "./import-source-types";
+import { assistLearningMaterial } from "./ai-assist-client";
 import { DocumentSummary } from "./document-summary";
 import { FontSizeControl } from "./font-size-control";
 import { SourceModulesPanel } from "./source-modules-panel";
@@ -24,6 +25,11 @@ const TEMPORARY_DELETE_CONFIRM_DESCRIPTION =
   "This removes this unsaved Module and its Learning Material draft. This action cannot be undone.";
 
 export interface ModuleBuilderViewProps {
+  /** The Book this Create-from-PDF session belongs to (ANA-85) -- passed
+   * through to the AI Assistant's `/api/v1/ai/assist` request so the server
+   * can load this Book's persisted context; never sent as Book content
+   * itself. */
+  bookId: string;
   fileName: string;
   ocrResult: OcrResult;
   editedMarkdown: Record<number, string>;
@@ -81,6 +87,7 @@ export interface ModuleBuilderViewProps {
 // starts empty), and the user edits both languages right here. Finish
 // replaces the old "Create Learning Material" step entirely.
 export function ModuleBuilderView({
+  bookId,
   fileName,
   ocrResult,
   editedMarkdown,
@@ -206,6 +213,29 @@ export function ModuleBuilderView({
     );
   }
 
+  // AI Assistant for a single card's current selection (ANA-85, PR review)
+  // -- sends only `selectedMarkdown` (the exact text the card captured, not
+  // the whole Module) to the AI and returns the replacement text. Unlike
+  // Translate/the earlier token-based design, this never touches `modules`
+  // itself: the calling card applies the result in place by restoring its
+  // own captured Lexical selection and replacing exactly that range, which
+  // fires the card's normal `onChange` -> `onMaterialChange` -- so `modules`
+  // is never in an intermediate state a concurrent Save/Finish could
+  // persist, and there is nothing here to key by `moduleId`.
+  async function handleAiAssistModule(
+    _moduleId: string,
+    language: "ar" | "en",
+    instructions: string | undefined,
+    selectedMarkdown: string,
+  ): Promise<string> {
+    return assistLearningMaterial({
+      bookId,
+      text: selectedMarkdown,
+      language,
+      additionalInstructions: instructions,
+    });
+  }
+
   const reorderDisabled = isFinishing || backDisabled;
 
   return (
@@ -263,6 +293,7 @@ export function ModuleBuilderView({
           }
           isDeleteDisabled={(id) => isFinishing || createdModuleIds.has(id)}
           onTranslateItem={handleTranslateModule}
+          onAiAssistItem={handleAiAssistModule}
         />
       </div>
 

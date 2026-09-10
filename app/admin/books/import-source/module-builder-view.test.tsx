@@ -13,12 +13,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OcrResult } from "@/lib/sources/ocr-types";
 import type { TempModule } from "./import-source-types";
 
-const { translateArabicToEnglishMock } = vi.hoisted(() => ({
-  translateArabicToEnglishMock: vi.fn(),
-}));
+const { translateArabicToEnglishMock, assistLearningMaterialMock } = vi.hoisted(
+  () => ({
+    translateArabicToEnglishMock: vi.fn(),
+    assistLearningMaterialMock: vi.fn(),
+  }),
+);
 
 vi.mock("./translate-client", () => ({
   translateArabicToEnglish: translateArabicToEnglishMock,
+}));
+
+vi.mock("./ai-assist-client", () => ({
+  assistLearningMaterial: assistLearningMaterialMock,
 }));
 
 const { ModuleBuilderView } = await import("./module-builder-view");
@@ -67,6 +74,7 @@ function renderView(
   overrides: Partial<React.ComponentProps<typeof ModuleBuilderView>> = {},
 ) {
   const props: React.ComponentProps<typeof ModuleBuilderView> = {
+    bookId: "book-1",
     fileName: "book.pdf",
     ocrResult: SAMPLE_RESULT,
     editedMarkdown: { 1: "First page text", 2: "Second page text" },
@@ -120,6 +128,7 @@ function renderStatefulView(
 
     return (
       <ModuleBuilderView
+        bookId="book-1"
         fileName="book.pdf"
         ocrResult={SAMPLE_RESULT}
         editedMarkdown={{ 1: "First page text", 2: "Second page text" }}
@@ -151,6 +160,7 @@ describe("ModuleBuilderView", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     translateArabicToEnglishMock.mockClear();
+    assistLearningMaterialMock.mockClear();
     collapseSelection();
   });
 
@@ -549,6 +559,130 @@ describe("ModuleBuilderView", () => {
         screen.getByRole("dialog", { name: "Replace English translation?" }),
       ).toBeInTheDocument();
       expect(translateArabicToEnglishMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AI Assistant", () => {
+    it("sends only the selected Markdown and bookId, and applies the result to only the selected range (ANA-85, PR review)", async () => {
+      assistLearningMaterialMock.mockResolvedValueOnce("Refined text");
+      const modules: TempModule[] = [
+        { id: "module-1", material: { ar: "First", en: "" } },
+        { id: "module-2", material: { ar: "Second", en: "" } },
+      ];
+      renderStatefulView({ bookId: "book-42", modules });
+
+      const editors = await screen.findAllByRole("textbox");
+      selectFirstCharacters(editors[0], 5);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() =>
+        expect(assistLearningMaterialMock).toHaveBeenCalledWith({
+          bookId: "book-42",
+          text: "First",
+          language: "ar",
+          additionalInstructions: undefined,
+        }),
+      );
+      expect(await screen.findByText("Refined text")).toBeInTheDocument();
+      expect(screen.getByText("Second")).toBeInTheDocument();
+    });
+
+    it("applies its result against the latest modules when it resolves, preserving a concurrent edit made to a different card while it was in flight", async () => {
+      let resolveAssist: (value: string) => void = () => {};
+      assistLearningMaterialMock.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveAssist = resolve;
+          }),
+      );
+      const modules: TempModule[] = [
+        { id: "module-1", material: { ar: "Arabic one", en: "" } },
+        { id: "module-2", material: { ar: "Arabic two", en: "" } },
+      ];
+      renderStatefulView({ modules });
+
+      const editors = await screen.findAllByRole("textbox");
+      selectFirstCharacters(editors[0], 10);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+      await vi.waitFor(() =>
+        expect(assistLearningMaterialMock).toHaveBeenCalledTimes(1),
+      );
+
+      // Module 1 itself is frozen while its own request is in flight...
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+      // ...but Module 2 stays fully interactive.
+      expect(
+        screen.getByRole("button", { name: "Delete Module 2" }),
+      ).toBeEnabled();
+
+      // While that request is still pending, edit Module 2's own Learning
+      // Material -- a real state update the builder must not lose.
+      const user = userEvent.setup();
+      await user.click(editors[1]);
+      await user.type(editors[1], "!");
+      expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
+
+      resolveAssist("Refined one");
+
+      // Module 1 unfreezes once the request resolves -- AI Assistant
+      // itself goes back to *disabled* rather than enabled, since applying
+      // the result clears the selection it was operating on (ANA-85, PR
+      // review); Delete unfreezing is what signals the card is no longer
+      // frozen.
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Delete Module 1" }),
+        ).not.toBeDisabled(),
+      );
+      // Module 1's active language tab stays exactly as it was (Arabic).
+      expect(screen.getAllByRole("radio", { name: "Arabic" })[0]).toBeChecked();
+      expect(await screen.findByText("Refined one")).toBeInTheDocument();
+      // ...and Module 2's concurrent edit is still there, not reverted by
+      // the AI result applying against a stale snapshot of `modules`.
+      expect(screen.getByText("Arabic two!")).toBeInTheDocument();
+    });
+
+    it("restores the original selected text and shows an error when the request fails", async () => {
+      assistLearningMaterialMock.mockRejectedValueOnce(
+        new Error("AI Assistant failed. Please try again."),
+      );
+      const modules: TempModule[] = [
+        { id: "module-1", material: { ar: "First", en: "" } },
+      ];
+      renderStatefulView({ modules });
+
+      const editable = await screen.findByRole("textbox");
+      selectFirstCharacters(editable, 5);
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "AI Assistant" }),
+        ).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      expect(
+        await screen.findByText("AI Assistant failed. Please try again."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("First")).toBeInTheDocument();
     });
   });
 });

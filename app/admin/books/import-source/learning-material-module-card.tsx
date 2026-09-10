@@ -1,16 +1,28 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
-import { ActionIcon, Alert } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Text,
+  Textarea,
+} from "@mantine/core";
 import { GripVertical, Languages, Sparkles, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
-import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import {
+  MarkdownEditor,
+  type MarkdownEditorHandle,
+  type MarkdownSelectionCapture,
+} from "@/components/ui/markdown-editor";
 import type { LanguageOption } from "@/components/ui/translatable-value";
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import styles from "./learning-material-module-card.module.css";
@@ -78,6 +90,39 @@ export interface LearningMaterialModuleCardProps {
    * and never changes which language tab is active (ANA-83) -- success or
    * failure. Omit to hide the translate affordance entirely. */
   onTranslate?: () => Promise<void>;
+  /** AI Assistant (ANA-85, using ANA-74/ANA-85's server-only AI service
+   * through the server-only `/api/v1/ai/assist` boundary): operates on the
+   * currently *selected* Markdown within the active language's editor only
+   * -- never the whole Module text (PR review). Disabled whenever that
+   * editor has no non-empty selection.
+   *
+   * Clicking it captures the exact selected Markdown to send, and a
+   * restorable snapshot of the Lexical selection itself (via
+   * `MarkdownEditorHandle.captureSelection`) -- `material` and the
+   * editor's own canonical content are never touched at this point, or at
+   * any point before a successful Generate (PR review): opening the dialog
+   * or cancelling it leaves the document byte-for-byte as it was, with
+   * nothing to restore. Once Generate is clicked, `onAiAssist` is called
+   * with the active language, the trimmed instructions (`undefined` when
+   * blank), and the captured selected Markdown -- it resolves to the
+   * replacement text (and loads the Book context server-side); the card
+   * then applies it itself via `MarkdownEditorHandle
+   * .replaceCapturedSelection`, which restores the captured Lexical range
+   * and replaces exactly that range using the editor's own selection-aware
+   * node insertion, never a text search against the original selected
+   * text (which may recur elsewhere in the document) -- this in turn fires
+   * the editor's normal `onChange`, routing through `onMaterialChange`
+   * exactly like a manual edit would. The card owns the dialog, loading
+   * state, and card-freeze (so the captured range can't be invalidated by
+   * an edit to this same Module while the request is in flight); it never
+   * changes which language tab is active. Omit to hide the affordance's
+   * inner dialog/loading wiring (the button itself remains, matching
+   * `onTranslate`'s optional-but-inert pattern when omitted). */
+  onAiAssist?: (
+    language: Language,
+    instructions: string | undefined,
+    selectedMarkdown: string,
+  ) => Promise<string>;
   /** Renders this card as a non-interactive drag preview (ANA-80): always
    * collapsed regardless of internal state, and the collapse toggle never
    * responds to clicks. Used for `SortableList`'s `DragOverlay` copy, which
@@ -105,8 +150,9 @@ type PendingAction = "delete" | "translate" | null;
 // switcher itself stays visible and is always the right-most control. Body:
 // the School MarkdownEditor for whichever language is currently active,
 // direction following that language rather than a global source-text
-// direction. AI Assistant remains UI-only here -- wiring the actual dialog
-// is a later card.
+// direction. AI Assistant opens its own instructions dialog and transforms
+// the active editor's current selection only (ANA-85, PR review), using the
+// exact same card-reads/caller-applies split Translate already established.
 export function LearningMaterialModuleCard({
   testId,
   index,
@@ -119,6 +165,7 @@ export function LearningMaterialModuleCard({
   deleteConfirmDescription = DEFAULT_DELETE_CONFIRM_DESCRIPTION,
   deleteDisabled = false,
   onTranslate,
+  onAiAssist,
   forceCollapsed = false,
   style,
 }: LearningMaterialModuleCardProps) {
@@ -134,6 +181,110 @@ export function LearningMaterialModuleCard({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
+  // AI Assistant (ANA-85): the instructions dialog's own open/draft state --
+  // `aiInstructions` is reset to "" every time the dialog opens (never
+  // carried over from a previous session), and is entirely local to this
+  // card until Generate reads it once.
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  // The selection AI Assistant captured on click (PR review) -- `capture`
+  // is the restorable Lexical range snapshot `handleGenerateClick` later
+  // passes to `replaceCapturedSelection`; `text` is the Markdown sent to
+  // the AI. Purely local bookkeeping: capturing it never touches `material`
+  // or the editor's own content, so there is nothing to undo on Cancel or
+  // failure. `null` whenever no AI Assistant request is pending.
+  const [pendingSelection, setPendingSelection] = useState<{
+    capture: MarkdownSelectionCapture;
+    text: string;
+  } | null>(null);
+  // Whether the active language's editor currently has a non-empty
+  // selection -- purely reactive UI state for the AI Assistant button's
+  // `disabled` prop; the actual selected Markdown is captured fresh, on
+  // demand, in `handleAiAssistClick` (see `editorRef.current
+  // ?.getSelectedMarkdown()` there), not read from here.
+  const [hasSelection, setHasSelection] = useState(false);
+  // A language switch remounts the editor (keyed on `activeLanguage`
+  // below), which naturally clears any selection -- resetting `hasSelection`
+  // here, during render (matching `wasDragging` above), keeps that in sync
+  // without needing an effect.
+  const [hasSelectionLanguage, setHasSelectionLanguage] =
+    useState(activeLanguage);
+  if (hasSelectionLanguage !== activeLanguage) {
+    setHasSelectionLanguage(activeLanguage);
+    setHasSelection(false);
+  }
+
+  // MDXEditor's own `markdown` prop only seeds the editor's *initial*
+  // content -- once mounted, an external change to `material[activeLanguage]`
+  // (an AI Assistant result, or a Translate result landing on the language
+  // the user has already switched to) must be pushed in via
+  // `MarkdownEditorHandle.setMarkdown` instead, exactly like
+  // TranslatableTextArea's own `shown` tracking. This is required for
+  // Translate too, not just AI Assistant: Translate is enabled purely off
+  // `material.ar`, so nothing stops the user from switching to the English
+  // tab *before* clicking it, in which case its result lands on the very
+  // language already on screen.
+  //
+  // `shown` must be React state, not a plain ref written from `onChange`
+  // (PR review): the editor's own `onChange` and the parent's state update
+  // both happen synchronously in the same handler, but a ref write there is
+  // visible to an in-flight effect immediately, ahead of the matching
+  // `material` prop update reaching this component's own render -- that gap
+  // lets the effect see the ref/prop disagree for an instant and misfire
+  // `setMarkdown` with stale content over the user's own keystroke.
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+  const activeMaterial = material[activeLanguage];
+  const [shown, setShown] = useState({
+    language: activeLanguage,
+    value: activeMaterial,
+  });
+
+  // This is a byte-for-byte port of TranslatableTextArea's own audited
+  // `shown` effect (components/ui/translatable-text-area.tsx) -- verified
+  // empirically that `react-hooks/set-state-in-effect` does not flag that
+  // component's identical pattern, but does flag this one, purely because
+  // that component happens to be `forwardRef`-wrapped and this one isn't;
+  // the rule's static analysis appears not to model a plain function
+  // component's render-effect relationship the same way. Disabling here
+  // rather than reshaping this component around a ref it has no other need
+  // for, or reintroducing the plain-ref version PR review already rejected
+  // for the race it reopens (see the comment above).
+  /* eslint-disable react-hooks/set-state-in-effect -- see above */
+  useEffect(() => {
+    if (shown.language !== activeLanguage) {
+      // A language switch already remounts the editor (keyed on
+      // `activeLanguage` below) with the right initial value -- this only
+      // needs to update the tracked snapshot, not call `setMarkdown`.
+      setShown({ language: activeLanguage, value: activeMaterial });
+      return;
+    }
+    if (shown.value !== activeMaterial) {
+      editorRef.current?.setMarkdown(activeMaterial);
+      setShown({ language: activeLanguage, value: activeMaterial });
+    }
+  }, [activeLanguage, activeMaterial, shown]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Subscribes to the browser's own selection-change signal to keep the AI
+  // Assistant button's disabled state in sync with the active editor's
+  // current selection (ANA-85, PR review) -- a genuine "subscribe to an
+  // external system, setState in the callback" effect, not a synchronous
+  // setState-on-every-render one, so this is unaffected by the rule
+  // disabled above (mirrors module-builder-view.tsx's own identical
+  // `selectionchange` subscription for its own Source Text panel).
+  useEffect(() => {
+    function handleSelectionChange() {
+      setHasSelection(Boolean(editorRef.current?.getSelectedText().trim()));
+    }
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+    };
+  }, []);
 
   // Collapses the card the instant a drag starts (ANA-80) -- an expanded
   // card must never keep showing its Markdown editor while being dragged,
@@ -231,16 +382,91 @@ export function LearningMaterialModuleCard({
     setPendingAction(null);
   }
 
-  const isTranslateDisabled = disabled || isTranslating || !material.ar.trim();
-  // While *this* card's own Translate request is in flight, freeze the
-  // rest of the card -- the editor, language switcher, Delete, AI
-  // Assistant, and drag handle -- so the Arabic source it was sent with
-  // can't change out from under the request and so it can't be reordered
-  // or removed mid-translate. Every other card stays fully interactive;
-  // only `disabled` (Save/Finish in flight) freezes those (PR review,
-  // blocking -- ANA-77). The Translate action itself already disables via
-  // `isTranslateDisabled` above; this doesn't need to include it too.
-  const isCardFrozen = disabled || isTranslating;
+  // AI Assistant (ANA-85, PR review): operates on the active editor's
+  // current *selection* only. Captures the exact selected Markdown to
+  // send, and a restorable snapshot of the Lexical selection itself, via
+  // `MarkdownEditorHandle.captureSelection` -- `material` and the editor's
+  // own content are never touched here, so there is nothing to undo if
+  // the dialog is cancelled or the request fails (PR review). Opens with a
+  // fresh, empty instructions field every time -- never the previous
+  // session's leftover draft.
+  function handleAiAssistClick() {
+    const selectedMarkdown = editorRef.current?.getSelectedMarkdown() ?? "";
+    const capture = editorRef.current?.captureSelection() ?? null;
+
+    if (!selectedMarkdown.trim() || !capture) {
+      return;
+    }
+
+    setPendingSelection({ capture, text: selectedMarkdown });
+    setAiInstructions("");
+    setAiError(null);
+    setIsAiDialogOpen(true);
+  }
+
+  // Nothing was ever mutated by capturing a selection (PR review), so
+  // Cancel is just discarding the pending capture -- no restoration.
+  function handleAiDialogCancel() {
+    setPendingSelection(null);
+    setIsAiDialogOpen(false);
+  }
+
+  async function handleGenerateClick() {
+    const instructions = aiInstructions.trim() || undefined;
+    const selection = pendingSelection;
+    // Closes the dialog immediately on Generate, before the request
+    // resolves (spec #6) -- loading then shows on the AI Assistant action
+    // itself, not the (now closed) dialog.
+    setIsAiDialogOpen(false);
+    setPendingSelection(null);
+
+    if (!selection || !onAiAssist) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiError(null);
+
+    try {
+      const refined = await onAiAssist(
+        activeLanguage,
+        instructions,
+        selection.text,
+      );
+      // Applies the result itself: restores the captured Lexical range and
+      // replaces exactly that range using the editor's own selection-aware
+      // node insertion, never a text search against the original selected
+      // text (which may recur elsewhere in the document, PR review). This
+      // fires the editor's normal `onChange`, routing through
+      // `onMaterialChange` exactly like a manual edit would -- the active
+      // language tab stays exactly as the user had it throughout (spec
+      // #6).
+      editorRef.current?.replaceCapturedSelection(selection.capture, refined);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  const isTranslateDisabled =
+    disabled || isTranslating || isGenerating || !material.ar.trim();
+  // Disabled whenever the active language's editor has no non-empty
+  // selection (PR review) -- AI Assistant operates on the selection only,
+  // never the whole Module text.
+  const isAiAssistDisabled =
+    disabled || isTranslating || isGenerating || !hasSelection;
+  // While *this* card's own Translate or AI Assistant request is in flight,
+  // freeze the rest of the card -- the editor, language switcher, Delete,
+  // AI Assistant, Translate, and drag handle -- so the exact text/language
+  // either request was sent with can't change out from under it, and so it
+  // can't be reordered or removed mid-request. Every other card stays fully
+  // interactive; only `disabled` (Save/Finish in flight) freezes those (PR
+  // review, blocking -- ANA-77; extended to `isGenerating` for ANA-85). The
+  // Translate/AI Assistant actions themselves already disable via
+  // `isTranslateDisabled`/`isAiAssistDisabled` above; this doesn't need to
+  // include those too.
+  const isCardFrozen = disabled || isTranslating || isGenerating;
 
   return (
     <div
@@ -300,14 +526,16 @@ export function LearningMaterialModuleCard({
             <Trash2 size={14} aria-hidden="true" />
           </ActionIcon>
         )}
-        {/* UI-only affordance (ANA-75): no AI instructions dialog opens and
-            no request is made from this card yet -- wiring the actual AI
-            service (see ANA-74) to this button is a later card. */}
+        {/* Opens the instructions dialog for the active editor's current
+            selection (ANA-85, PR review) -- disabled when there's no
+            non-empty selection, since there's nothing to transform. */}
         <ActionIcon
           variant="subtle"
           className={styles.actionButton}
           aria-label="AI Assistant"
-          disabled={isCardFrozen}
+          disabled={isAiAssistDisabled}
+          loading={isGenerating}
+          onClick={handleAiAssistClick}
         >
           <Sparkles size={16} aria-hidden="true" />
         </ActionIcon>
@@ -336,6 +564,11 @@ export function LearningMaterialModuleCard({
           {translateError}
         </Alert>
       )}
+      {aiError && (
+        <Alert color="red" mx="sm" mb="xs" py={4} role="alert">
+          {aiError}
+        </Alert>
+      )}
       {effectiveExpanded && (
         <div className={styles.body}>
           <div
@@ -345,10 +578,16 @@ export function LearningMaterialModuleCard({
           >
             <MarkdownEditor
               key={activeLanguage}
-              markdown={material[activeLanguage]}
-              onChange={(value) =>
-                onMaterialChange({ ...material, [activeLanguage]: value })
-              }
+              ref={editorRef}
+              markdown={activeMaterial}
+              onChange={(value) => {
+                // Batched into the same commit as the `shown` update above,
+                // so the sync effect never sees them disagree for this edit
+                // and bounces it back via `setMarkdown` (matching
+                // TranslatableTextArea's own onChange).
+                setShown({ language: activeLanguage, value });
+                onMaterialChange({ ...material, [activeLanguage]: value });
+              }}
               dir={dir}
               fillHeight
               disabled={isCardFrozen}
@@ -378,6 +617,34 @@ export function LearningMaterialModuleCard({
           onCancel={handleCancelPendingAction}
           onConfirm={handleConfirmTranslate}
         />
+      )}
+      {isAiDialogOpen && (
+        <Modal
+          opened
+          onClose={handleAiDialogCancel}
+          title="AI Assistant"
+          centered
+        >
+          <Text size="sm" c="dimmed" mb="md">
+            The AI will transform the text you selected. The rest of the Module,
+            and the other language&rsquo;s draft, stay untouched.
+          </Text>
+          <Textarea
+            label="Additional instructions or context (optional)"
+            value={aiInstructions}
+            onChange={(event) => setAiInstructions(event.currentTarget.value)}
+            autosize
+            minRows={3}
+            maxRows={8}
+            mb="lg"
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={handleAiDialogCancel}>
+              Cancel
+            </Button>
+            <Button onClick={handleGenerateClick}>Generate</Button>
+          </Group>
+        </Modal>
       )}
     </div>
   );

@@ -1,9 +1,27 @@
+import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { SourceModulesPanel } from "./source-modules-panel";
+
+// Selects the first `length` characters of the editor's first text node
+// directly through the native Selection API (same technique as
+// components/ui/markdown-editor.test.tsx and learning-material-module-
+// card.test.tsx) -- needed for AI Assistant, which now requires an active
+// selection (ANA-85, PR review).
+function selectFirstCharacters(root: HTMLElement, length: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNode = walker.nextNode() as Text;
+  const range = document.createRange();
+  range.setStart(textNode, 0);
+  range.setEnd(textNode, length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
 
 type Item = { key: string; material: TranslatableString };
 
@@ -57,6 +75,7 @@ function renderPanel(
     onDeleteItem: vi.fn(),
     isDeleteDisabled: () => false,
     onTranslateItem: vi.fn(),
+    onAiAssistItem: vi.fn(),
     ...overrides,
   };
 
@@ -67,6 +86,52 @@ function renderPanel(
   );
 
   return { ...props, container };
+}
+
+// AI Assistant's selection-token flow (ANA-85, PR review) round-trips
+// through the real `onMaterialChange` callback -- `renderPanel`'s bare
+// `vi.fn()` never feeds an update back into `items`, so tests exercising
+// that flow need a genuinely stateful wrapper instead.
+function renderStatefulPanel(
+  overrides: Partial<
+    React.ComponentProps<typeof SourceModulesPanel<Item>>
+  > = {},
+) {
+  function Wrapper() {
+    const [items, setItems] = useState<Item[]>(overrides.items ?? ITEMS);
+
+    return (
+      <SourceModulesPanel<Item>
+        getKey={(item) => item.key}
+        getMaterial={(item) => item.material}
+        onReorder={setItems}
+        fontScale={100}
+        disabled={false}
+        reorderDisabled={false}
+        canCreateModule={false}
+        onCreateModule={vi.fn()}
+        onDeleteItem={vi.fn()}
+        isDeleteDisabled={() => false}
+        onTranslateItem={vi.fn()}
+        onAiAssistItem={vi.fn()}
+        {...overrides}
+        items={items}
+        onMaterialChange={(key, material) =>
+          setItems((current) =>
+            current.map((item) =>
+              item.key === key ? { ...item, material } : item,
+            ),
+          )
+        }
+      />
+    );
+  }
+
+  render(
+    <MantineProvider>
+      <Wrapper />
+    </MantineProvider>,
+  );
 }
 
 describe("SourceModulesPanel", () => {
@@ -117,6 +182,7 @@ describe("SourceModulesPanel", () => {
           onDeleteItem={vi.fn()}
           isDeleteDisabled={() => false}
           onTranslateItem={vi.fn()}
+          onAiAssistItem={vi.fn()}
         />
       </MantineProvider>,
     );
@@ -141,6 +207,7 @@ describe("SourceModulesPanel", () => {
           onDeleteItem={vi.fn()}
           isDeleteDisabled={() => false}
           onTranslateItem={vi.fn()}
+          onAiAssistItem={vi.fn()}
         />
       </MantineProvider>,
     );
@@ -172,6 +239,31 @@ describe("SourceModulesPanel", () => {
       screen.getAllByRole("button", { name: "Translate to English" })[1],
     );
     expect(onTranslateItem).toHaveBeenCalledWith("module-2");
+  });
+
+  it("wires AI Assistant per item, keyed by getKey, forwarding the active language, instructions, and selected Markdown (ANA-85, PR review)", async () => {
+    const onAiAssistItem = vi.fn().mockResolvedValue("Refined text");
+    renderStatefulPanel({ onAiAssistItem });
+
+    const editors = await screen.findAllByRole("textbox");
+    selectFirstCharacters(editors[1], 4);
+    await vi.waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "AI Assistant" })[1],
+      ).toBeEnabled(),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "AI Assistant" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await vi.waitFor(() => expect(onAiAssistItem).toHaveBeenCalledTimes(1));
+    expect(onAiAssistItem).toHaveBeenCalledWith(
+      "module-2",
+      "ar",
+      undefined,
+      "ثاني",
+    );
+    expect(await screen.findByText("Refined text")).toBeInTheDocument();
   });
 
   it("disables an item's delete action per isDeleteDisabled(key)", () => {
@@ -301,7 +393,7 @@ describe("SourceModulesPanel", () => {
       ).toBe("false");
     });
 
-    it("the overlay preview reserves Delete/Translate for every dragged card, since SourceModulesPanel always wires both", async () => {
+    it("the overlay preview reserves Delete/AI Assistant/Translate for every dragged card, since SourceModulesPanel always wires all three", async () => {
       stubItemRects(["module-1", "module-2"]);
       renderPanel();
       await screen.findAllByRole("toolbar");
@@ -315,6 +407,9 @@ describe("SourceModulesPanel", () => {
       const overlayCard = screen.getByTestId("module-card-overlay-module-1");
       expect(
         overlayCard.querySelector('[aria-label="Delete Module 1"]'),
+      ).toBeInTheDocument();
+      expect(
+        overlayCard.querySelector('[aria-label="AI Assistant"]'),
       ).toBeInTheDocument();
       expect(
         overlayCard.querySelector('[aria-label="Translate to English"]'),

@@ -37,14 +37,20 @@ import {
 } from "lucide-react";
 import {
   $createParagraphNode,
+  $createRangeSelection,
   $getSelection,
   $isRangeSelection,
+  $setSelection,
+  type LexicalEditor,
 } from "lexical";
 
 import "@mdxeditor/editor/style.css";
 
 import styles from "./markdown-editor.module.css";
-import type { MarkdownEditorHandle } from "./markdown-editor-types";
+import type {
+  MarkdownEditorHandle,
+  MarkdownSelectionCapture,
+} from "./markdown-editor-types";
 
 // A plain mutable box (not a React ref -- see below) holding the root
 // editor's live text selection, kept in sync by selectionTrackerPlugin
@@ -69,6 +75,26 @@ const selectionTrackerPlugin = realmPlugin<{
         });
       }),
     );
+  },
+});
+
+// A plain mutable box holding the root Lexical editor instance itself --
+// `MDXEditorMethods` doesn't expose raw Lexical selection manipulation, so
+// `captureSelection`/`replaceCapturedSelection` (see MarkdownEditorHandle)
+// read/write it directly through this reference instead.
+interface EditorBox {
+  current: LexicalEditor | null;
+}
+
+const editorAccessPlugin = realmPlugin<{ editorBox: EditorBox }>({
+  init(realm, params) {
+    if (!params) return;
+    realm.pub(createRootEditorSubscription$, (editor) => {
+      params.editorBox.current = editor;
+      return () => {
+        params.editorBox.current = null;
+      };
+    });
   },
 });
 
@@ -171,12 +197,71 @@ export default function MarkdownEditorCore({
   // be -- see the `react-hooks/refs` rule. A plain object created once via
   // `useMemo` is a stable, effect-free mutable box with the same lifetime.
   const selectedTextBox = useMemo<SelectedTextBox>(() => ({ current: "" }), []);
+  const editorBox = useMemo<EditorBox>(() => ({ current: null }), []);
   const colorScheme = useComputedColorScheme("dark");
 
   useImperativeHandle(handleRef, () => ({
     getSelectedText: () => selectedTextBox.current,
     getSelectedMarkdown: () => editorRef.current?.getSelectionMarkdown() ?? "",
     setMarkdown: (value) => editorRef.current?.setMarkdown(value),
+    captureSelection: () => {
+      const editor = editorBox.current;
+
+      if (!editor) {
+        return null;
+      }
+
+      let capture: MarkdownSelectionCapture | null = null;
+
+      editor.getEditorState().read(() => {
+        const selection = $getSelection();
+
+        if ($isRangeSelection(selection) && !selection.isCollapsed()) {
+          capture = {
+            anchorKey: selection.anchor.key,
+            anchorOffset: selection.anchor.offset,
+            anchorType: selection.anchor.type,
+            focusKey: selection.focus.key,
+            focusOffset: selection.focus.offset,
+            focusType: selection.focus.type,
+          };
+        }
+      });
+
+      return capture;
+    },
+    replaceCapturedSelection: (capture, markdown) => {
+      const editor = editorBox.current;
+
+      if (!editor) {
+        return;
+      }
+
+      // Restores the captured selection -- independent of whatever the
+      // editor's *live* selection currently is (e.g. after focus moved to
+      // a dialog) -- in its own update, then reuses MDXEditorMethods' own
+      // markdown-import-and-insert logic, which replaces whatever the
+      // *current* selection is at the moment it runs. Both `editor.update`
+      // calls target the same editor instance and run back-to-back
+      // synchronously, so the second one observes the selection the first
+      // one just committed (verified empirically, see markdown-editor.test
+      // .tsx).
+      editor.update(() => {
+        const selection = $createRangeSelection();
+        selection.anchor.set(
+          capture.anchorKey,
+          capture.anchorOffset,
+          capture.anchorType,
+        );
+        selection.focus.set(
+          capture.focusKey,
+          capture.focusOffset,
+          capture.focusType,
+        );
+        $setSelection(selection);
+      });
+      editorRef.current?.insertMarkdown(markdown);
+    },
   }));
 
   // Without `fillHeight`, MDXEditor's own contenteditable only sizes to its
@@ -239,6 +324,7 @@ export default function MarkdownEditorCore({
           listsPlugin(),
           thematicBreakPlugin(),
           selectionTrackerPlugin({ selectedTextBox }),
+          editorAccessPlugin({ editorBox }),
           toolbarPlugin({
             toolbarContents: () => (
               <>

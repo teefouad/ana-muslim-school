@@ -1100,6 +1100,7 @@ export function ImportSourceModal({
 
             {step === "build-modules" && ocrResult && file && (
               <ModuleBuilderView
+                bookId={bookId}
                 fileName={file.name}
                 ocrResult={ocrResult}
                 editedMarkdown={editedMarkdown}

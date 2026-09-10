@@ -16,6 +16,10 @@ vi.mock("./translate-client", () => ({
   translateArabicToEnglish: vi.fn(),
 }));
 
+vi.mock("./ai-assist-client", () => ({
+  assistLearningMaterial: vi.fn(),
+}));
+
 const OCR_RESULT: OcrResult = {
   model: "mistral-ocr-latest",
   pagesProcessed: 1,
@@ -44,6 +48,7 @@ describe("Create-from-PDF and View Source Text share one Modules panel component
     render(
       <MantineProvider>
         <ModuleBuilderView
+          bookId="book-1"
           fileName="book.pdf"
           ocrResult={OCR_RESULT}
           editedMarkdown={{ 1: "Some text" }}
@@ -73,6 +78,7 @@ describe("Create-from-PDF and View Source Text share one Modules panel component
     const { unmount } = render(
       <MantineProvider>
         <ModuleBuilderView
+          bookId="book-1"
           fileName="book.pdf"
           ocrResult={OCR_RESULT}
           editedMarkdown={{ 1: "Some text" }}

@@ -6,9 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceModuleEntry } from "./import-source-types";
 
-const { deleteModuleMock, translateArabicToEnglishMock } = vi.hoisted(() => ({
+const {
+  deleteModuleMock,
+  translateArabicToEnglishMock,
+  assistLearningMaterialMock,
+} = vi.hoisted(() => ({
   deleteModuleMock: vi.fn(),
   translateArabicToEnglishMock: vi.fn(),
+  assistLearningMaterialMock: vi.fn(),
 }));
 
 vi.mock("./modules-client", () => ({
@@ -17,6 +22,10 @@ vi.mock("./modules-client", () => ({
 
 vi.mock("./translate-client", () => ({
   translateArabicToEnglish: translateArabicToEnglishMock,
+}));
+
+vi.mock("./ai-assist-client", () => ({
+  assistLearningMaterial: assistLearningMaterialMock,
 }));
 
 const { SavedSourceView } = await import("./saved-source-view");
@@ -64,6 +73,24 @@ function renderView(
 function selectText(textarea: HTMLTextAreaElement, start: number, end: number) {
   textarea.setSelectionRange(start, end);
   fireEvent.select(textarea);
+}
+
+// Selects the first `length` characters of a Module card's Markdown editor
+// directly through the native Selection API (same technique as
+// components/ui/markdown-editor.test.tsx and module-builder-view.test.tsx)
+// -- needed for AI Assistant, which now requires an active selection
+// (ANA-85, PR review). Distinct from `selectText` above, which drives the
+// plain `<textarea>` Source Text panel instead.
+function selectFirstCharacters(root: HTMLElement, length: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNode = walker.nextNode() as Text;
+  const range = document.createRange();
+  range.setStart(textNode, 0);
+  range.setEnd(textNode, length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
 }
 
 // `onEntriesChange` now accepts either a plain array or a functional
@@ -754,6 +781,126 @@ describe("SavedSourceView", () => {
         screen.getByRole("dialog", { name: "Replace English translation?" }),
       ).toBeInTheDocument();
       expect(translateArabicToEnglishMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AI Assistant", () => {
+    it("sends only the selected Markdown and bookId, and applies the result to only the selected range (ANA-85, PR review)", async () => {
+      assistLearningMaterialMock.mockResolvedValueOnce("Refined text");
+      renderStatefulView({ bookId: "book-42", entries: SAMPLE_ENTRIES });
+
+      const editors = await findMaterialEditors();
+      selectFirstCharacters(editors[0], 5);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() =>
+        expect(assistLearningMaterialMock).toHaveBeenCalledWith({
+          bookId: "book-42",
+          text: "First",
+          language: "ar",
+          additionalInstructions: undefined,
+        }),
+      );
+      expect(
+        await screen.findByText("Refined text material"),
+      ).toBeInTheDocument();
+    });
+
+    it("applies its result against the latest entries when it resolves, preserving a concurrent edit made to a different card while it was in flight", async () => {
+      let resolveAssist: (value: string) => void = () => {};
+      assistLearningMaterialMock.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveAssist = resolve;
+          }),
+      );
+      const entries: WorkspaceModuleEntry[] = [
+        {
+          key: "module-1",
+          moduleId: "module-1",
+          material: { ar: "Arabic one", en: "" },
+        },
+        {
+          key: "module-2",
+          moduleId: "module-2",
+          material: { ar: "Arabic two", en: "" },
+        },
+      ];
+      renderStatefulView({ entries });
+
+      const editors = await findMaterialEditors();
+      selectFirstCharacters(editors[0], 10);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+      await vi.waitFor(() =>
+        expect(assistLearningMaterialMock).toHaveBeenCalledTimes(1),
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Delete Module 1" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Delete Module 2" }),
+      ).toBeEnabled();
+
+      const user = userEvent.setup();
+      await user.click(editors[1]);
+      await user.type(editors[1], "!");
+      expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
+
+      resolveAssist("Refined one");
+
+      // AI Assistant itself goes back to *disabled* once resolved, since
+      // applying the result clears the selection it was operating on
+      // (ANA-85, PR review) -- Delete unfreezing is what signals the card
+      // is no longer frozen.
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Delete Module 1" }),
+        ).not.toBeDisabled(),
+      );
+      expect(screen.getAllByRole("radio", { name: "Arabic" })[0]).toBeChecked();
+      expect(await screen.findByText("Refined one")).toBeInTheDocument();
+      expect(screen.getByText("Arabic two!")).toBeInTheDocument();
+    });
+
+    it("restores the original selected text and shows an error when the request fails", async () => {
+      assistLearningMaterialMock.mockRejectedValueOnce(
+        new Error("AI Assistant failed. Please try again."),
+      );
+      renderStatefulView({ entries: SAMPLE_ENTRIES });
+
+      const editors = await findMaterialEditors();
+      selectFirstCharacters(editors[0], 5);
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: "AI Assistant" })[0],
+        ).toBeEnabled(),
+      );
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "AI Assistant" })[0],
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      expect(
+        await screen.findByText("AI Assistant failed. Please try again."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("First material")).toBeInTheDocument();
     });
   });
 });
