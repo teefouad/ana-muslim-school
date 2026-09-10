@@ -240,26 +240,43 @@ describe("BookForm", () => {
     );
   });
 
-  it("shows a live preview swatch resolved from the typed color", () => {
+  it("renders the 15-color swatch picker wired to the Color field (ANA-89)", () => {
     renderWithProvider(
       <BookForm
         id={FORM_ID}
-        initialValues={createEmptyBookFormValues()}
+        initialValues={{ ...createEmptyBookFormValues(), color: "cyan.6" }}
         onSubmit={vi.fn()}
       />,
     );
 
-    const colorField = screen.getByRole("combobox", { name: "Color" });
-    const swatch = screen.getByTestId("color-preview");
+    const group = screen.getByRole("radiogroup", { name: "Color" });
+    expect(within(group).getAllByRole("radio")).toHaveLength(15);
+    expect(within(group).getByRole("radio", { name: "Cyan" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
 
-    // A named token resolves to its canonical hex for the preview...
-    fireEvent.change(colorField, { target: { value: "cyan.6" } });
-    expect(swatch).toHaveStyle({ backgroundColor: "#15aabf" });
+  it("clicking a swatch sets the Color field to <color>.6", () => {
+    const onSubmit = vi.fn();
+    renderWithExternalSubmit(
+      <BookForm
+        id={FORM_ID}
+        initialValues={createEmptyBookFormValues()}
+        onSubmit={onSubmit}
+      />,
+    );
 
-    // ...while a free-form value the admin typed is shown as-is, since it's
-    // presumably already a valid CSS color.
-    fireEvent.change(colorField, { target: { value: "#1c7ed6" } });
-    expect(swatch).toHaveStyle({ backgroundColor: "#1c7ed6" });
+    fireEvent.click(screen.getByRole("radio", { name: "Pink" }));
+
+    expect(screen.getByRole("combobox", { name: "Color" })).toHaveValue(
+      "pink.6",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ color: "pink.6" }),
+    );
   });
 
   it("keeps a manually-typed, free-form color value and submits it unchanged", () => {

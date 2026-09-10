@@ -1,0 +1,32 @@
+.group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.swatch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  height: 18;
+  flex: 0 0 35px;
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--mantine-color-blue-6);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+.check {
+  color: #fff;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 99;
+}
