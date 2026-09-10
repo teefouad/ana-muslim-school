@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Autocomplete, Box, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import {
+  Autocomplete,
+  Box,
+  Group,
+  SimpleGrid,
+  Stack,
+  TextInput,
+} from "@mantine/core";
 
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { TranslatableTextArea } from "@/components/ui/translatable-text-area";
@@ -153,24 +160,26 @@ export function BookForm({
             }
           />
 
-          <SimpleGrid cols={2} style={{ alignItems: "flex-end" }}>
+          <Group style={{ alignItems: "flex-end" }}>
             <Autocomplete
               label="Color"
               data={APPLICATION_COLOR_TOKENS}
               value={values.color}
               onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+              style={{ flex: "0 0 95px" }}
             />
             <Box
               aria-hidden="true"
               data-testid="color-preview"
               style={{
+                flex: 1,
                 marginTop: 6,
                 height: 36,
                 borderRadius: 8,
                 backgroundColor: resolveApplicationColor(values.color),
               }}
             />
-          </SimpleGrid>
+          </Group>
         </SimpleGrid>
 
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
