@@ -20,6 +20,7 @@ vi.mock("next/navigation", () => ({
 import { buildBookFixture } from "../../book-fixtures";
 import EditBookPage from "./page";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
+import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -46,17 +47,29 @@ function buildModuleFixture(overrides: Partial<Module> = {}): Module {
   };
 }
 
+function buildMaterialFixture(overrides: Partial<Material> = {}): Material {
+  return {
+    id: "material-1",
+    bookId: "book-1",
+    moduleId: "module-1",
+    content: { ar: "", en: "" },
+    ...overrides,
+  };
+}
+
 /** Routes the globally-stubbed `fetch` by method + URL, matching every real
  * request this page makes: `GET` the Book, `GET` its Modules (only once the
- * Book has loaded -- see page.tsx's conditional SWR key), the page's own
- * Source-by-bookId lookup (which drives the header button's label),
- * optionally `PATCH` the Book on save, and optionally `POST`/`PATCH`/
- * `DELETE` a Module (ANA-77/ANA-94). */
+ * Book has loaded -- see page.tsx's conditional SWR key), `GET` its
+ * Materials (same conditional gating), the page's own Source-by-bookId
+ * lookup (which drives the header button's label), optionally `PATCH` the
+ * Book on save, and optionally `POST`/`PATCH`/`DELETE` a Module or a
+ * Material (ANA-77/ANA-94). */
 function setupFetch(
   book: ReturnType<typeof buildBookFixture> | null,
   options: {
     bookStatus?: number;
     modules?: Module[];
+    materials?: Material[];
     hasSource?: boolean;
     onPatch?: (body: unknown) => { status: number; body: unknown };
     onCreateModule?: (body: unknown) => { status: number; body: unknown };
@@ -65,16 +78,24 @@ function setupFetch(
       body: unknown,
     ) => { status: number; body: unknown };
     onDeleteModule?: (moduleId: string) => { status: number; body: unknown };
+    onCreateMaterial?: (body: unknown) => { status: number; body: unknown };
+    onUpdateMaterial?: (
+      materialId: string,
+      body: unknown,
+    ) => { status: number; body: unknown };
   } = {},
 ) {
   const {
     bookStatus = 200,
     modules = [],
+    materials = [],
     hasSource = false,
     onPatch,
     onCreateModule,
     onUpdateModule,
     onDeleteModule,
+    onCreateMaterial,
+    onUpdateMaterial,
   } = options;
 
   (fetch as ReturnType<typeof vi.fn>).mockImplementation(
@@ -136,6 +157,31 @@ function setupFetch(
 
       if (method === "DELETE" && moduleMatch && onDeleteModule) {
         const { status, body } = onDeleteModule(moduleMatch[1]);
+        return Promise.resolve(jsonResponse(body, status));
+      }
+
+      if (method === "GET" && url === "/api/v1/materials?bookId=book-1") {
+        return Promise.resolve(jsonResponse({ data: materials }));
+      }
+
+      if (
+        method === "POST" &&
+        url === "/api/v1/materials" &&
+        onCreateMaterial
+      ) {
+        const { status, body } = onCreateMaterial(
+          JSON.parse(init?.body as string),
+        );
+        return Promise.resolve(jsonResponse(body, status));
+      }
+
+      const materialMatch = /^\/api\/v1\/materials\/(.+)$/.exec(url);
+
+      if (method === "PATCH" && materialMatch && onUpdateMaterial) {
+        const { status, body } = onUpdateMaterial(
+          materialMatch[1],
+          JSON.parse(init?.body as string),
+        );
         return Promise.resolve(jsonResponse(body, status));
       }
 
@@ -981,6 +1027,90 @@ describe("EditBookPage", () => {
         ).toBeInTheDocument();
         expect(screen.getByText("أ")).toBeInTheDocument();
       });
+
+      it("preserves a pending reorder of the remaining Modules when one is deleted (ANA-94 PR review)", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "", en: "A" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "", en: "B" } }),
+            buildModuleFixture({ id: "module-3", title: { ar: "", en: "C" } }),
+          ],
+          onDeleteModule: () => ({ status: 200, body: { ok: true } }),
+        });
+        renderPage();
+
+        await screen.findByText("A");
+
+        // Same keyboard-drag technique as the Reorder (ANA-79) tests --
+        // dnd-kit's keyboard coordinate math needs real-ish rects, keyed by
+        // ItemList's own testid scheme.
+        const order = ["module-1", "module-2", "module-3"];
+        const rectSpy = vi
+          .spyOn(Element.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: Element) {
+            const container = this.closest('[data-testid^="list-item-"]');
+            const id = container
+              ?.getAttribute("data-testid")
+              ?.replace("list-item-", "");
+            const index = id ? order.indexOf(id) : -1;
+            const top = index === -1 ? 0 : index * 60;
+            return {
+              top,
+              bottom: top + 60,
+              left: 0,
+              right: 300,
+              width: 300,
+              height: 60,
+              x: 0,
+              y: top,
+              toJSON() {},
+            } as DOMRect;
+          });
+
+        // Drags "A" down past "B", unsaved: A,B,C -> B,A,C.
+        const grip = document.querySelector(
+          '[data-testid="list-item-module-1"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[ABC]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["B", "A", "C"]);
+        });
+
+        rectSpy.mockRestore();
+
+        // Re-routes the Modules fetch to report "C" gone, matching what a
+        // real revalidation after a successful DELETE would return.
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "", en: "A" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "", en: "B" } }),
+          ],
+          onDeleteModule: () => ({ status: 200, body: { ok: true } }),
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Delete C" }));
+        fireEvent.click(screen.getByRole("button", { name: "Delete module" }));
+
+        await vi.waitFor(() =>
+          expect(fetch).toHaveBeenCalledWith(
+            "/api/v1/books/book-1/modules/module-3",
+            { method: "DELETE" },
+          ),
+        );
+
+        // The B,A reorder survives the delete -- it must not revert to the
+        // server's original, pre-reorder A,B order for the two remaining
+        // Modules.
+        await vi.waitFor(async () => {
+          const items = await screen.findAllByText(/^[AB]$/);
+          expect(items.map((el) => el.textContent)).toEqual(["B", "A"]);
+        });
+      });
     });
 
     describe("Create Module (ANA-94)", () => {
@@ -1002,6 +1132,7 @@ describe("EditBookPage", () => {
 
       it("POSTs the entered fields and adds the backend-generated Module to the list only once creation succeeds", async () => {
         let createBody: unknown = null;
+        let createMaterialBody: unknown = null;
         setupFetch(buildBookFixture(), {
           modules: [],
           onCreateModule: (body) => {
@@ -1049,6 +1180,22 @@ describe("EditBookPage", () => {
               body: { data: buildModuleFixture({ id: "server-generated-id" }) },
             };
           },
+          // The Content field is this Module's Learning Material, created
+          // through the Material API once the real Module id is known
+          // (ANA-94 PR review) -- never dropped, and never sent as part of
+          // the Module create body above.
+          onCreateMaterial: (body) => {
+            createMaterialBody = body;
+            return {
+              status: 201,
+              body: {
+                data: buildMaterialFixture({
+                  id: "material-1",
+                  moduleId: "server-generated-id",
+                }),
+              },
+            };
+          },
         });
         fireEvent.click(
           within(dialog).getByRole("button", { name: "Save Module" }),
@@ -1066,6 +1213,14 @@ describe("EditBookPage", () => {
           isLocked: false,
           isPublished: false,
         });
+        expect(createBody).not.toHaveProperty("content");
+        await vi.waitFor(() =>
+          expect(createMaterialBody).toMatchObject({
+            bookId: "book-1",
+            moduleId: "server-generated-id",
+            content: { ar: "", en: "" },
+          }),
+        );
       });
 
       it("keeps the modal open and shows the error when creation fails, adding nothing to the list", async () => {
@@ -1125,7 +1280,7 @@ describe("EditBookPage", () => {
     });
 
     describe("Edit Module modal", () => {
-      it("opens seeded with the Module's Title, Description, and Color", async () => {
+      it("opens seeded with the Module's Title, Description, Color, and existing Content (its Learning Material, ANA-94 PR review)", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({
@@ -1133,6 +1288,13 @@ describe("EditBookPage", () => {
               title: { ar: "أ", en: "A" },
               description: { ar: "وصف", en: "Desc" },
               color: "cyan.6",
+            }),
+          ],
+          materials: [
+            buildMaterialFixture({
+              id: "material-1",
+              moduleId: "module-1",
+              content: { ar: "محتوى موجود", en: "" },
             }),
           ],
         });
@@ -1149,10 +1311,36 @@ describe("EditBookPage", () => {
         expect(
           within(dialog).getByRole("combobox", { name: "Color" }),
         ).toHaveValue("cyan.6");
+        expect(
+          await within(dialog).findByText("محتوى موجود"),
+        ).toBeInTheDocument();
+      });
+
+      it("opens seeded with blank Content when the Module has no Material yet", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          materials: [],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        // Content (a Markdown editor) has nothing to assert a value on
+        // directly -- absence of the seeded-content case's text is enough
+        // to show it started blank rather than reusing another Module's.
+        expect(screen.queryByText("محتوى موجود")).not.toBeInTheDocument();
+        expect(dialog).toBeInTheDocument();
       });
 
       it("PATCHes the edited fields and updates the displayed title only once saving succeeds", async () => {
         let patchBody: unknown = null;
+        let createMaterialBody: unknown = null;
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -1198,6 +1386,21 @@ describe("EditBookPage", () => {
               body: { data: buildModuleFixture({ id: moduleId }) },
             };
           },
+          // module-1 has no existing Material in this test, so saving its
+          // Content (this Module's Learning Material, ANA-94 PR review)
+          // goes through create, not update.
+          onCreateMaterial: (body) => {
+            createMaterialBody = body;
+            return {
+              status: 201,
+              body: {
+                data: buildMaterialFixture({
+                  id: "material-1",
+                  moduleId: "module-1",
+                }),
+              },
+            };
+          },
         });
         fireEvent.click(
           within(dialog).getByRole("button", { name: "Save changes" }),
@@ -1213,6 +1416,67 @@ describe("EditBookPage", () => {
         expect(patchBody).toMatchObject({ title: { ar: "المقدمة", en: "" } });
         expect(patchBody).not.toHaveProperty("isLocked");
         expect(patchBody).not.toHaveProperty("isPublished");
+        expect(patchBody).not.toHaveProperty("content");
+        await vi.waitFor(() =>
+          expect(createMaterialBody).toMatchObject({
+            bookId: "book-1",
+            moduleId: "module-1",
+            content: { ar: "", en: "" },
+          }),
+        );
+      });
+
+      it("PATCHes the existing Material's content when the Module already has one, instead of creating a second one", async () => {
+        let updateMaterialId: string | null = null;
+        let updateMaterialBody: unknown = null;
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          materials: [
+            buildMaterialFixture({
+              id: "material-1",
+              moduleId: "module-1",
+              content: { ar: "قديم", en: "" },
+            }),
+          ],
+          onUpdateModule: (moduleId) => ({
+            status: 200,
+            body: { data: buildModuleFixture({ id: moduleId }) },
+          }),
+          onUpdateMaterial: (materialId, body) => {
+            updateMaterialId = materialId;
+            updateMaterialBody = body;
+            return {
+              status: 200,
+              body: {
+                data: buildMaterialFixture({
+                  id: materialId,
+                  moduleId: "module-1",
+                  content: { ar: "جديد", en: "" },
+                }),
+              },
+            };
+          },
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(await within(dialog).findByText("قديم")).toBeInTheDocument();
+
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        await vi.waitFor(() => expect(updateMaterialId).toBe("material-1"));
+        expect(updateMaterialBody).toMatchObject({
+          content: { ar: "قديم", en: "" },
+        });
       });
 
       it("keeps the modal open and shows the error when saving fails, without changing the displayed title", async () => {

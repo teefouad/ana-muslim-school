@@ -27,6 +27,10 @@ import { EditModuleModal } from "../../edit-module-modal";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
 import {
+  createMaterial,
+  updateMaterial,
+} from "../../import-source/materials-client";
+import {
   createModule,
   deleteModule,
   updateModule,
@@ -34,6 +38,7 @@ import {
 import type { MockModule } from "../../mock-modules";
 import {
   createEmptyModuleFieldsValues,
+  toMaterialContent,
   toModuleCreateFields,
   toModuleFieldsValues,
   toModulePatchFields,
@@ -42,6 +47,7 @@ import {
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
+import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 import type { Source } from "@/lib/sources/types";
 
@@ -88,6 +94,24 @@ export default function EditBookPage() {
   } = useSWR(book ? `/api/v1/books/${book.id}/modules` : null, (url) =>
     fetchJson<{ data: Module[] }>(url).then((response) => response.data),
   );
+  // Each Module's Learning Material (ANA-94 PR review) -- the Edit Module
+  // modal's Content field is this, not a field on Module itself (see
+  // module-fields.ts). Book-filtered via `?bookId=`, using the exact same
+  // key AND raw (unwrapped) fetcher as the Module Builder workspace's own
+  // Materials fetch (import-source-modal.tsx) -- SWR dedupes/shares one
+  // cache entry per key, so a different fetcher shape here would have the
+  // two consumers racing to write mismatched cached data under the same
+  // key (PR review debugging: this modal reads `workspaceMaterialsData
+  // .data`, so this hook must produce that same `{ data: Material[] }`
+  // shape, not unwrap it).
+  const {
+    data: materialsData,
+    isLoading: materialsLoading,
+    mutate: mutateMaterials,
+  } = useSWR<{ data: Material[] }>(
+    book ? `/api/v1/materials?bookId=${encodeURIComponent(book.id)}` : null,
+    fetchJson,
+  );
   const serverModules: MockModule[] = (modulesData ?? []).map((module) => ({
     id: module.id,
     title: getModuleLabel(module),
@@ -131,14 +155,22 @@ export default function EditBookPage() {
   const modules: MockModule[] = moduleOrderDraft ?? serverModules;
 
   // Resolves an existing Module's current field values for the Edit Module
-  // modal (ANA-94) -- always read fresh from `modulesData`, the one source
-  // of truth now that Save changes persists through the backend instead of
-  // a local-only draft (ANA-91).
+  // modal (ANA-94) -- always read fresh from `modulesData`/`materialsData`,
+  // the one source of truth now that Save changes persists through the
+  // backend instead of a local-only draft (ANA-91). Content is seeded from
+  // this Module's existing Learning Material, if it has one (ANA-94 PR
+  // review) -- previously this always started blank, discarding content
+  // Module Builder had already saved for it.
   function getModuleFields(id: string): ModuleFieldsValues {
     const serverModule = modulesData?.find((module) => module.id === id);
-    return serverModule
-      ? toModuleFieldsValues(serverModule)
-      : createEmptyModuleFieldsValues();
+    if (!serverModule) {
+      return createEmptyModuleFieldsValues();
+    }
+
+    const material = materialsData?.data.find(
+      (candidate) => candidate.moduleId === id,
+    );
+    return toModuleFieldsValues(serverModule, material?.content);
   }
   // Whether this Book already has a saved Source (ANA-71) -- fetched here,
   // not gated on the Module Builder modal being open, since which internal
@@ -170,11 +202,14 @@ export default function EditBookPage() {
   // `book` is always set here: ModulesPanel only renders once it has loaded
   // (see the render below). Revalidates the Modules SWR data on success so
   // the row disappears without a page reload; a rejection propagates to
-  // ModulesPanel, which keeps the row visible and shows the error. Clears
-  // any pending reorder draft -- it necessarily referenced the now-deleted
-  // Module, so it can no longer be replayed as-is (the render-time check
-  // above would also catch this once `modulesData` revalidates, but
-  // clearing it immediately avoids a stale drag order flashing first).
+  // ModulesPanel, which keeps the row visible and shows the error. If a
+  // reorder draft is pending, drops only the deleted Module's id from it
+  // rather than resetting the whole draft (ANA-94 PR review) -- discarding
+  // it entirely would also throw away an unrelated, still-unsaved reorder
+  // of the *other* Modules; the render-time staleness check above can't
+  // help here since it only fires once `modulesData` has already
+  // revalidated, and would otherwise show the pre-delete server order
+  // flash first.
   async function handleDeleteModule(module: MockModule) {
     if (!book) {
       return;
@@ -182,7 +217,9 @@ export default function EditBookPage() {
 
     await deleteModule(book.id, module.id);
     await mutateModules();
-    setModuleOrderDraft(null);
+    setModuleOrderDraft((draft) =>
+      draft ? draft.filter((candidate) => candidate.id !== module.id) : draft,
+    );
   }
 
   // Updates the local Module order draft (ANA-79) -- a plain client-side
@@ -207,27 +244,39 @@ export default function EditBookPage() {
   // Creates a new Module through the backend (ANA-94) -- the Module modal
   // (in create mode) awaits this and only closes/considers the Module
   // "added" once it resolves; a rejection leaves the modal open showing the
-  // error, and nothing is added to the displayed list. Revalidates the
-  // Modules SWR data on success so the new, backend-generated id and its
-  // fields show up without a page reload, and drops any pending reorder
-  // draft -- it necessarily predates this Module and so can no longer be
-  // replayed as a valid same-set reorder (the render-time check above would
-  // also catch this once `modulesData` revalidates, but clearing it
-  // immediately avoids a stale order flashing first).
+  // error, and nothing is added to the displayed list. The Content field
+  // is this Module's Learning Material, not a Module field itself, so it's
+  // always persisted separately via `createMaterial` (ANA-94 PR review) --
+  // matching Module Builder's own Module+Material creation pattern
+  // (import-source-modal.tsx) -- once the Module itself exists and its
+  // real id is known; every new Module gets a Material this way, even one
+  // whose Content was left blank. Revalidates the Modules and Materials
+  // SWR data on success so the new, backend-generated id and its fields
+  // show up without a page reload, and drops any pending reorder draft --
+  // it necessarily predates this Module and so can no longer be replayed
+  // as a valid same-set reorder (the render-time check above would also
+  // catch this once `modulesData` revalidates, but clearing it immediately
+  // avoids a stale order flashing first).
   async function handleCreateModule(fields: ModuleFieldsValues) {
     if (!book) {
       return;
     }
 
-    await createModule(book.id, toModuleCreateFields(fields));
+    const created = await createModule(book.id, toModuleCreateFields(fields));
+    await createMaterial(book.id, created.id, toMaterialContent(fields));
     await mutateModules();
+    await mutateMaterials();
     setModuleOrderDraft(null);
   }
 
   // Persists an existing Module's edited fields through the backend
   // (ANA-94) -- the Module modal awaits this the same way it awaits
-  // `handleCreateModule`. Revalidates the Modules SWR data on success. If a
-  // reorder draft is currently pending (the id set is unaffected by an
+  // `handleCreateModule`. Content is persisted the same way: `updateMaterial`
+  // when this Module already has one (the common case), `createMaterial`
+  // when it doesn't yet (e.g. a Module that predates this feature) -- the
+  // same existing-id branch Module Builder's own Finish step uses (PR
+  // review). Revalidates the Modules and Materials SWR data on success. If
+  // a reorder draft is currently pending (the id set is unaffected by an
   // edit, so the render-time staleness check above won't reset it), its
   // matching entry's display title is patched too -- otherwise the panel
   // would keep showing this Module's pre-edit title, read from the now-
@@ -238,7 +287,20 @@ export default function EditBookPage() {
     }
 
     await updateModule(book.id, id, toModulePatchFields(fields));
+
+    const existingMaterial = materialsData?.data.find(
+      (material) => material.moduleId === id,
+    );
+    const content = toMaterialContent(fields);
+
+    if (existingMaterial) {
+      await updateMaterial(existingMaterial.id, content);
+    } else {
+      await createMaterial(book.id, id, content);
+    }
+
     await mutateModules();
+    await mutateMaterials();
     setModuleOrderDraft((draft) =>
       draft
         ? draft.map((module) =>
@@ -359,7 +421,7 @@ export default function EditBookPage() {
             />
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
-            {modulesLoading ? (
+            {modulesLoading || materialsLoading ? (
               <Group gap="sm">
                 <Loader size="sm" />
                 <Text size="sm" c="dimmed">
@@ -417,7 +479,15 @@ export default function EditBookPage() {
           opened={importSourceOpened}
           onClose={() => setImportSourceOpened(false)}
           bookId={book.id}
-          onModulesCreated={() => mutateModules()}
+          onModulesCreated={() => {
+            mutateModules();
+            // Module Builder's own Finish step creates each new Module's
+            // Learning Material in the same operation -- revalidate it
+            // here too, or the Edit Module modal's Content field would
+            // show stale (blank) content for one of these Modules until
+            // an unrelated action happened to revalidate it.
+            mutateMaterials();
+          }}
           // Lets the modal's saved-Source workspace seed its own initial
           // order from whatever is currently displayed here, including an
           // unsaved drag reorder (ANA-84) -- `null` (not this page's own

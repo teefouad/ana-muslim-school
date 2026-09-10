@@ -4,11 +4,12 @@ import type { TranslatableString } from "@/lib/learning-content/translatable-str
 import type { Module, ModuleWritableFields } from "@/lib/modules/types";
 
 /**
- * The Edit Module modal's controlled field values (ANA-91). Frontend-only,
- * local-only state -- `content` has no equivalent on the real, Firestore-
- * backed `Module` (`lib/modules/types.ts`, which only has `lessons: string[]`
- * today), so nothing here is ever sent to an API; Save changes only updates
- * this page's own local draft (see `[id]/edit/page.tsx`).
+ * The Edit Module modal's controlled field values (ANA-91). `content` is
+ * this Module's Learning Material (ANA-94 PR review) -- the same content
+ * Module Builder edits/persists via the Material APIs
+ * (`import-source/materials-client.ts`), not a field on `Module` itself
+ * (`lib/modules/types.ts` has no such field; a Module <-> Material relation
+ * is by `moduleId`, see `lib/materials/types.ts`).
  */
 export interface ModuleFieldsValues {
   title: TranslatedValue;
@@ -26,14 +27,19 @@ export function createEmptyModuleFieldsValues(): ModuleFieldsValues {
   };
 }
 
-/** Seeds the modal's fields from a real, API-backed Module -- `content` has
- * no persisted equivalent yet (see above), so it always starts blank. */
-export function toModuleFieldsValues(module: Module): ModuleFieldsValues {
+/** Seeds the modal's fields from a real, API-backed Module -- `content`
+ * comes from that Module's existing Learning Material (ANA-94 PR review),
+ * `{}` when it has none yet (a Module created before this Book had any, or
+ * one that's never had its Content field touched). */
+export function toModuleFieldsValues(
+  module: Module,
+  content: TranslatedValue = {},
+): ModuleFieldsValues {
   return {
     title: module.title,
     description: module.description,
     color: module.color,
-    content: {},
+    content,
   };
 }
 
@@ -42,11 +48,14 @@ function toTranslatableString(value: TranslatedValue): TranslatableString {
 }
 
 /** Builds a `POST /api/v1/books/{bookId}/modules` body (ANA-94) from the
- * modal's fields -- `content` is never sent, it has no persisted field yet
- * (see above). `isLocked`/`isPublished` are required by that endpoint but
- * this modal has no UI for either, so they always default to `false` for a
- * newly-created Module, matching the Book form's own `DEFAULT_COLOR`-style
- * default-on-create convention. */
+ * modal's fields. `content` is deliberately excluded -- it isn't a Module
+ * field at all (see `ModuleFieldsValues` above); the caller persists it
+ * separately as this Module's Learning Material via `createMaterial`, once
+ * the Module itself exists and its real id is known. `isLocked`/
+ * `isPublished` are required by that endpoint but this modal has no UI for
+ * either, so they always default to `false` for a newly-created Module,
+ * matching the Book form's own `DEFAULT_COLOR`-style default-on-create
+ * convention. */
 export function toModuleCreateFields(
   fields: ModuleFieldsValues,
 ): ModuleWritableFields {
@@ -63,8 +72,9 @@ export function toModuleCreateFields(
  * from the modal's fields -- deliberately omits `isLocked`/`isPublished`
  * (that endpoint leaves an omitted field unchanged) since this modal has no
  * UI for either; sending `false` unconditionally here would silently
- * clobber a value set some other way. `content` is never sent (see
- * `toModuleFieldsValues` above). */
+ * clobber a value set some other way. `content` is excluded here too, for
+ * the same reason as `toModuleCreateFields` -- the caller persists it
+ * separately via `createMaterial`/`updateMaterial`. */
 export function toModulePatchFields(
   fields: ModuleFieldsValues,
 ): Partial<ModuleWritableFields> {
@@ -73,4 +83,13 @@ export function toModulePatchFields(
     description: toTranslatableString(fields.description),
     color: fields.color,
   };
+}
+
+/** The modal's `content` field, normalized to the `{ ar, en }` shape the
+ * Material APIs require (ANA-94 PR review) -- passed to `createMaterial`/
+ * `updateMaterial`, never to a Module create/patch body. */
+export function toMaterialContent(
+  fields: ModuleFieldsValues,
+): TranslatableString {
+  return toTranslatableString(fields.content);
 }
