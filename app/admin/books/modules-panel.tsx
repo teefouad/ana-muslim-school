@@ -24,6 +24,11 @@ export interface ModulesPanelProps {
    * keep that original behavior unchanged). Rejecting leaves the Module in
    * place and surfaces the error. */
   onDeleteModule?: (module: MockModule) => Promise<void>;
+  /** Fired when a row's edit action is clicked (ANA-91) -- opens the
+   * caller's own top-level Edit Module modal; this panel owns no editing UI
+   * itself. Omitted entirely leaves the edit action a no-op, matching the
+   * pre-ANA-91 behavior. */
+  onEditModule?: (module: MockModule) => void;
 }
 
 function getModuleLabel(module: MockModule, index: number): string {
@@ -38,18 +43,21 @@ function getModuleLabel(module: MockModule, index: number): string {
 // Add Book still passes local, pre-save `MockModule[]` state. Edit Book (as
 // of ANA-70) instead maps its real, API-backed Modules into this same
 // `MockModule` shape for display and creates Modules through the Import
-// Source flow's Finish action -- reorder/add from this panel still aren't
-// persisted for it (`onModulesChange` stays a no-op until a follow-up card
-// wires those to `/api/v1/books/{bookId}/modules`, see
-// lib/modules/types.ts), but Delete is real (ANA-77): passing
-// `onDeleteModule` persists it through the Module DELETE API instead of the
-// panel's default local-only removal.
+// Source flow's Finish action -- reorder and add from this panel are still
+// local-only for it (`onModulesChange` just updates a client-side draft,
+// see `[id]/edit/page.tsx`'s `moduleOrderDraft`; ANA-91 keeps Add frontend-
+// only, with no `/api/v1/books/{bookId}/modules` POST), but Delete is real
+// (ANA-77): passing `onDeleteModule` persists it through the Module DELETE
+// API instead of the panel's default local-only removal. Edit (ANA-91)
+// opens the caller's own top-level modal via `onEditModule` -- also
+// frontend-only, no PATCH.
 export function ModulesPanel({
   modules,
   onModulesChange,
   disabled = false,
   className,
   onDeleteModule,
+  onEditModule,
 }: ModulesPanelProps) {
   // The real Module currently pending a confirmed delete -- only ever set
   // when `onDeleteModule` is provided (Edit Book's persisted Modules,
@@ -115,10 +123,9 @@ export function ModulesPanel({
         sortable
         onReorder={onModulesChange}
         reorderDisabled={disabled}
-        // A real Module editor is out of scope here (ANA-65/ANA-68) -- the
-        // pencil action is exposed per the agreed ItemList affordance API, and
-        // the Module-persistence card gives it real behavior.
-        onEditItem={() => {}}
+        // Opens the caller's own top-level Edit Module modal (ANA-91) --
+        // this panel owns no editing UI itself, only the ItemList wiring.
+        onEditItem={(module) => onEditModule?.(module)}
         getEditLabel={(module, index) =>
           `Edit ${getModuleLabel(module, index)}`
         }

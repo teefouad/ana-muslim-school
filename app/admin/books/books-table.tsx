@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Alert, Badge, Group, Loader, Stack, Text } from "@mantine/core";
 
+import { resolveApplicationColor } from "@/components/ui/application-colors";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import type { Book } from "@/lib/books/types";
-import { resolveApplicationColor } from "./application-colors";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
 import { fetchJson } from "./fetch-json";
 

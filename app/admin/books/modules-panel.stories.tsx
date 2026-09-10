@@ -92,3 +92,12 @@ export const PersistedDelete: Story = {
     onDeleteModule: async () => {},
   },
 };
+
+// Edit Book wires the pencil action to its own top-level Edit Module modal
+// (ANA-91) instead of leaving it a no-op.
+export const EditableRows: Story = {
+  args: {
+    modules: SAMPLE_MODULES,
+    onEditModule: () => {},
+  },
+};

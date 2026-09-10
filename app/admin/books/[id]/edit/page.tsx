@@ -23,10 +23,16 @@ import {
   toBookWritableFields,
   type BookFormValues,
 } from "../../book-form";
+import { EditModuleModal } from "../../edit-module-modal";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
 import { deleteModule } from "../../import-source/modules-client";
 import type { MockModule } from "../../mock-modules";
+import {
+  createEmptyModuleFieldsValues,
+  toModuleFieldsValues,
+  type ModuleFieldsValues,
+} from "../../module-fields";
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
@@ -84,6 +90,22 @@ export default function EditBookPage() {
   const [moduleOrderDraft, setModuleOrderDraft] = useState<MockModule[] | null>(
     null,
   );
+  // Ids of Modules added locally through this panel's Add action (ANA-91) --
+  // they exist only in `moduleOrderDraft`/`localModuleFields`, never on the
+  // server (this task stays frontend-only, no
+  // `/api/v1/books/{bookId}/modules` POST), so the stale-draft check below
+  // must not treat them as evidence the draft has fallen out of sync with
+  // the server's real Module set.
+  const [addedModuleIds, setAddedModuleIds] = useState<string[]>([]);
+  // Local-only field edits (ANA-91): every Added Module always has an entry
+  // here (there's nothing server-side to seed it from); an existing,
+  // server-backed Module only gets one once its Edit Module modal has been
+  // saved at least once -- until then its fields are read straight from
+  // `modulesData` (see `getInitialModuleFields`).
+  const [localModuleFields, setLocalModuleFields] = useState<
+    Record<string, ModuleFieldsValues>
+  >({});
+  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
 
   // If the server's Module *set* has changed since the draft was built --
   // e.g. a Module was created or deleted elsewhere (Import Source's Finish/
@@ -91,22 +113,43 @@ export default function EditBookPage() {
   // the draft can no longer be trusted to cover every current Module, so
   // fall back to the fresh server order rather than risk submitting a
   // stale/incomplete reorder. A same-set reorder of the *same* Modules is
-  // exactly what `isValidReorder` already checks (ANA-62). Runs during
-  // render (React's documented "adjusting state when a prop changes"
-  // pattern) rather than a `useEffect`, which this project's lint config
-  // flags any state update inside as an error (see AGENTS.md).
+  // exactly what `isValidReorder` already checks (ANA-62) -- locally added
+  // ids (ANA-91) are excluded from that comparison first, since the server
+  // was never going to know about them. Runs during render (React's
+  // documented "adjusting state when a prop changes" pattern) rather than a
+  // `useEffect`, which this project's lint config flags any state update
+  // inside as an error (see AGENTS.md).
   if (
     modulesData &&
     moduleOrderDraft &&
     !isValidReorder(
-      moduleOrderDraft.map((module) => module.id),
+      moduleOrderDraft
+        .map((module) => module.id)
+        .filter((id) => !addedModuleIds.includes(id)),
       modulesData.map((module) => module.id),
     )
   ) {
     setModuleOrderDraft(null);
+    setAddedModuleIds([]);
   }
 
   const modules: MockModule[] = moduleOrderDraft ?? serverModules;
+
+  // Resolves a Module's current field values for the Edit Module modal
+  // (ANA-91) -- a locally-added or previously-edited Module reads from its
+  // own local draft; an untouched, server-backed Module is seeded fresh
+  // from `modulesData`.
+  function getInitialModuleFields(id: string): ModuleFieldsValues {
+    const override = localModuleFields[id];
+    if (override) {
+      return override;
+    }
+
+    const serverModule = modulesData?.find((module) => module.id === id);
+    return serverModule
+      ? toModuleFieldsValues(serverModule)
+      : createEmptyModuleFieldsValues();
+  }
   // Whether this Book already has a saved Source (ANA-71) -- fetched here,
   // not gated on the Module Builder modal being open, since which internal
   // modal flow the header button opens (saved Source workspace vs. PDF
@@ -153,23 +196,59 @@ export default function EditBookPage() {
   }
 
   // Updates the local Module order draft (ANA-79) -- a plain client-side
-  // state change, no network request. Validated as a same-set reorder of
-  // whatever is *currently displayed* (the draft if one exists, otherwise
-  // the server order) so `ModulesPanel`'s Add action -- which funnels
-  // through this same prop and is still out of scope for this Book-level
-  // panel (ANA-70) -- can't slip its extra, never-persisted blank entry
-  // through as a "reorder".
+  // state change, no network request. `ModulesPanel`'s Add action funnels
+  // through this same prop, appending exactly one new blank Module (ANA-91)
+  // -- accepted here as a local-only addition (never persisted, matching
+  // this task's frontend-only scope) rather than rejected as an invalid
+  // reorder. Anything else is validated as a same-set reorder of whatever is
+  // *currently displayed* (the draft if one exists, otherwise the server
+  // order), unchanged from before ANA-91.
   function handleReorderModules(reordered: MockModule[]) {
+    const currentIds = modules.map((module) => module.id);
+    const addedIds = reordered
+      .map((module) => module.id)
+      .filter((id) => !currentIds.includes(id));
+
+    if (addedIds.length > 0) {
+      setAddedModuleIds((prev) => [...prev, ...addedIds]);
+      setLocalModuleFields((prev) => {
+        const next = { ...prev };
+        for (const id of addedIds) {
+          next[id] = createEmptyModuleFieldsValues();
+        }
+        return next;
+      });
+      setModuleOrderDraft(reordered);
+      return;
+    }
+
     if (
       !isValidReorder(
         reordered.map((module) => module.id),
-        modules.map((module) => module.id),
+        currentIds,
       )
     ) {
       return;
     }
 
     setModuleOrderDraft(reordered);
+  }
+
+  // Save changes in the Edit Module modal (ANA-91) never persists to the
+  // backend -- it only updates this page's own local draft, both the full
+  // field values (for the next time this Module is edited) and the display
+  // title `ModulesPanel` renders (falling back to its own "Module N" copy
+  // when both languages are blank, same as a freshly Added Module).
+  function handleSaveModuleFields(id: string, fields: ModuleFieldsValues) {
+    setLocalModuleFields((prev) => ({ ...prev, [id]: fields }));
+    setModuleOrderDraft(
+      (moduleOrderDraft ?? serverModules).map((module) =>
+        module.id === id
+          ? { ...module, title: fields.title.ar || fields.title.en || "" }
+          : module,
+      ),
+    );
+    setEditingModuleId(null);
   }
 
   async function handleSubmit(values: BookFormValues) {
@@ -292,22 +371,40 @@ export default function EditBookPage() {
               // Reorder is a local draft only (ANA-79): `onModulesChange`
               // just updates `moduleOrderDraft`, with no network request --
               // Save changes (the Book form's own submit, above) is what
-              // persists the final order, bundled into that same PATCH.
-              // Add still isn't persisted from this panel (ANA-70 scope
-              // boundary -- see modules-panel.tsx); handleReorderModules'
-              // same-set validation leaves it exactly as inert as before.
+              // persists the final order, bundled into that same PATCH. Add
+              // (ANA-91) is also local-only: handleReorderModules appends
+              // the new blank Module to that same draft instead of treating
+              // it as an invalid reorder, with no backend persistence.
               // Delete is real and immediate (ANA-77, unchanged):
               // `onDeleteModule` persists it through the Module DELETE API
               // and revalidates this page's own Modules SWR data on
-              // success.
+              // success. Edit (ANA-91) opens this page's own top-level Edit
+              // Module modal, also local-only.
               <ModulesPanel
                 modules={modules}
                 onModulesChange={handleReorderModules}
                 onDeleteModule={handleDeleteModule}
+                onEditModule={(module) => setEditingModuleId(module.id)}
               />
             )}
           </Box>
         </Flex>
+      )}
+
+      {book && (
+        <EditModuleModal
+          module={
+            editingModuleId
+              ? {
+                  id: editingModuleId,
+                  ...getInitialModuleFields(editingModuleId),
+                }
+              : null
+          }
+          bookId={book.id}
+          onClose={() => setEditingModuleId(null)}
+          onSave={handleSaveModuleFields}
+        />
       )}
 
       {book && (
