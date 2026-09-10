@@ -164,34 +164,34 @@ describe("LearningMaterialModuleCard", () => {
     expect(await screen.findByRole("toolbar")).toBeInTheDocument();
   });
 
-  it("exposes a drag handle, Delete/AI Assistant/Translate actions, a language switcher, and the Markdown editor, with the language switcher right-most (ANA-77)", async () => {
+  it("exposes a drag handle, AI Assistant/Translate/Delete actions, a language switcher, and the Markdown editor, with the language switcher right-most (ANA-88)", async () => {
     renderCard();
 
-    const deleteButton = screen.getByRole("button", {
-      name: "Delete Module 1",
-    });
     const aiButton = screen.getByRole("button", { name: "AI Assistant" });
     const translateButton = screen.getByRole("button", {
       name: "Translate to English",
     });
+    const deleteButton = screen.getByRole("button", {
+      name: "Delete Module 1",
+    });
     const languageSwitcher = screen.getByRole("radio", { name: "Arabic" });
 
-    expect(deleteButton).toBeInTheDocument();
     expect(aiButton).toBeInTheDocument();
     expect(translateButton).toBeInTheDocument();
+    expect(deleteButton).toBeInTheDocument();
     expect(languageSwitcher).toBeInTheDocument();
 
-    // Left-to-right DOM order matches the header spec: Delete, AI
-    // Assistant, Translate, then the language switcher last.
+    // Left-to-right DOM order matches the header spec (ANA-88): AI
+    // Assistant, Translate, Delete, then the language switcher last.
     const header = deleteButton.closest("div");
     const controls = Array.from(header?.children ?? []);
-    expect(controls.indexOf(deleteButton)).toBeLessThan(
-      controls.indexOf(aiButton),
-    );
     expect(controls.indexOf(aiButton)).toBeLessThan(
       controls.indexOf(translateButton),
     );
-    expect(controls.indexOf(translateButton)).toBeLessThan(controls.length - 1);
+    expect(controls.indexOf(translateButton)).toBeLessThan(
+      controls.indexOf(deleteButton),
+    );
+    expect(controls.indexOf(deleteButton)).toBeLessThan(controls.length - 1);
 
     await screen.findByRole("toolbar");
   });
@@ -269,7 +269,7 @@ describe("LearningMaterialModuleCard", () => {
     expect(editable).toHaveAttribute("contenteditable", "true");
   });
 
-  it("renders Delete, AI Assistant, and Translate hidden at rest, revealed together on header hover/focus-within, while the language switcher stays visible (ANA-77)", () => {
+  it("renders AI Assistant, Translate, and Delete visible at all times, not only on header hover/focus-within (ANA-88)", () => {
     renderCard();
 
     const deleteButton = screen.getByRole("button", {
@@ -283,6 +283,12 @@ describe("LearningMaterialModuleCard", () => {
     expect(deleteButton.className).toMatch(/actionButton/);
     expect(aiButton.className).toMatch(/actionButton/);
     expect(translateButton.className).toMatch(/actionButton/);
+
+    // None of them are hidden at rest -- there's no opacity-toggling
+    // hover/focus-within affordance to hide behind anymore (ANA-88).
+    expect(deleteButton).toBeVisible();
+    expect(aiButton).toBeVisible();
+    expect(translateButton).toBeVisible();
   });
 
   it("clicking delete or AI Assistant does not toggle the card's collapsed state", async () => {

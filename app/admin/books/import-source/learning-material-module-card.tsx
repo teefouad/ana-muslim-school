@@ -145,9 +145,10 @@ type PendingAction = "delete" | "translate" | null;
 // (ANA-75) -- previously two independently-styled components
 // (LearningMaterialCard/SourceModuleCard) that had drifted apart. Header,
 // left to right: drag handle, "Module N" title, then -- immediately left of
-// the language switcher -- Delete/AI Assistant/Translate, hidden at rest
-// and revealed together on header hover/focus-within (ANA-77); the language
-// switcher itself stays visible and is always the right-most control. Body:
+// the language switcher -- AI Assistant/Translate/Delete, always visible
+// (ANA-88, not merely revealed on header hover/focus-within as before); the
+// language switcher itself stays visible and is always the right-most
+// control. Body:
 // the School MarkdownEditor for whichever language is currently active,
 // direction following that language rather than a global source-text
 // direction. AI Assistant opens its own instructions dialog and transforms
@@ -506,26 +507,14 @@ export function LearningMaterialModuleCard({
         >
           Module {index + 1}
         </button>
-        {/* Delete, AI Assistant, and Translate: hidden at rest, revealed
-            together on header hover/focus-within (ANA-77) -- always
-            immediately to the left of the language switcher, which is
-            never part of this hover-hidden group. Delete/Translate only
-            render when the caller actually wired them -- an omitted
-            handler hides the affordance entirely rather than rendering a
-            button that silently does nothing when clicked (PR review,
-            Copilot). */}
-        {onDelete && (
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            className={styles.actionButton}
-            aria-label={`Delete Module ${index + 1}`}
-            disabled={isCardFrozen || deleteDisabled}
-            onClick={handleDeleteClick}
-          >
-            <Trash2 size={14} aria-hidden="true" />
-          </ActionIcon>
-        )}
+        {/* AI Assistant, Translate, and Delete: always visible, not just on
+            header hover/focus-within (ANA-88) -- always immediately to the
+            left of the language switcher, in this fixed left-to-right
+            order regardless of which optional handlers are wired.
+            Delete/Translate only render when the caller actually wired
+            them -- an omitted handler hides the affordance entirely rather
+            than rendering a button that silently does nothing when clicked
+            (PR review, Copilot). */}
         {/* Opens the instructions dialog for the active editor's current
             selection (ANA-85, PR review) -- disabled when there's no
             non-empty selection, since there's nothing to transform. */}
@@ -551,13 +540,32 @@ export function LearningMaterialModuleCard({
             <Languages size={16} aria-hidden="true" />
           </ActionIcon>
         )}
-        <LanguageSwitcher
-          languages={LANGUAGES}
-          value={activeLanguage}
-          onChange={(slug) => setActiveLanguage(slug as Language)}
-          isFilled={(slug) => Boolean(material[slug as Language]?.trim())}
-          disabled={isCardFrozen}
-        />
+        {onDelete && (
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            className={styles.actionButton}
+            aria-label={`Delete Module ${index + 1}`}
+            disabled={isCardFrozen || deleteDisabled}
+            onClick={handleDeleteClick}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </ActionIcon>
+        )}
+        <div
+          style={{
+            marginBlock: 10,
+            marginInlineStart: 10,
+          }}
+        >
+          <LanguageSwitcher
+            languages={LANGUAGES}
+            value={activeLanguage}
+            onChange={(slug) => setActiveLanguage(slug as Language)}
+            isFilled={(slug) => Boolean(material[slug as Language]?.trim())}
+            disabled={isCardFrozen}
+          />
+        </div>
       </div>
       {translateError && (
         <Alert color="red" mx="sm" mb="xs" py={4} role="alert">
