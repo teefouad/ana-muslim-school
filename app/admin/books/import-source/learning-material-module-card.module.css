@@ -79,20 +79,29 @@
   cursor: pointer;
 }
 
-/* Delete, AI Assistant, and Translate: hidden at rest, revealed together on
-   header hover/focus-within (ANA-77) -- so keyboard users can still reach
-   them without a pointer (same affordance as the Book Modules list's own
-   delete action, see item-list.module.css's .actions). The language
-   switcher deliberately doesn't get this class -- it always stays visible. */
+/* AI Assistant, Translate, and Delete: always visible, in that fixed order
+   (ANA-88) -- previously hidden at rest and revealed only on header
+   hover/focus-within (ANA-77). The `+` combinator only inserts a gap
+   between two of these buttons that actually render next to each other,
+   regardless of which optional ones (Translate/Delete) the caller wired --
+   it never adds space before the first action button or after the last one
+   towards the language switcher. `margin-inline-start` follows the active
+   language's direction (RTL/LTR) rather than assuming a fixed left/right. */
 .actionButton {
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 120ms ease;
 }
 
-.header:hover .actionButton,
-.header:focus-within .actionButton {
-  opacity: 1;
+.actionButton + .actionButton {
+  margin-inline-start: 5px;
+}
+
+/* A disabled action button must render with no background of its own --
+   fully transparent, not Mantine's default disabled-state fill (ANA-88).
+   Specificity here (two classes) already outweighs Mantine's own disabled
+   selector (one class plus a zero-specificity :where()), so this needs no
+   !important. */
+.actionButton:where(:disabled, [data-disabled]) {
+  background: transparent;
 }
 
 .body {
