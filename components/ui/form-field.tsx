@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -20,6 +20,7 @@ import {
   MarkdownEditor,
   type MarkdownEditorHandle,
   type MarkdownEditorProps,
+  type MarkdownSelectionCapture,
 } from "./markdown-editor";
 import { TranslatableFieldHeader } from "./translatable-field-header";
 import type { LanguageOption, TranslatedValue } from "./translatable-value";
@@ -28,9 +29,12 @@ import { useActiveLanguage } from "./use-active-language";
 export type FormFieldType = "text" | "textarea" | "markdown";
 
 export interface FormFieldAiActionArgs<TContext> {
-  /** The whole current text the action runs on -- the active language's
-   * value when translatable, the field's whole value otherwise. Never a
-   * selection within it. */
+  /** The text the action runs on. For Translate with AI, and for AI
+   * Assistance on every type other than `"markdown"`, this is always the
+   * whole current text (the active language's value, when translatable).
+   * For AI Assistance on `type="markdown"`, this is the editor's current
+   * selection when there is a non-empty one, or the whole value otherwise
+   * -- see `aiAssistance` on `FormFieldProps`. */
   text: string;
   /** The active language slug, when this field is translatable. */
   language?: string;
@@ -91,10 +95,15 @@ interface FormFieldCommonProps<TContext> {
     MarkdownEditorProps,
     "markdown" | "onChange" | "disabled" | "placeholder" | "dir"
   >;
-  /** Shows the AI Assistance action, which rewrites this field's whole
-   * current text (the active language's text, when translatable) through
-   * the shared Additional Instructions step. Requires `onAiAssist` -- the
-   * button stays disabled without it. */
+  /** Shows the AI Assistance action, which rewrites this field's current
+   * text (the active language's text, when translatable) through the
+   * shared Additional Instructions step. Stays enabled even when the field
+   * is empty -- caller-supplied context alone may be enough to generate a
+   * value (e.g. a Module Title generated from its Learning Material and
+   * Book). For `type="markdown"`, operates on the editor's current
+   * selection when there is one (replacing only that range), and falls
+   * back to the whole value otherwise. Requires `onAiAssist` -- the button
+   * stays disabled without it. */
   aiAssistance?: boolean;
   onAiAssist?: FormFieldAiAction<TContext>;
   /** Invoked once, when AI Assistance is triggered -- supplies whatever
@@ -232,12 +241,25 @@ function useFormFieldTranslateAction<TContext>({
   };
 }
 
+/** A Markdown selection AI Assistance captured at click time (before the
+ * Additional Instructions dialog steals focus) -- `capture` is the
+ * restorable Lexical range `handleGenerate` later hands to
+ * `replaceCapturedSelection`, `text` is the Markdown sent to the AI in
+ * place of the whole field. `null` whenever the editor had no non-empty
+ * selection, in which case AI Assistance falls back to the whole field. */
+interface PendingMarkdownSelection {
+  capture: MarkdownSelectionCapture;
+  text: string;
+}
+
 function useFormFieldAssistAction<TContext>({
   enabled,
   disabled,
+  type,
   translatable,
   activeSlug,
   activeValue,
+  editorRef,
   onApply,
   onAiAssist,
   getContext,
@@ -245,25 +267,48 @@ function useFormFieldAssistAction<TContext>({
 }: {
   enabled: boolean;
   disabled: boolean;
+  type: FormFieldType;
   translatable: boolean;
   activeSlug: string | undefined;
   activeValue: string;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   onApply: (next: string) => void;
   onAiAssist?: FormFieldAiAction<TContext>;
   getContext?: () => TContext;
   onBusyChange?: (busy: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [pendingSelection, setPendingSelection] =
+    useState<PendingMarkdownSelection | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleClick() {
     setError(null);
+
+    // Captured here, not in handleGenerate -- opening the dialog moves
+    // focus into its own Textarea, which would otherwise collapse the
+    // editor's live selection before Generate ever reads it. Nothing is
+    // mutated by capturing it (PR review precedent, see
+    // learning-material-module-card.tsx), so there's nothing to undo if the
+    // dialog is cancelled.
+    if (type === "markdown") {
+      const selectedMarkdown = editorRef.current?.getSelectedMarkdown() ?? "";
+      const capture = editorRef.current?.captureSelection() ?? null;
+      setPendingSelection(
+        selectedMarkdown.trim() && capture
+          ? { capture, text: selectedMarkdown }
+          : null,
+      );
+    }
+
     setOpen(true);
   }
 
   async function handleGenerate(instructions: string | undefined) {
+    const selection = pendingSelection;
     setOpen(false);
+    setPendingSelection(null);
 
     if (!onAiAssist) return;
 
@@ -273,12 +318,22 @@ function useFormFieldAssistAction<TContext>({
 
     try {
       const refined = await onAiAssist({
-        text: activeValue,
+        text: selection ? selection.text : activeValue,
         language: translatable ? activeSlug : undefined,
         instructions,
         context: getContext ? getContext() : (undefined as TContext),
       });
-      onApply(refined);
+
+      if (selection) {
+        // Replaces exactly the captured range using the editor's own
+        // selection-aware node insertion (never a text search against the
+        // original selected text, which may recur elsewhere in the
+        // document) -- this fires the editor's own `onChange`, routing
+        // through `onApply` exactly like a manual edit would.
+        editorRef.current?.replaceCapturedSelection(selection.capture, refined);
+      } else {
+        onApply(refined);
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -290,15 +345,24 @@ function useFormFieldAssistAction<TContext>({
   return {
     loading,
     error,
-    disabled:
-      !enabled || disabled || loading || !onAiAssist || !activeValue.trim(),
+    // Deliberately not gated on `activeValue`/selection being non-empty --
+    // caller-supplied context alone (e.g. a Module's Learning Material and
+    // Book) may be enough to generate a value for a currently-empty field.
+    disabled: !enabled || disabled || loading || !onAiAssist,
     handleClick,
     dialog: open ? (
       <AiInstructionsModal
         opened
         title="AI Assistance"
-        description="The AI will rewrite this field's current text."
-        onCancel={() => setOpen(false)}
+        description={
+          pendingSelection
+            ? "The AI will transform the text you selected. The rest of the field stays untouched."
+            : "The AI will rewrite this field's current text."
+        }
+        onCancel={() => {
+          setOpen(false);
+          setPendingSelection(null);
+        }}
         onGenerate={(instructions) => void handleGenerate(instructions)}
       />
     ) : null,
@@ -365,12 +429,25 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     onBusyChange,
   });
 
+  // MarkdownEditor's `markdown` prop only seeds the editor's *initial*
+  // content -- an external change to the active value (an AI Assistance
+  // result, a language switch to a value already edited elsewhere) has to be
+  // pushed in via `MarkdownEditorHandle.setMarkdown` instead of relying on
+  // a prop update. This is a byte-for-byte port of TranslatableTextArea's own
+  // audited `shown` effect (components/ui/translatable-text-area.tsx). Also
+  // handed to AI Assistance below, so a `type="markdown"` field can read/
+  // replace the editor's own selection (ANA-96 PR review).
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+  const [shown, setShown] = useState({ slug: activeSlug, value: activeValue });
+
   const assist = useFormFieldAssistAction({
     enabled: aiAssistance,
     disabled,
+    type,
     translatable,
     activeSlug,
     activeValue,
+    editorRef,
     onApply: setActiveValue,
     onAiAssist,
     getContext: getAIAssistanceContext,
@@ -378,15 +455,6 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   });
 
   const fieldBusy = disabled || translate.loading || assist.loading;
-
-  // MarkdownEditor's `markdown` prop only seeds the editor's *initial*
-  // content -- an external change to the active value (an AI Assistance
-  // result, a language switch to a value already edited elsewhere) has to be
-  // pushed in via `MarkdownEditorHandle.setMarkdown` instead of relying on
-  // a prop update. This is a byte-for-byte port of TranslatableTextArea's own
-  // audited `shown` effect (components/ui/translatable-text-area.tsx).
-  const editorRef = useRef<MarkdownEditorHandle>(null);
-  const [shown, setShown] = useState({ slug: activeSlug, value: activeValue });
 
   /* eslint-disable react-hooks/set-state-in-effect -- see the comment above;
      flagged here only because FormField is a plain function component

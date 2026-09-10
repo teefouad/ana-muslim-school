@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { FormField } from "./form-field";
@@ -8,6 +9,22 @@ import type { TranslatedValue } from "./translatable-value";
 
 function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
+}
+
+// Selects the first `length` characters of the editor's first text node
+// directly through the native Selection API -- ported from
+// markdown-editor.test.tsx (see that file for why jsdom needs this instead
+// of simulated cursor movement).
+function selectFirstCharacters(root: HTMLElement, length: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNode = walker.nextNode() as Text;
+  const range = document.createRange();
+  range.setStart(textNode, 0);
+  range.setEnd(textNode, length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
 }
 
 function deferred<T>() {
@@ -156,20 +173,39 @@ describe("FormField", () => {
       ).toBeInTheDocument();
     });
 
-    it("disables AI Assistance when the field is empty", () => {
+    it("keeps AI Assistance enabled when the field is empty -- caller context alone may generate a value", async () => {
+      const onChange = vi.fn();
+      const getContext = vi.fn().mockReturnValue({ bookId: "book-1" });
+      const onAiAssist = vi.fn().mockResolvedValue("Generated title");
+
       renderWithProvider(
         <FormField
           label="Title"
           value=""
-          onChange={vi.fn()}
+          onChange={onChange}
           aiAssistance
-          onAiAssist={vi.fn()}
+          onAiAssist={onAiAssist}
+          getAIAssistanceContext={getContext}
         />,
       );
 
-      expect(
-        screen.getByRole("button", { name: "AI Assistance for Title" }),
-      ).toBeDisabled();
+      const button = screen.getByRole("button", {
+        name: "AI Assistance for Title",
+      });
+      expect(button).not.toBeDisabled();
+
+      fireEvent.click(button);
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      expect(onAiAssist).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "", context: { bookId: "book-1" } }),
+      );
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith("Generated title"),
+      );
     });
   });
 
@@ -245,6 +281,92 @@ describe("FormField", () => {
 
       expect(onAiAssist).toHaveBeenCalledWith(
         expect.objectContaining({ instructions: undefined }),
+      );
+    });
+  });
+
+  describe("Markdown AI Assistance is selection-aware", () => {
+    it("sends only the selected Markdown and replaces just that range, when the editor has a selection", async () => {
+      const onChange = vi.fn();
+      const onAiAssist = vi.fn().mockResolvedValue("Goodbye");
+
+      renderWithProvider(
+        <FormField
+          label="Content"
+          type="markdown"
+          value="Hello world"
+          onChange={onChange}
+          aiAssistance
+          onAiAssist={onAiAssist}
+        />,
+      );
+
+      const editable = await screen.findByRole("textbox");
+      await userEvent.setup().click(editable);
+      selectFirstCharacters(editable, 5);
+
+      const assistButton = screen.getByRole("button", {
+        name: "AI Assistance for Content",
+      });
+
+      // The editor's own Lexical selection syncs from the native DOM
+      // selection asynchronously (see markdown-editor.test.tsx's identical
+      // `vi.waitFor` before reading a selection) -- this component doesn't
+      // expose that internal sync, so retry the click itself until the
+      // dialog reflects a captured selection, cancelling in between so no
+      // stray dialog is left open for the next attempt.
+      await vi.waitFor(() => {
+        fireEvent.click(assistButton);
+        const dialog = screen.getByRole("dialog", { name: "AI Assistance" });
+        if (!dialog.textContent?.includes("text you selected")) {
+          fireEvent.click(
+            within(dialog).getByRole("button", { name: "Cancel" }),
+          );
+          throw new Error("selection not yet synced");
+        }
+      });
+
+      const dialog = screen.getByRole("dialog", { name: "AI Assistance" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() =>
+        expect(onAiAssist).toHaveBeenCalledWith(
+          expect.objectContaining({ text: "Hello" }),
+        ),
+      );
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith("Goodbye world"),
+      );
+    });
+
+    it("falls back to the whole Markdown value when there is no selection", async () => {
+      const onAiAssist = vi.fn().mockResolvedValue("Replaced");
+
+      renderWithProvider(
+        <FormField
+          label="Content"
+          type="markdown"
+          value="Hello world"
+          onChange={vi.fn()}
+          aiAssistance
+          onAiAssist={onAiAssist}
+        />,
+      );
+
+      await screen.findByRole("textbox");
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Content" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      expect(dialog.textContent).toContain("rewrite this field's current text");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() =>
+        expect(onAiAssist).toHaveBeenCalledWith(
+          expect.objectContaining({ text: "Hello world" }),
+        ),
       );
     });
   });

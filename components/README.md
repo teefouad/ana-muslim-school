@@ -16,15 +16,21 @@ optional actions. Neither AI action calls an `/api/v1/ai/*` boundary itself:
 each is wired through a caller-provided `onAiTranslate`/`onAiAssist` function
 plus a matching `getAITranslationContext`/`getAIAssistanceContext` builder
 that supplies whatever domain context that call needs (e.g. a Book id) --
-`FormField` never hard-codes Book- or Module-specific context. Both actions
-share the same Additional Instructions step (`ai-instructions-modal.tsx`) and
-the same busy/disabled/error handling; `onBusyChange` lets a caller managing
-several `FormField`s together freeze the rest of its form while any one
-field's AI request is in flight (see edit-module-modal.tsx's existing
-`aiBusy` pattern, which this replaces once a screen migrates to it).
-`translatable-field-header.tsx` is the label + actions + language-switcher
-row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
-share.
+`FormField` never hard-codes Book- or Module-specific context. AI Assistance
+runs through the shared Additional Instructions step
+(`ai-instructions-modal.tsx`); Translate with AI is a deliberate exception
+and runs directly (preserving the existing replace-confirmation dialog when
+the target language already has content). AI Assistance stays enabled on an
+empty field -- caller context alone may be enough to generate a value -- and
+for `type="markdown"` operates on the editor's current selection when there
+is one, replacing only that range, falling back to the whole value
+otherwise. Both actions share the same busy/disabled/error handling;
+`onBusyChange` lets a caller managing several `FormField`s together freeze
+the rest of its form while any one field's AI request is in flight (see
+edit-module-modal.tsx's existing `aiBusy` pattern, which this replaces once a
+screen migrates to it). `translatable-field-header.tsx` is the label +
+actions + language-switcher row `FormField`, `TranslatableTextInput`, and
+`TranslatableTextArea` all share.
 
 ## Conventions
 
