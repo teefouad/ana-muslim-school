@@ -28,6 +28,33 @@ function selectFirstCharacters(root: HTMLElement, length: number) {
   document.dispatchEvent(new Event("selectionchange"));
 }
 
+// Like `selectFirstCharacters`, but spans from an offset in the `startNode`
+// -th text node found under `root` to an offset in the `endNode`-th --
+// needed to exercise a selection crossing a Lexical node/block boundary
+// (e.g. two paragraphs), which is materially different from the single-
+// text-node selections above.
+function selectAcrossNodes(
+  root: HTMLElement,
+  startNode: number,
+  startOffset: number,
+  endNode: number,
+  endOffset: number,
+) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node as Text);
+  }
+  const range = document.createRange();
+  range.setStart(textNodes[startNode], startOffset);
+  range.setEnd(textNodes[endNode], endOffset);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
+
 test("renders the initial markdown live-formatted, not as raw syntax", async () => {
   renderWithProvider(<MarkdownEditor markdown="# Hello" onChange={vi.fn()} />);
 
@@ -239,6 +266,42 @@ test("replaceCapturedSelection with duplicate text elsewhere in the document onl
 
   await vi.waitFor(() =>
     expect(onChange).toHaveBeenLastCalledWith("Hi world. Hello again.", false),
+  );
+});
+
+test("replaceCapturedSelection replaces a selection spanning two paragraphs, preserving the untouched text on each side", async () => {
+  const ref = createRef<MarkdownEditorHandle>();
+  const onChange = vi.fn();
+  renderWithProvider(
+    <MarkdownEditor
+      ref={ref as RefObject<MarkdownEditorHandle>}
+      markdown={"First paragraph text.\n\nSecond paragraph text."}
+      onChange={onChange}
+    />,
+  );
+
+  const editable = await screen.findByRole("textbox");
+  await userEvent.setup().click(editable);
+  // Spans from partway through the first paragraph's own text node to
+  // partway through the second paragraph's -- a materially different
+  // Lexical selection from the single-text-node cases above, since it
+  // crosses a block/node boundary.
+  selectAcrossNodes(editable, 0, 6, 1, 7);
+  await vi.waitFor(() =>
+    expect(ref.current?.getSelectedText()).toContain("paragraph text."),
+  );
+  expect(ref.current?.getSelectedText()).toContain("Second ");
+
+  const capture = ref.current?.captureSelection();
+  expect(capture).not.toBeNull();
+
+  ref.current?.replaceCapturedSelection(capture!, "REPLACED");
+
+  await vi.waitFor(() =>
+    expect(onChange).toHaveBeenLastCalledWith(
+      "First REPLACEDparagraph text.",
+      false,
+    ),
   );
 });
 
