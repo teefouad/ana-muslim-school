@@ -1,9 +1,9 @@
 "use client";
 
 import { type ReactNode, useId } from "react";
-import { Group, Stack, Text, TextInput } from "@mantine/core";
+import { Stack, TextInput } from "@mantine/core";
 
-import { LanguageSwitcher } from "./language-switcher";
+import { TranslatableFieldHeader } from "./translatable-field-header";
 import type { LanguageOption, TranslatedValue } from "./translatable-value";
 import { useActiveLanguage } from "./use-active-language";
 
@@ -43,35 +43,16 @@ export function TranslatableTextInput({
 
   return (
     <Stack gap={4}>
-      <Group
-        pos="relative"
-        mt={14}
-        justify="space-between"
-        gap="sm"
-        wrap="nowrap"
-      >
-        <Text component="label" htmlFor={fieldId} size="sm" fw={500}>
-          {label}
-        </Text>
-        <Group
-          gap="xs"
-          wrap="nowrap"
-          style={{
-            position: "absolute",
-            top: -15,
-            right: 0,
-          }}
-        >
-          {actions?.(activeSlug)}
-          <LanguageSwitcher
-            languages={languages}
-            value={activeSlug}
-            onChange={setActiveSlug}
-            isFilled={isFilled}
-            disabled={disabled}
-          />
-        </Group>
-      </Group>
+      <TranslatableFieldHeader
+        label={label}
+        htmlFor={fieldId}
+        languages={languages}
+        activeSlug={activeSlug}
+        onActiveSlugChange={setActiveSlug}
+        isFilled={isFilled}
+        disabled={disabled}
+        actions={actions?.(activeSlug)}
+      />
       <TextInput
         id={fieldId}
         dir="auto"

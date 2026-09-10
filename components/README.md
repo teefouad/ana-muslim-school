@@ -5,6 +5,27 @@ Reusable UI primitives that aren't specific to one route live under
 and reuse or extend an existing component instead of introducing an
 equivalent one.
 
+## FormField
+
+`components/ui/form-field.tsx` is the reusable field for the repeated
+Title / Arabic-English / Translate with AI / AI Assistance pattern (ANA-96) --
+reach for it instead of wiring that pattern up again in a new screen. It
+renders a `text`, `textarea`, or `markdown` body, optionally per-language
+(`translatable`), with Translate with AI and AI Assistance as independent,
+optional actions. Neither AI action calls an `/api/v1/ai/*` boundary itself:
+each is wired through a caller-provided `onAiTranslate`/`onAiAssist` function
+plus a matching `getAITranslationContext`/`getAIAssistanceContext` builder
+that supplies whatever domain context that call needs (e.g. a Book id) --
+`FormField` never hard-codes Book- or Module-specific context. Both actions
+share the same Additional Instructions step (`ai-instructions-modal.tsx`) and
+the same busy/disabled/error handling; `onBusyChange` lets a caller managing
+several `FormField`s together freeze the rest of its form while any one
+field's AI request is in flight (see edit-module-modal.tsx's existing
+`aiBusy` pattern, which this replaces once a screen migrates to it).
+`translatable-field-header.tsx` is the label + actions + language-switcher
+row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
+share.
+
 ## Conventions
 
 - **Location**: `components/ui/<kebab-case-name>.tsx`.
