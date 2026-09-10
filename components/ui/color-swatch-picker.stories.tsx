@@ -4,7 +4,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { ColorSwatchPicker } from "./color-swatch-picker";
 
 const meta = {
-  title: "Books/ColorSwatchPicker",
+  title: "UI/ColorSwatchPicker",
   component: ColorSwatchPicker,
   tags: ["autodocs"],
   args: {

@@ -220,6 +220,11 @@ export const APPLICATION_COLORS = {
 
 export type ApplicationColorToken = keyof typeof APPLICATION_COLORS;
 
+/** The default `color` value for a new Book or Module (ANA-63/ANA-91) --
+ * shared here so every field/form that needs an initial color agrees on the
+ * same one instead of each defining its own. */
+export const DEFAULT_APPLICATION_COLOR = "#1c7ed6";
+
 // Autocomplete suggestions, in the exact order the mapping above declares
 // them -- one entry per supported named token, nothing invented on top.
 export const APPLICATION_COLOR_TOKENS = Object.keys(

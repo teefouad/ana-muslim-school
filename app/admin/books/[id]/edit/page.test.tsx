@@ -19,6 +19,7 @@ vi.mock("next/navigation", () => ({
 
 import { buildBookFixture } from "../../book-fixtures";
 import EditBookPage from "./page";
+import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
 import type { Module } from "@/lib/modules/types";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -426,19 +427,21 @@ describe("EditBookPage", () => {
       expect(screen.queryByText("Summary")).not.toBeInTheDocument();
     });
 
-    it("does not add a fake local Module when Add module is clicked", async () => {
+    it("adds a new blank Module locally when Add module is clicked, with no persistence (ANA-91)", async () => {
       setupFetch(buildBookFixture(), { modules: [] });
       renderPage();
 
       await screen.findByText("This book has no modules yet.");
-      const subtitleBefore = screen.getByText("0 modules");
 
       fireEvent.click(screen.getByRole("button", { name: "Add module" }));
 
-      expect(subtitleBefore).toBeInTheDocument();
+      expect(screen.getByText("1 module")).toBeInTheDocument();
+      expect(screen.getByText("Module 1")).toBeInTheDocument();
       expect(
-        screen.queryByText("This book has no modules yet."),
-      ).toBeInTheDocument();
+        (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+          ([, init]) => init?.method === "PATCH",
+        ),
+      ).toBe(false);
     });
 
     describe("Reorder (ANA-79)", () => {
@@ -625,7 +628,7 @@ describe("EditBookPage", () => {
         expect(modulesGetCallsAfter).toBeGreaterThan(modulesGetCallsBefore);
       });
 
-      it("does not persist Add module's local-only blank entry as a reorder, and leaves the displayed order unchanged", async () => {
+      it("appends Add module's new blank entry after the existing Modules, with no immediate PATCH (ANA-91)", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -637,6 +640,8 @@ describe("EditBookPage", () => {
         fireEvent.click(screen.getByRole("button", { name: "Add module" }));
 
         expect(screen.getByText("أ")).toBeInTheDocument();
+        expect(screen.getByText("2 modules")).toBeInTheDocument();
+        expect(screen.getByText("Module 2")).toBeInTheDocument();
         expect(
           (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
             ([, init]) => init?.method === "PATCH",
@@ -944,6 +949,118 @@ describe("EditBookPage", () => {
         expect(
           await screen.findByText("Module still has Lessons."),
         ).toBeInTheDocument();
+        expect(screen.getByText("أ")).toBeInTheDocument();
+      });
+    });
+
+    describe("Edit Module modal (ANA-91)", () => {
+      it("opens seeded with the Module's Title, Description, and Color", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({
+              id: "module-1",
+              title: { ar: "أ", en: "A" },
+              description: { ar: "وصف", en: "Desc" },
+              color: "cyan.6",
+            }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(within(dialog).getByLabelText("Title")).toHaveValue("أ");
+        expect(await within(dialog).findByText("وصف")).toBeInTheDocument();
+        expect(
+          within(dialog).getByRole("combobox", { name: "Color" }),
+        ).toHaveValue("cyan.6");
+      });
+
+      it("seeds a locally-added Module's modal with blank fields and the default color", async () => {
+        setupFetch(buildBookFixture(), { modules: [] });
+        renderPage();
+
+        await screen.findByText("This book has no modules yet.");
+        fireEvent.click(screen.getByRole("button", { name: "Add module" }));
+        fireEvent.click(screen.getByRole("button", { name: "Edit Module 1" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(within(dialog).getByLabelText("Title")).toHaveValue("");
+        expect(
+          within(dialog).getByRole("combobox", { name: "Color" }),
+        ).toHaveValue(DEFAULT_APPLICATION_COLOR);
+      });
+
+      it("Save changes updates the displayed Module title locally, with no network request", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.change(within(dialog).getByLabelText("Title"), {
+          target: { value: "المقدمة" },
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        expect(await screen.findByText("المقدمة")).toBeInTheDocument();
+        expect(screen.queryByText("أ")).not.toBeInTheDocument();
+        // The Modal's own close transition keeps it mounted for a moment
+        // after `opened` flips false (matching Mantine's default
+        // `transitionProps`), so this waits rather than asserting
+        // synchronously.
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Edit Module" }),
+          ).not.toBeInTheDocument(),
+        );
+        expect(
+          (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+            ([, init]) => init?.method === "PATCH",
+          ),
+        ).toBe(false);
+      });
+
+      it("Cancel closes the modal without changing the displayed title", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.change(within(dialog).getByLabelText("Title"), {
+          target: { value: "المقدمة" },
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+        // See the same note above about the Modal's close transition.
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Edit Module" }),
+          ).not.toBeInTheDocument(),
+        );
         expect(screen.getByText("أ")).toBeInTheDocument();
       });
     });

@@ -110,6 +110,18 @@ describe("ModulesPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("calls onEditModule with the clicked module when provided (ANA-91)", () => {
+    const onEditModule = vi.fn();
+    const onModulesChange = vi.fn();
+    renderPanel({ onEditModule, onModulesChange });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Introduction" }));
+
+    expect(onEditModule).toHaveBeenCalledWith(MODULES[0]);
+    expect(onModulesChange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("disables Add module, reordering, and the edit/delete actions when disabled", () => {
     renderPanel({ disabled: true });
 
