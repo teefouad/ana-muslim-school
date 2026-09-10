@@ -331,7 +331,7 @@ function EditModuleModalBody({
       )}
       {titleTranslate.dialog}
 
-      <TranslatableTextArea
+      <TranslatableTextInput
         label="Description"
         languages={LANGUAGES}
         value={description}
@@ -373,8 +373,6 @@ function EditModuleModalBody({
       {descriptionTranslate.dialog}
       {descriptionSuggest.dialog}
 
-      <ColorField value={color} onChange={setColor} disabled={aiBusy} />
-
       <TranslatableTextArea
         label="Content"
         languages={LANGUAGES}
@@ -382,6 +380,8 @@ function EditModuleModalBody({
         onChange={setContent}
         disabled={aiBusy}
       />
+
+      <ColorField value={color} onChange={setColor} disabled={aiBusy} />
 
       {saveError && (
         <Alert color="red" role="alert">

@@ -115,7 +115,7 @@ describe("EditModuleModal", () => {
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
-      expect(await within(dialog).findByText("وصف")).toBeInTheDocument();
+      expect(within(dialog).getByLabelText("Description")).toHaveValue("وصف");
       expect(await within(dialog).findByText("محتوى")).toBeInTheDocument();
       expect(
         within(dialog).getByRole("combobox", { name: "Color" }),
@@ -209,6 +209,7 @@ describe("EditModuleModal", () => {
       await vi.waitFor(() => {
         expect(within(dialog).getByLabelText("Title")).toBeDisabled();
       });
+      expect(within(dialog).getByLabelText("Description")).toBeDisabled();
       expect(
         within(dialog).getByRole("combobox", { name: "Color" }),
       ).toBeDisabled();
@@ -221,6 +222,7 @@ describe("EditModuleModal", () => {
       await vi.waitFor(() => {
         expect(within(dialog).getByLabelText("Title")).not.toBeDisabled();
       });
+      expect(within(dialog).getByLabelText("Description")).not.toBeDisabled();
       expect(
         within(dialog).getByRole("combobox", { name: "Color" }),
       ).not.toBeDisabled();
@@ -295,7 +297,9 @@ describe("EditModuleModal", () => {
         within(suggestDialog).getByRole("button", { name: "Generate" }),
       );
 
-      expect(await within(dialog).findByText("وصف محسّن")).toBeInTheDocument();
+      expect(
+        await within(dialog).findByDisplayValue("وصف محسّن"),
+      ).toBeInTheDocument();
       expect(fetch).toHaveBeenCalledWith(
         "/api/v1/ai/assist",
         expect.objectContaining({ method: "POST" }),

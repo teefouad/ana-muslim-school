@@ -3,6 +3,7 @@
   flex-wrap: wrap;
   border-radius: 8px;
   overflow: hidden;
+  width: 280px;
 }
 
 .disabled {

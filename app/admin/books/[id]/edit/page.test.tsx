@@ -1145,7 +1145,7 @@ describe("EditBookPage", () => {
           name: "Edit Module",
         });
         expect(within(dialog).getByLabelText("Title")).toHaveValue("أ");
-        expect(await within(dialog).findByText("وصف")).toBeInTheDocument();
+        expect(within(dialog).getByLabelText("Description")).toHaveValue("وصف");
         expect(
           within(dialog).getByRole("combobox", { name: "Color" }),
         ).toHaveValue("cyan.6");
