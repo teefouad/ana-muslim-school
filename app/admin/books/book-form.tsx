@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from "react";
 import {
   Autocomplete,
-  Box,
   Group,
   SimpleGrid,
   Stack,
@@ -18,10 +17,8 @@ import type {
   TranslatedValue,
 } from "@/components/ui/translatable-value";
 import type { Book, BookWritableFields } from "@/lib/books/types";
-import {
-  APPLICATION_COLOR_TOKENS,
-  resolveApplicationColor,
-} from "./application-colors";
+import { APPLICATION_COLOR_TOKENS } from "./application-colors";
+import { ColorSwatchPicker } from "./color-swatch-picker";
 
 const LANGUAGES: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -166,19 +163,22 @@ export function BookForm({
               data={APPLICATION_COLOR_TOKENS}
               value={values.color}
               onChange={(color) => setValues((prev) => ({ ...prev, color }))}
-              style={{ flex: "0 0 95px" }}
+              style={{ flex: "0 0 100px" }}
             />
-            <Box
-              aria-hidden="true"
-              data-testid="color-preview"
+            <div
               style={{
                 flex: 1,
                 marginTop: 6,
                 height: 36,
                 borderRadius: 8,
-                backgroundColor: resolveApplicationColor(values.color),
+                overflow: "hidden",
               }}
-            />
+            >
+              <ColorSwatchPicker
+                value={values.color}
+                onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+              />
+            </div>
           </Group>
         </SimpleGrid>
 
