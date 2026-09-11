@@ -1,170 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Stack,
-  Text,
-  Textarea,
-} from "@mantine/core";
-import { Languages, Sparkles } from "lucide-react";
+import { Alert, Button, Group, Modal, Stack } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TranslatableTextArea } from "@/components/ui/translatable-text-area";
-import { TranslatableTextInput } from "@/components/ui/translatable-text-input";
-import type {
-  LanguageOption,
-  TranslatedValue,
-} from "@/components/ui/translatable-value";
-import { assistLearningMaterial } from "./import-source/ai-assist-client";
+import { FormField } from "@/components/ui/form-field";
+import type { TranslatedValue } from "@/components/ui/translatable-value";
+import {
+  assistLearningMaterial,
+  type AiAssistLanguage,
+} from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
 import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
 } from "./module-fields";
 
-const LANGUAGES: LanguageOption[] = [
-  { slug: "ar", label: "Arabic" },
-  { slug: "en", label: "English" },
-];
-
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
 }
 
-/** Arabic -> English translation for a single translatable field (ANA-91),
- * using the same `/api/v1/ai/translate` boundary and confirm-before-
- * overwrite behavior already established for Learning Material
- * (learning-material-module-card.tsx) -- only this field's own `en` value
- * ever changes, and only on a successful request. */
-function useTranslateAction(
-  value: TranslatedValue,
-  onChange: (value: TranslatedValue) => void,
-) {
-  const [confirming, setConfirming] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function run() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const en = await translateArabicToEnglish(value.ar ?? "");
-      onChange({ ...value, en });
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleClick() {
-    if ((value.en ?? "").trim()) {
-      setConfirming(true);
-      return;
-    }
-    void run();
-  }
-
-  return {
-    loading,
-    error,
-    disabled: loading || !(value.ar ?? "").trim(),
-    handleClick,
-    dialog: confirming ? (
-      <ConfirmDialog
-        opened
-        title="Replace English translation?"
-        description="Translating again will replace the current English text."
-        confirmLabel="Translate and replace"
-        cancelLabel="Cancel"
-        onCancel={() => setConfirming(false)}
-        onConfirm={() => {
-          setConfirming(false);
-          void run();
-        }}
-      />
-    ) : null,
-  };
-}
-
-/** AI Suggest for a single translatable field (ANA-91): rewrites the
- * currently active language's whole text via the same `/api/v1/ai/assist`
- * boundary AI Assistant already uses for Learning Material, scoped to this
- * one field instead of a Markdown selection. */
-function useSuggestAction(
-  bookId: string,
-  value: TranslatedValue,
-  onChange: (value: TranslatedValue) => void,
-) {
-  const [open, setOpen] = useState(false);
-  const [activeSlug, setActiveSlug] = useState("ar");
-  const [instructions, setInstructions] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function handleClick(slug: string) {
-    setActiveSlug(slug);
-    setInstructions("");
-    setError(null);
-    setOpen(true);
-  }
-
-  async function handleGenerate() {
-    const language = activeSlug === "en" ? "en" : "ar";
-    setOpen(false);
-    setLoading(true);
-    setError(null);
-
-    try {
-      const refined = await assistLearningMaterial({
-        bookId,
-        text: value[activeSlug] ?? "",
-        language,
-        additionalInstructions: instructions.trim() || undefined,
-      });
-      onChange({ ...value, [activeSlug]: refined });
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return {
-    loading,
-    error,
-    isDisabled: (slug: string) => loading || !(value[slug] ?? "").trim(),
-    handleClick,
-    dialog: open ? (
-      <Modal opened onClose={() => setOpen(false)} title="AI Suggest" centered>
-        <Text size="sm" c="dimmed" mb="md">
-          The AI will rewrite this field&rsquo;s current text.
-        </Text>
-        <Textarea
-          label="Additional instructions or context (optional)"
-          value={instructions}
-          onChange={(event) => setInstructions(event.currentTarget.value)}
-          autosize
-          minRows={3}
-          maxRows={8}
-          mb="lg"
-        />
-        <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={() => void handleGenerate()}>Generate</Button>
-        </Group>
-      </Modal>
-    ) : null,
-  };
+/** Arabic -> English translation for Title/Description (ANA-91), wired
+ * through `FormField`'s own `aiTranslation` action (ANA-97) -- neither field
+ * needs any Book/Module-specific context, so this is just a thin adapter
+ * over the shared `/api/v1/ai/translate` boundary. */
+function translateTitleOrDescription({ text }: { text: string }) {
+  return translateArabicToEnglish(text);
 }
 
 /** `"create"` opens the modal empty, with Save Module as its primary action
@@ -263,25 +124,18 @@ function EditModuleModalBody({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const titleTranslate = useTranslateAction(title, setTitle);
-  const descriptionTranslate = useTranslateAction(description, setDescription);
-  const descriptionSuggest = useSuggestAction(
-    bookId,
-    description,
-    setDescription,
-  );
-
-  // While either AI action is in flight, its response can still land and
-  // overwrite Title/Description at any moment -- disabling every field
-  // (not just the field the AI action targets) for that whole window is
-  // what ANA-94 fixes: previously only the action buttons themselves
+  // While either field's own AI action is in flight, its response can still
+  // land and overwrite Title/Description at any moment -- disabling every
+  // field (not just the field the AI action targets) for that whole window
+  // is what ANA-94 fixes: previously only the action buttons themselves
   // showed a loading state, leaving every field, including Color and
   // Content, freely editable underneath an in-flight request that could
-  // clobber it seconds later.
-  const aiBusy =
-    titleTranslate.loading ||
-    descriptionTranslate.loading ||
-    descriptionSuggest.loading;
+  // clobber it seconds later. Each FormField reports its own busy window via
+  // `onBusyChange` (ANA-97) rather than this component tracking loading
+  // state itself.
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [descriptionBusy, setDescriptionBusy] = useState(false);
+  const aiBusy = titleBusy || descriptionBusy;
 
   async function handlePrimaryAction() {
     setSaveError(null);
@@ -306,76 +160,41 @@ function EditModuleModalBody({
 
   return (
     <Stack gap="lg">
-      <TranslatableTextInput
+      <FormField
         label="Title"
-        languages={LANGUAGES}
+        translatable
         value={title}
         onChange={setTitle}
         disabled={aiBusy}
-        actions={() => (
-          <ActionIcon
-            variant="subtle"
-            aria-label="Translate title to English"
-            disabled={titleTranslate.disabled || isSaving}
-            loading={titleTranslate.loading}
-            onClick={titleTranslate.handleClick}
-          >
-            <Languages size={16} aria-hidden="true" />
-          </ActionIcon>
-        )}
+        aiTranslation
+        onAiTranslate={translateTitleOrDescription}
+        onBusyChange={setTitleBusy}
       />
-      {titleTranslate.error && (
-        <Alert color="red" py={4} role="alert">
-          {titleTranslate.error}
-        </Alert>
-      )}
-      {titleTranslate.dialog}
 
-      <TranslatableTextInput
+      <FormField
         label="Description"
-        languages={LANGUAGES}
+        translatable
         value={description}
         onChange={setDescription}
         disabled={aiBusy}
-        actions={(activeSlug) => (
-          <Group gap="xs" wrap="nowrap">
-            <ActionIcon
-              variant="subtle"
-              aria-label="AI Suggest description"
-              disabled={descriptionSuggest.isDisabled(activeSlug) || isSaving}
-              loading={descriptionSuggest.loading}
-              onClick={() => descriptionSuggest.handleClick(activeSlug)}
-            >
-              <Sparkles size={16} aria-hidden="true" />
-            </ActionIcon>
-            <ActionIcon
-              variant="subtle"
-              aria-label="Translate description to English"
-              disabled={descriptionTranslate.disabled || isSaving}
-              loading={descriptionTranslate.loading}
-              onClick={descriptionTranslate.handleClick}
-            >
-              <Languages size={16} aria-hidden="true" />
-            </ActionIcon>
-          </Group>
-        )}
+        aiTranslation
+        onAiTranslate={translateTitleOrDescription}
+        aiAssistance
+        onAiAssist={({ text, language, instructions }) =>
+          assistLearningMaterial({
+            bookId,
+            text,
+            language: (language ?? "ar") as AiAssistLanguage,
+            additionalInstructions: instructions,
+          })
+        }
+        onBusyChange={setDescriptionBusy}
       />
-      {descriptionTranslate.error && (
-        <Alert color="red" py={4} role="alert">
-          {descriptionTranslate.error}
-        </Alert>
-      )}
-      {descriptionSuggest.error && (
-        <Alert color="red" py={4} role="alert">
-          {descriptionSuggest.error}
-        </Alert>
-      )}
-      {descriptionTranslate.dialog}
-      {descriptionSuggest.dialog}
 
-      <TranslatableTextArea
+      <FormField
         label="Content"
-        languages={LANGUAGES}
+        type="markdown"
+        translatable
         value={content}
         onChange={setContent}
         disabled={aiBusy}

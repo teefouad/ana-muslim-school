@@ -27,10 +27,10 @@ is one, replacing only that range, falling back to the whole value
 otherwise. Both actions share the same busy/disabled/error handling;
 `onBusyChange` lets a caller managing several `FormField`s together freeze
 the rest of its form while any one field's AI request is in flight (see
-edit-module-modal.tsx's existing `aiBusy` pattern, which this replaces once a
-screen migrates to it). `translatable-field-header.tsx` is the label +
-actions + language-switcher row `FormField`, `TranslatableTextInput`, and
-`TranslatableTextArea` all share.
+edit-module-modal.tsx's `aiBusy` pattern, ANA-97).
+`translatable-field-header.tsx` is the label + actions + language-switcher
+row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
+share.
 
 ## Conventions
 
