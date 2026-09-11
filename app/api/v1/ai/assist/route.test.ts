@@ -5,11 +5,15 @@ const {
   assistLearningMaterialServiceMock,
   suggestModuleTitleServiceMock,
   suggestModuleDescriptionServiceMock,
+  suggestBookDescriptionServiceMock,
+  suggestBookLongDescriptionServiceMock,
 } = vi.hoisted(() => ({
   requireBooksPermissionMock: vi.fn(),
   assistLearningMaterialServiceMock: vi.fn(),
   suggestModuleTitleServiceMock: vi.fn(),
   suggestModuleDescriptionServiceMock: vi.fn(),
+  suggestBookDescriptionServiceMock: vi.fn(),
+  suggestBookLongDescriptionServiceMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-books-permission", () => ({
@@ -26,6 +30,14 @@ vi.mock("@/lib/ai/suggest-module-title-service", () => ({
 
 vi.mock("@/lib/ai/suggest-module-description-service", () => ({
   suggestModuleDescriptionService: suggestModuleDescriptionServiceMock,
+}));
+
+vi.mock("@/lib/ai/suggest-book-description-service", () => ({
+  suggestBookDescriptionService: suggestBookDescriptionServiceMock,
+}));
+
+vi.mock("@/lib/ai/suggest-book-long-description-service", () => ({
+  suggestBookLongDescriptionService: suggestBookLongDescriptionServiceMock,
 }));
 
 const { POST } = await import("./route");
@@ -209,6 +221,62 @@ describe("POST /api/v1/ai/assist", () => {
     expect(response.status).toBe(200);
   });
 
+  it('routes field: "bookDescription" to suggestBookDescriptionService (ANA-100)', async () => {
+    requireBooksPermissionMock.mockResolvedValueOnce({
+      ok: true,
+      actorEmail: "a@example.com",
+    });
+    suggestBookDescriptionServiceMock.mockResolvedValueOnce({
+      ok: true,
+      value: { text: "Suggested description" },
+    });
+
+    const response = await POST(
+      jsonRequest({
+        field: "bookDescription",
+        text: "",
+        bookTitle: "عنوان",
+        bookLongDescription: "وصف طويل",
+      }),
+    );
+    const body = await response.json();
+
+    expect(suggestBookDescriptionServiceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ field: "bookDescription" }),
+    );
+    expect(assistLearningMaterialServiceMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ data: { text: "Suggested description" } });
+  });
+
+  it('routes field: "bookLongDescription" to suggestBookLongDescriptionService (ANA-100)', async () => {
+    requireBooksPermissionMock.mockResolvedValueOnce({
+      ok: true,
+      actorEmail: "a@example.com",
+    });
+    suggestBookLongDescriptionServiceMock.mockResolvedValueOnce({
+      ok: true,
+      value: { text: "Suggested long description" },
+    });
+
+    const response = await POST(
+      jsonRequest({
+        field: "bookLongDescription",
+        text: "",
+        bookTitle: "عنوان",
+        bookDescription: "وصف",
+      }),
+    );
+    const body = await response.json();
+
+    expect(suggestBookLongDescriptionServiceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ field: "bookLongDescription" }),
+    );
+    expect(assistLearningMaterialServiceMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ data: { text: "Suggested long description" } });
+  });
+
   it("rejects an unrecognized field value", async () => {
     requireBooksPermissionMock.mockResolvedValueOnce({
       ok: true,
@@ -223,5 +291,7 @@ describe("POST /api/v1/ai/assist", () => {
     expect(assistLearningMaterialServiceMock).not.toHaveBeenCalled();
     expect(suggestModuleTitleServiceMock).not.toHaveBeenCalled();
     expect(suggestModuleDescriptionServiceMock).not.toHaveBeenCalled();
+    expect(suggestBookDescriptionServiceMock).not.toHaveBeenCalled();
+    expect(suggestBookLongDescriptionServiceMock).not.toHaveBeenCalled();
   });
 });

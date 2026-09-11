@@ -14,6 +14,25 @@ function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function lastRequestBody(): Record<string, unknown> {
+  const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+  const [, init] = calls[calls.length - 1] as [string, RequestInit];
+  return JSON.parse(init.body as string) as Record<string, unknown>;
+}
+
+function lastRequestUrl(): string {
+  const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+  const [url] = calls[calls.length - 1] as [string, RequestInit];
+  return url;
+}
+
 // The Add/Edit Book pages submit this form from a header button outside the
 // form itself, via the HTML `form` attribute (ANA-61) -- reproduce that here
 // rather than reaching into the component internals to submit it.
@@ -83,7 +102,15 @@ describe("BookForm", () => {
       />,
     );
 
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    // Title/Description/Long description's own AI Assistance/Translate
+    // with AI actions (ANA-100) are legitimate buttons this form does
+    // render -- only a bottom Submit/Cancel pair is what this checks for.
+    expect(
+      screen.queryByRole("button", { name: "Submit" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the reusable translatable text input for both Title and Description, offering Arabic and English", async () => {
@@ -317,6 +344,158 @@ describe("BookForm", () => {
       expect.objectContaining({ imageId: "story-1" }),
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  describe("Book field AI actions (ANA-100)", () => {
+    const FILLED_VALUES = {
+      ...createEmptyBookFormValues(),
+      title: { ar: "عنوان الكتاب", en: "" },
+      description: { ar: "وصف قصير", en: "" },
+      longDescription: { ar: "وصف طويل", en: "" },
+    };
+
+    it("exposes Translate with AI but not AI Assistance for Title", () => {
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={createEmptyBookFormValues()}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Translate Title with AI" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "AI Assistance for Title" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("exposes both Translate with AI and AI Assistance for Description", () => {
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={createEmptyBookFormValues()}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Translate Description with AI" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "AI Assistance for Description" }),
+      ).toBeInTheDocument();
+    });
+
+    it("exposes both Translate with AI and AI Assistance for Long description", () => {
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={createEmptyBookFormValues()}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", {
+          name: "Translate Long description with AI",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "AI Assistance for Long description",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("sends bookTitle/bookLongDescription context (no bookId) for Description AI Assistance, and applies the result", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "وصف محسّن" } }),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Description" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestUrl()).toBe("/api/v1/ai/assist");
+      expect(lastRequestBody()).toMatchObject({
+        field: "bookDescription",
+        text: "وصف قصير",
+        bookTitle: "عنوان الكتاب",
+        bookLongDescription: "وصف طويل",
+      });
+      expect(lastRequestBody()).not.toHaveProperty("bookId");
+
+      expect(await screen.findByDisplayValue("وصف محسّن")).toBeInTheDocument();
+    });
+
+    it("sends bookTitle/bookDescription context (no bookId) for Long description AI Assistance, and applies the result", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "وصف طويل محسّن" } }),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "AI Assistance for Long description",
+        }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestUrl()).toBe("/api/v1/ai/assist");
+      expect(lastRequestBody()).toMatchObject({
+        field: "bookLongDescription",
+        text: "وصف طويل",
+        bookTitle: "عنوان الكتاب",
+        bookDescription: "وصف قصير",
+      });
+      expect(lastRequestBody()).not.toHaveProperty("bookId");
+
+      expect(await screen.findByText("وصف طويل محسّن")).toBeInTheDocument();
+    });
+
+    it("Translate with AI sends only the Arabic text -- no field, bookId, or Book context -- for Title/Description/Long description", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Translated" } }),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Title with AI" }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestUrl()).toBe("/api/v1/ai/translate");
+      expect(lastRequestBody()).toEqual({ text: "عنوان الكتاب" });
+    });
   });
 });
 

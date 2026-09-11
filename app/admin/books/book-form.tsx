@@ -12,6 +12,11 @@ import type {
   TranslatedValue,
 } from "@/components/ui/translatable-value";
 import type { Book, BookWritableFields } from "@/lib/books/types";
+import {
+  suggestBookDescription,
+  suggestBookLongDescription,
+} from "./import-source/ai-assist-client";
+import { translateArabicToEnglish } from "./import-source/translate-client";
 
 const LANGUAGES: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -105,6 +110,17 @@ export function BookForm({
     initialValues ?? createEmptyBookFormValues(),
   );
 
+  // While any field's own AI action is in flight, its response can still
+  // land and overwrite that field at any moment -- disabling every field
+  // (not just the field the AI action targets) for that whole window
+  // matches Edit Module's identical `aiBusy` pattern (ANA-94/ANA-100).
+  // Each FormField reports its own busy window via `onBusyChange`
+  // (ANA-97) rather than this component tracking loading state itself.
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [descriptionBusy, setDescriptionBusy] = useState(false);
+  const [longDescriptionBusy, setLongDescriptionBusy] = useState(false);
+  const aiBusy = titleBusy || descriptionBusy || longDescriptionBusy;
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(values);
@@ -113,14 +129,26 @@ export function BookForm({
   return (
     <form id={id} onSubmit={handleSubmit}>
       <Stack gap="lg">
+        {/* Title (ANA-100): Translate with AI only -- no AI Assistance, per
+            the card. */}
         <FormField
           label="Title"
           translatable
           languages={LANGUAGES}
           value={values.title}
           onChange={(title) => setValues((prev) => ({ ...prev, title }))}
+          disabled={aiBusy}
+          aiTranslation
+          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          onBusyChange={setTitleBusy}
         />
 
+        {/* Description (ANA-100): Translate with AI and AI Assistance, the
+            latter grounded in this Book's own Arabic Title and Long
+            Description (see suggest-book-description.ts's base prompt) --
+            this Book's own fields are trusted directly, never reloaded
+            server-side, so this works identically before the Book is ever
+            created. */}
         <FormField
           label="Description"
           translatable
@@ -129,8 +157,28 @@ export function BookForm({
           onChange={(description) =>
             setValues((prev) => ({ ...prev, description }))
           }
+          disabled={aiBusy}
+          aiTranslation
+          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiAssistance
+          onAiAssist={({ text, instructions, context }) =>
+            suggestBookDescription({
+              text,
+              additionalInstructions: instructions,
+              ...context,
+            })
+          }
+          getAIAssistanceContext={() => ({
+            bookTitle: values.title.ar ?? "",
+            bookLongDescription: values.longDescription.ar ?? "",
+          })}
+          onBusyChange={setDescriptionBusy}
         />
 
+        {/* Long description (ANA-100): Translate with AI and AI Assistance,
+            the latter grounded in this Book's own Arabic Title and
+            (short) Description (see suggest-book-long-description.ts's
+            base prompt). */}
         <FormField
           label="Long description"
           type="markdown"
@@ -140,6 +188,22 @@ export function BookForm({
           onChange={(longDescription) =>
             setValues((prev) => ({ ...prev, longDescription }))
           }
+          disabled={aiBusy}
+          aiTranslation
+          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiAssistance
+          onAiAssist={({ text, instructions, context }) =>
+            suggestBookLongDescription({
+              text,
+              additionalInstructions: instructions,
+              ...context,
+            })
+          }
+          getAIAssistanceContext={() => ({
+            bookTitle: values.title.ar ?? "",
+            bookDescription: values.description.ar ?? "",
+          })}
+          onBusyChange={setLongDescriptionBusy}
         />
 
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -152,11 +216,13 @@ export function BookForm({
                 imageId: event.currentTarget.value,
               }))
             }
+            disabled={aiBusy}
           />
 
           <ColorField
             value={values.color}
             onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+            disabled={aiBusy}
           />
         </SimpleGrid>
 
@@ -169,6 +235,7 @@ export function BookForm({
             onChange={(isLocked) =>
               setValues((prev) => ({ ...prev, isLocked }))
             }
+            disabled={aiBusy}
           />
           <ToggleCard
             label="Published"
@@ -178,6 +245,7 @@ export function BookForm({
             onChange={(isPublished) =>
               setValues((prev) => ({ ...prev, isPublished }))
             }
+            disabled={aiBusy}
           />
         </SimpleGrid>
       </Stack>

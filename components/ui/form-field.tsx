@@ -16,6 +16,7 @@ import { Languages, Sparkles } from "lucide-react";
 
 import { AiInstructionsModal } from "./ai-instructions-modal";
 import { ConfirmDialog } from "./confirm-dialog";
+import styles from "./form-field.module.css";
 import {
   MarkdownEditor,
   type MarkdownEditorHandle,
@@ -502,6 +503,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
       {aiAssistance && (
         <ActionIcon
           variant="subtle"
+          className={styles.actionButton}
           aria-label={`AI Assistance for ${label}`}
           disabled={assist.disabled || translate.loading}
           loading={assist.loading}
@@ -513,6 +515,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
       {aiTranslation && (
         <ActionIcon
           variant="subtle"
+          className={styles.actionButton}
           aria-label={`Translate ${label} with AI`}
           disabled={translate.disabled || assist.loading}
           loading={translate.loading}

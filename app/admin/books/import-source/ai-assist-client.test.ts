@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   assistLearningMaterial,
+  suggestBookDescription,
+  suggestBookLongDescription,
   suggestModuleDescription,
   suggestModuleTitle,
 } from "./ai-assist-client";
@@ -207,6 +209,86 @@ describe("suggestModuleDescription", () => {
         text: "",
         moduleTitle: "",
         moduleContent: "",
+      }),
+    ).rejects.toThrow("AI Assistant failed. Please try again.");
+  });
+});
+
+describe("suggestBookDescription", () => {
+  it("POSTs field: bookDescription, text, bookTitle, and bookLongDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { text: "Suggested description" } }),
+    );
+
+    const result = await suggestBookDescription({
+      text: "",
+      bookTitle: "عنوان",
+      bookLongDescription: "وصف طويل",
+    });
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/ai/assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        field: "bookDescription",
+        text: "",
+        bookTitle: "عنوان",
+        bookLongDescription: "وصف طويل",
+      }),
+    });
+    expect(result).toBe("Suggested description");
+  });
+
+  it("throws the server's error message on failure", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: "AI Assistant failed. Please try again." }, 502),
+    );
+
+    await expect(
+      suggestBookDescription({
+        text: "",
+        bookTitle: "",
+        bookLongDescription: "",
+      }),
+    ).rejects.toThrow("AI Assistant failed. Please try again.");
+  });
+});
+
+describe("suggestBookLongDescription", () => {
+  it("POSTs field: bookLongDescription, text, bookTitle, and bookDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { text: "Suggested long description" } }),
+    );
+
+    const result = await suggestBookLongDescription({
+      text: "",
+      bookTitle: "عنوان",
+      bookDescription: "وصف",
+    });
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/ai/assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        field: "bookLongDescription",
+        text: "",
+        bookTitle: "عنوان",
+        bookDescription: "وصف",
+      }),
+    });
+    expect(result).toBe("Suggested long description");
+  });
+
+  it("throws the server's error message on failure", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: "AI Assistant failed. Please try again." }, 502),
+    );
+
+    await expect(
+      suggestBookLongDescription({
+        text: "",
+        bookTitle: "",
+        bookDescription: "",
       }),
     ).rejects.toThrow("AI Assistant failed. Please try again.");
   });

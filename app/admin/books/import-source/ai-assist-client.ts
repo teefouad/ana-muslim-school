@@ -119,3 +119,65 @@ export async function suggestModuleDescription({
     moduleContent,
   });
 }
+
+export interface SuggestBookDescriptionInput {
+  text: string;
+  additionalInstructions?: string;
+  /** The Book's own Arabic Title/Long Description (ANA-100) -- the Book
+   * being edited is trusted directly from the caller, not reloaded
+   * server-side, since a Book being created has no persisted id yet to
+   * reload from. */
+  bookTitle: string;
+  bookLongDescription: string;
+}
+
+/** Suggests or improves a Book's Description via `POST /api/v1/ai/assist`
+ * (`field: "bookDescription"`, ANA-100) -- unlike the Module-level assist
+ * functions above, this never sends a `bookId`: a Book's own fields are
+ * always this same Book, so its context is sent directly, not reloaded
+ * server-side. Returns only the suggested description text -- callers
+ * apply it to their own Description draft. */
+export async function suggestBookDescription({
+  text,
+  additionalInstructions,
+  bookTitle,
+  bookLongDescription,
+}: SuggestBookDescriptionInput): Promise<string> {
+  return requestAssist({
+    field: "bookDescription",
+    text,
+    additionalInstructions,
+    bookTitle,
+    bookLongDescription,
+  });
+}
+
+export interface SuggestBookLongDescriptionInput {
+  text: string;
+  additionalInstructions?: string;
+  /** The Book's own Arabic Title/Description (ANA-100) -- see
+   * `SuggestBookDescriptionInput` for why this is sent directly rather
+   * than reloaded server-side. */
+  bookTitle: string;
+  bookDescription: string;
+}
+
+/** Suggests or improves a Book's Long Description via
+ * `POST /api/v1/ai/assist` (`field: "bookLongDescription"`, ANA-100) --
+ * see `suggestBookDescription` for why this never sends a `bookId`.
+ * Returns only the suggested long description text -- callers apply it to
+ * their own Long Description draft. */
+export async function suggestBookLongDescription({
+  text,
+  additionalInstructions,
+  bookTitle,
+  bookDescription,
+}: SuggestBookLongDescriptionInput): Promise<string> {
+  return requestAssist({
+    field: "bookLongDescription",
+    text,
+    additionalInstructions,
+    bookTitle,
+    bookDescription,
+  });
+}

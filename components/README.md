@@ -42,10 +42,33 @@ bilingual `{ ar, en }` shape -- `FormField` itself stays language-agnostic
 Both actions share the same
 busy/disabled/error handling; `onBusyChange` lets a caller managing several
 `FormField`s together freeze the rest of its form while any one field's AI
-request is in flight (see edit-module-modal.tsx's `aiBusy` pattern, ANA-97).
+request is in flight (see edit-module-modal.tsx's `aiBusy` pattern, ANA-97;
+book-form.tsx's identical pattern, ANA-100).
 `translatable-field-header.tsx` is the label + actions + language-switcher
 row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
 share.
+
+Not every entity has an owning parent to reload context from server-side.
+Module-level AI Assistance (`suggest-module-title.ts`, etc.) always reloads
+its owning Book fresh from a client-supplied `bookId`, since a Module is
+never the top-level entity. A Book's own fields have no such parent --
+`suggest-book-description.ts`/`suggest-book-long-description.ts` (ANA-100)
+never load anything server-side; the Book's own Title/Description/Long
+Description are trusted directly from the request body, the same way a
+Module's own current title/content are already trusted for Module-level AI
+Assistance. This is what lets Book field AI Assistance work identically
+before the Book has even been created (Add Book) and after (Edit Book) --
+see book-form.tsx's `getAIAssistanceContext` wiring.
+
+The AI Assistance/Translate with AI `ActionIcon`s (and any future delete-
+style action added to this component) share one CSS Module class,
+`styles.actionButton` in `form-field.module.css` (ANA-100): disabled is a
+fully transparent background with 50%-opacity icon; enabled is a 30%
+transparent white background (`rgba(255, 255, 255, 0.3)`), replacing
+Mantine's default blue-tinted hover, with a 150ms `background-color`
+transition between the two. Keep any new action button on this same class
+rather than styling it inline, so every `FormField` consumer stays visually
+consistent.
 
 ## Conventions
 
