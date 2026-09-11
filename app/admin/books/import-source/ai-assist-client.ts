@@ -1,7 +1,4 @@
-import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { readErrorMessage } from "../fetch-json";
-
-export type AiAssistLanguage = "ar" | "en";
 
 /** POSTs one AI Assistant request to `/api/v1/ai/assist` and returns its
  * refined/suggested text -- shared by every `field` variant below so the
@@ -25,15 +22,19 @@ async function requestAssist(body: Record<string, unknown>): Promise<string> {
 export interface AssistLearningMaterialInput {
   bookId: string;
   text: string;
-  language: AiAssistLanguage;
   additionalInstructions?: string;
-  /** This Module's own Title/Description, when known (ANA-98) -- lets the
-   * AI Assistant orient a Content/Learning Material refinement within its
-   * owning Module, not just its Book. Omitted by callers (e.g. the Module
-   * Builder import flow) that assist Learning Material before a Module has
-   * either field yet. */
-  moduleTitle?: TranslatableString;
-  moduleDescription?: TranslatableString;
+  /** This Module's own Arabic Title/Description, when known (ANA-98/
+   * ANA-99) -- lets the AI Assistant orient a Content/Learning Material
+   * refinement within its owning Module, not just its Book. Omitted by
+   * callers (e.g. the Module Builder import flow) that assist Learning
+   * Material before a Module has either field yet. */
+  moduleTitle?: string;
+  moduleDescription?: string;
+  /** This Module's complete Arabic Learning Material, sent only when `text`
+   * is a Markdown selection within it rather than the whole field (ANA-99)
+   * -- surrounding context for the AI, never a second transformation
+   * target. Omitted when `text` already is the whole Learning Material. */
+  fullMaterial?: string;
 }
 
 /** Runs the Module AI Assistant on a Learning Material draft via
@@ -46,29 +47,28 @@ export interface AssistLearningMaterialInput {
 export async function assistLearningMaterial({
   bookId,
   text,
-  language,
   additionalInstructions,
   moduleTitle,
   moduleDescription,
+  fullMaterial,
 }: AssistLearningMaterialInput): Promise<string> {
   return requestAssist({
     bookId,
     text,
-    language,
     additionalInstructions,
     moduleTitle,
     moduleDescription,
+    fullMaterial,
   });
 }
 
 export interface SuggestModuleTitleInput {
   bookId: string;
   text: string;
-  language: AiAssistLanguage;
   additionalInstructions?: string;
-  /** This Module's own Learning Material -- the primary basis the AI
-   * grounds a suggested title in (ANA-98). */
-  moduleContent: TranslatableString;
+  /** This Module's own Arabic Learning Material -- the primary basis the
+   * AI grounds a suggested title in (ANA-98/ANA-99). */
+  moduleContent: string;
 }
 
 /** Suggests or improves a Module's Title via `POST /api/v1/ai/assist`
@@ -78,7 +78,6 @@ export interface SuggestModuleTitleInput {
 export async function suggestModuleTitle({
   bookId,
   text,
-  language,
   additionalInstructions,
   moduleContent,
 }: SuggestModuleTitleInput): Promise<string> {
@@ -86,7 +85,6 @@ export async function suggestModuleTitle({
     bookId,
     field: "title",
     text,
-    language,
     additionalInstructions,
     moduleContent,
   });
@@ -95,10 +93,9 @@ export async function suggestModuleTitle({
 export interface SuggestModuleDescriptionInput {
   bookId: string;
   text: string;
-  language: AiAssistLanguage;
   additionalInstructions?: string;
-  moduleTitle: TranslatableString;
-  moduleContent: TranslatableString;
+  moduleTitle: string;
+  moduleContent: string;
 }
 
 /** Suggests or improves a Module's Description via
@@ -109,7 +106,6 @@ export interface SuggestModuleDescriptionInput {
 export async function suggestModuleDescription({
   bookId,
   text,
-  language,
   additionalInstructions,
   moduleTitle,
   moduleContent,
@@ -118,7 +114,6 @@ export async function suggestModuleDescription({
     bookId,
     field: "description",
     text,
-    language,
     additionalInstructions,
     moduleTitle,
     moduleContent,

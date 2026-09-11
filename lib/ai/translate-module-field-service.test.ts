@@ -91,12 +91,12 @@ describe("translateModuleFieldService", () => {
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
   });
 
-  it("returns invalid-input when a supplied moduleTitle/moduleDescription/moduleContent isn't a valid { ar, en } object", async () => {
+  it("returns invalid-input when a supplied moduleTitle/moduleDescription/moduleContent isn't a string (ANA-99)", async () => {
     const badTitle = await translateModuleFieldService({
       text: "النص",
       field: "title",
       bookId: "book-1",
-      moduleTitle: "not an object",
+      moduleTitle: { ar: "عنوان", en: "" },
     });
     expect(badTitle).toEqual({
       ok: false,
@@ -154,7 +154,7 @@ describe("translateModuleFieldService", () => {
     });
     translateModuleFieldMock.mockResolvedValueOnce("Translated text");
 
-    const moduleContent = { ar: "محتوى", en: "Content" };
+    const moduleContent = "محتوى الوحدة";
 
     const result = await translateModuleFieldService({
       text: "النص العربي",

@@ -1,9 +1,9 @@
 import "server-only";
 
 import { getBookByIdService } from "@/lib/books/books-service";
-import { parseTranslatableString } from "@/lib/learning-content/translatable-string";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { AiTaskError } from "./run-ai-task";
+import { readOptionalString } from "./read-optional-string";
 import { refineLearningMaterial } from "./refine-learning-material";
 
 /**
@@ -15,9 +15,12 @@ import { refineLearningMaterial } from "./refine-learning-material";
  * can be enough to draft Learning Material for a Module that has none yet,
  * matching the Title/Description assist services' own "empty is valid"
  * rule. `moduleTitle`/`moduleDescription`, when supplied, are this same
- * Module's own current Title/Description (ANA-98) -- optional since a
- * caller that never tracks either (e.g. the Module Builder import flow)
- * has nothing to supply here.
+ * Module's own current Arabic Title/Description (ANA-98/ANA-99) --
+ * optional since a caller that never tracks either (e.g. the Module
+ * Builder import flow) has nothing to supply here. `fullMaterial`, when
+ * supplied, is this Module's complete Arabic Learning Material, sent when
+ * `text` is only a Markdown selection within it (ANA-99) -- surrounding
+ * context only, never a second transformation target.
  */
 export async function assistLearningMaterialService(
   body: Record<string, unknown>,
@@ -26,34 +29,23 @@ export async function assistLearningMaterialService(
     return fail("invalid-input", "`bookId` must be a non-empty string.");
   }
 
-  if (body.language !== "ar" && body.language !== "en") {
-    return fail("invalid-input", '`language` must be "ar" or "en".');
-  }
-
   if (typeof body.text !== "string") {
     return fail("invalid-input", "`text` must be a string.");
   }
 
-  let moduleTitle;
-  if (body.moduleTitle !== undefined) {
-    moduleTitle = parseTranslatableString(body.moduleTitle);
-    if (!moduleTitle) {
-      return fail(
-        "invalid-input",
-        "`moduleTitle` must be a `{ ar, en }` object.",
-      );
-    }
+  const moduleTitle = readOptionalString(body.moduleTitle);
+  if (!moduleTitle.ok) {
+    return fail("invalid-input", "`moduleTitle` must be a string.");
   }
 
-  let moduleDescription;
-  if (body.moduleDescription !== undefined) {
-    moduleDescription = parseTranslatableString(body.moduleDescription);
-    if (!moduleDescription) {
-      return fail(
-        "invalid-input",
-        "`moduleDescription` must be a `{ ar, en }` object.",
-      );
-    }
+  const moduleDescription = readOptionalString(body.moduleDescription);
+  if (!moduleDescription.ok) {
+    return fail("invalid-input", "`moduleDescription` must be a string.");
+  }
+
+  const fullMaterial = readOptionalString(body.fullMaterial);
+  if (!fullMaterial.ok) {
+    return fail("invalid-input", "`fullMaterial` must be a string.");
   }
 
   const additionalInstructions =
@@ -75,7 +67,8 @@ export async function assistLearningMaterialService(
         description: bookResult.value.description,
         longDescription: bookResult.value.longDescription,
       },
-      { title: moduleTitle, description: moduleDescription },
+      { title: moduleTitle.value, description: moduleDescription.value },
+      fullMaterial.value,
       additionalInstructions,
     );
 

@@ -246,16 +246,20 @@ export function SavedSourceView({
   // fires the card's normal `onChange` -> `onMaterialChange` -- so
   // `entries` is never in an intermediate state a concurrent Save changes
   // could persist, and there is nothing here to key by `key`.
+  // `language` is accepted for signature compatibility with
+  // `SourceModulesPanel`'s `onAiAssistItem` (which still reports which
+  // editor tab was active), but is never forwarded to the AI Assistant
+  // request itself -- AI Assistance is Arabic-only end to end (ANA-99), and
+  // the `/api/v1/ai/assist` request contract no longer accepts a language.
   async function handleAiAssistEntry(
     _key: string,
-    language: "ar" | "en",
+    _language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
   ): Promise<string> {
     return assistLearningMaterial({
       bookId,
       text: selectedMarkdown,
-      language,
       additionalInstructions: instructions,
     });
   }

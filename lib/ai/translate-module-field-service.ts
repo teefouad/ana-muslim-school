@@ -1,12 +1,9 @@
 import "server-only";
 
 import { getBookByIdService } from "@/lib/books/books-service";
-import {
-  parseTranslatableString,
-  type TranslatableString,
-} from "@/lib/learning-content/translatable-string";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { AiTaskError } from "./run-ai-task";
+import { readOptionalString } from "./read-optional-string";
 import {
   translateModuleField,
   type TranslatableModuleField,
@@ -18,29 +15,13 @@ const FIELDS: readonly TranslatableModuleField[] = [
   "content",
 ];
 
-/** Parses an optional `{ ar, en }` request field -- `undefined` when the
- * caller omitted it (a valid, common case: not every sibling Module field
- * is filled in yet), `{ ok: false }` when it was supplied but isn't a
- * valid `TranslatableString`. */
-function readOptionalTranslatable(
-  value: unknown,
-): { ok: true; value?: TranslatableString } | { ok: false } {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
-  }
-
-  const parsed = parseTranslatableString(value);
-
-  return parsed ? { ok: true, value: parsed } : { ok: false };
-}
-
 /**
  * Validates and runs a context-aware Module field translation for
  * `POST /api/v1/ai/translate` (`field` set, ANA-98) -- unlike the plain,
  * context-free `translateArabicToEnglishService`, this loads the owning
  * Book server-side from a client-supplied `bookId` and accepts this same
- * Module's other, already-filled-in fields (`moduleTitle`/
- * `moduleDescription`/`moduleContent`, all optional) as orientation
+ * Module's other, already-filled-in Arabic fields (`moduleTitle`/
+ * `moduleDescription`/`moduleContent`, all optional, ANA-99) as orientation
  * context, so the translation preserves the meaning appropriate to the
  * target field and its Book/Module context rather than translating an
  * isolated string.
@@ -66,28 +47,19 @@ export async function translateModuleFieldService(
     return fail("invalid-input", "`bookId` must be a non-empty string.");
   }
 
-  const moduleTitle = readOptionalTranslatable(body.moduleTitle);
+  const moduleTitle = readOptionalString(body.moduleTitle);
   if (!moduleTitle.ok) {
-    return fail(
-      "invalid-input",
-      "`moduleTitle` must be a `{ ar, en }` object.",
-    );
+    return fail("invalid-input", "`moduleTitle` must be a string.");
   }
 
-  const moduleDescription = readOptionalTranslatable(body.moduleDescription);
+  const moduleDescription = readOptionalString(body.moduleDescription);
   if (!moduleDescription.ok) {
-    return fail(
-      "invalid-input",
-      "`moduleDescription` must be a `{ ar, en }` object.",
-    );
+    return fail("invalid-input", "`moduleDescription` must be a string.");
   }
 
-  const moduleContent = readOptionalTranslatable(body.moduleContent);
+  const moduleContent = readOptionalString(body.moduleContent);
   if (!moduleContent.ok) {
-    return fail(
-      "invalid-input",
-      "`moduleContent` must be a `{ ar, en }` object.",
-    );
+    return fail("invalid-input", "`moduleContent` must be a string.");
   }
 
   const additionalInstructions =

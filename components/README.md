@@ -27,7 +27,19 @@ replace-confirmation dialog when the target language already has content.
 AI Assistance stays enabled on an empty field -- caller context alone may
 be enough to generate a value -- and for `type="markdown"` operates on the
 editor's current selection when there is one, replacing only that range,
-falling back to the whole value otherwise. Both actions share the same
+falling back to the whole value otherwise. `FormField` stays domain-agnostic
+about that selection: it only reports whether `text` is a selection via
+`isSelection` on the action args (`FormFieldAiActionArgs`, ANA-99) -- a
+caller whose AI task needs the rest of the field's current value as
+surrounding context (e.g. the full Learning Material around a selected
+paragraph) reads `isSelection` and supplies that extra context itself; see
+edit-module-modal.tsx's Content field wiring (`fullMaterial`, ANA-99).
+Non-translation AI generation/assistance across this app is Arabic-only end
+to end (ANA-99): every `onAiAssist`/`getAIAssistanceContext` wired to a real
+`/api/v1/ai/assist` call sends and expects only Arabic text/context, never a
+bilingual `{ ar, en }` shape -- `FormField` itself stays language-agnostic
+(it doesn't enforce this), so that contract is each caller's responsibility.
+Both actions share the same
 busy/disabled/error handling; `onBusyChange` lets a caller managing several
 `FormField`s together freeze the rest of its form while any one field's AI
 request is in flight (see edit-module-modal.tsx's `aiBusy` pattern, ANA-97).

@@ -587,7 +587,6 @@ describe("ModuleBuilderView", () => {
         expect(assistLearningMaterialMock).toHaveBeenCalledWith({
           bookId: "book-42",
           text: "First",
-          language: "ar",
           additionalInstructions: undefined,
         }),
       );

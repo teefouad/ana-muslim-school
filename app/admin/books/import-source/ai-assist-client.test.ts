@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("assistLearningMaterial", () => {
-  it("POSTs bookId/text/language/additionalInstructions to /api/v1/ai/assist and returns the refined text", async () => {
+  it("POSTs bookId/text/additionalInstructions to /api/v1/ai/assist and returns the refined text", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: { text: "Refined text" } }),
     );
@@ -30,7 +30,6 @@ describe("assistLearningMaterial", () => {
     const result = await assistLearningMaterial({
       bookId: "book-1",
       text: "النص العربي",
-      language: "ar",
       additionalInstructions: "Use more headings",
     });
 
@@ -40,7 +39,6 @@ describe("assistLearningMaterial", () => {
       body: JSON.stringify({
         bookId: "book-1",
         text: "النص العربي",
-        language: "ar",
         additionalInstructions: "Use more headings",
       }),
     });
@@ -55,7 +53,6 @@ describe("assistLearningMaterial", () => {
     await assistLearningMaterial({
       bookId: "book-1",
       text: "Text",
-      language: "en",
     });
 
     expect(fetch).toHaveBeenCalledWith(
@@ -64,7 +61,6 @@ describe("assistLearningMaterial", () => {
         body: JSON.stringify({
           bookId: "book-1",
           text: "Text",
-          language: "en",
           additionalInstructions: undefined,
         }),
       }),
@@ -80,25 +76,20 @@ describe("assistLearningMaterial", () => {
       assistLearningMaterial({
         bookId: "book-1",
         text: "Text",
-        language: "ar",
       }),
     ).rejects.toThrow("AI Assistant failed. Please try again.");
   });
 
-  it("includes moduleTitle/moduleDescription in the payload when supplied (ANA-98)", async () => {
+  it("includes moduleTitle/moduleDescription in the payload when supplied (ANA-98/ANA-99)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: { text: "Refined text" } }),
     );
 
-    const moduleTitle = { ar: "عنوان", en: "Title" };
-    const moduleDescription = { ar: "وصف", en: "Description" };
-
     await assistLearningMaterial({
       bookId: "book-1",
       text: "Text",
-      language: "ar",
-      moduleTitle,
-      moduleDescription,
+      moduleTitle: "عنوان",
+      moduleDescription: "وصف",
     });
 
     expect(fetch).toHaveBeenCalledWith(
@@ -107,9 +98,31 @@ describe("assistLearningMaterial", () => {
         body: JSON.stringify({
           bookId: "book-1",
           text: "Text",
-          language: "ar",
-          moduleTitle,
-          moduleDescription,
+          moduleTitle: "عنوان",
+          moduleDescription: "وصف",
+        }),
+      }),
+    );
+  });
+
+  it("includes fullMaterial in the payload when supplied, for a Markdown selection (ANA-99)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { text: "Refined excerpt" } }),
+    );
+
+    await assistLearningMaterial({
+      bookId: "book-1",
+      text: "Selected excerpt",
+      fullMaterial: "The complete Learning Material",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/ai/assist",
+      expect.objectContaining({
+        body: JSON.stringify({
+          bookId: "book-1",
+          text: "Selected excerpt",
+          fullMaterial: "The complete Learning Material",
         }),
       }),
     );
@@ -117,18 +130,15 @@ describe("assistLearningMaterial", () => {
 });
 
 describe("suggestModuleTitle", () => {
-  it("POSTs field: title, bookId, text, language, and moduleContent to /api/v1/ai/assist", async () => {
+  it("POSTs field: title, bookId, text, and moduleContent to /api/v1/ai/assist", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: { text: "Suggested title" } }),
     );
 
-    const moduleContent = { ar: "محتوى", en: "Content" };
-
     const result = await suggestModuleTitle({
       bookId: "book-1",
       text: "",
-      language: "ar",
-      moduleContent,
+      moduleContent: "محتوى",
     });
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/ai/assist", {
@@ -138,8 +148,7 @@ describe("suggestModuleTitle", () => {
         bookId: "book-1",
         field: "title",
         text: "",
-        language: "ar",
-        moduleContent,
+        moduleContent: "محتوى",
       }),
     });
     expect(result).toBe("Suggested title");
@@ -154,28 +163,23 @@ describe("suggestModuleTitle", () => {
       suggestModuleTitle({
         bookId: "book-1",
         text: "",
-        language: "ar",
-        moduleContent: { ar: "", en: "" },
+        moduleContent: "",
       }),
     ).rejects.toThrow("AI Assistant failed. Please try again.");
   });
 });
 
 describe("suggestModuleDescription", () => {
-  it("POSTs field: description, bookId, text, language, moduleTitle, and moduleContent to /api/v1/ai/assist", async () => {
+  it("POSTs field: description, bookId, text, moduleTitle, and moduleContent to /api/v1/ai/assist", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: { text: "Suggested description" } }),
     );
 
-    const moduleTitle = { ar: "عنوان", en: "Title" };
-    const moduleContent = { ar: "محتوى", en: "Content" };
-
     const result = await suggestModuleDescription({
       bookId: "book-1",
       text: "",
-      language: "ar",
-      moduleTitle,
-      moduleContent,
+      moduleTitle: "عنوان",
+      moduleContent: "محتوى",
     });
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/ai/assist", {
@@ -185,9 +189,8 @@ describe("suggestModuleDescription", () => {
         bookId: "book-1",
         field: "description",
         text: "",
-        language: "ar",
-        moduleTitle,
-        moduleContent,
+        moduleTitle: "عنوان",
+        moduleContent: "محتوى",
       }),
     });
     expect(result).toBe("Suggested description");
@@ -202,9 +205,8 @@ describe("suggestModuleDescription", () => {
       suggestModuleDescription({
         bookId: "book-1",
         text: "",
-        language: "ar",
-        moduleTitle: { ar: "", en: "" },
-        moduleContent: { ar: "", en: "" },
+        moduleTitle: "",
+        moduleContent: "",
       }),
     ).rejects.toThrow("AI Assistant failed. Please try again.");
   });

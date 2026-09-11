@@ -11,12 +11,10 @@ import {
   assistLearningMaterial,
   suggestModuleDescription,
   suggestModuleTitle,
-  type AiAssistLanguage,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
 import {
   createEmptyModuleFieldsValues,
-  toTranslatableString,
   type ModuleFieldsValues,
 } from "./module-fields";
 
@@ -159,13 +157,14 @@ function EditModuleModalBody({
 
   return (
     <Stack gap="lg">
-      {/* Title (ANA-98): AI Assistance is grounded in this Module's own
-          Learning Material plus the Book's title/description/longDescription
-          -- naming this Module, never restating the Book's own title or
-          summarizing the Learning Material (see suggest-module-title.ts's
-          base prompt). Translate with AI is grounded in the same Learning
-          Material context, so an isolated title string isn't translated
-          without knowing what it's naming. */}
+      {/* Title (ANA-98/ANA-99): AI Assistance and Translate with AI are both
+          grounded in this Module's own Arabic Learning Material plus the
+          Book's title/description/longDescription -- naming this Module,
+          never restating the Book's own title or summarizing the Learning
+          Material (see suggest-module-title.ts's base prompt). Every AI
+          call here is Arabic-only end to end: context sent to the server is
+          always this Module's Arabic value, never the bilingual `{ ar, en }`
+          shape (ANA-99). */}
       <FormField
         label="Title"
         translatable
@@ -183,29 +182,29 @@ function EditModuleModalBody({
           })
         }
         getAITranslationContext={() => ({
-          moduleContent: toTranslatableString(content),
+          moduleContent: content.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, language, instructions, context }) =>
+        onAiAssist={({ text, instructions, context }) =>
           suggestModuleTitle({
             bookId: book.id,
             text,
-            language: (language ?? "ar") as AiAssistLanguage,
             additionalInstructions: instructions,
             ...context,
           })
         }
         getAIAssistanceContext={() => ({
-          moduleContent: toTranslatableString(content),
+          moduleContent: content.ar ?? "",
         })}
         onBusyChange={setTitleBusy}
       />
 
-      {/* Description (ANA-98): AI Assistance and Translate with AI are both
-          grounded in this Module's own Title and Learning Material plus the
-          Book's title/description/longDescription -- describing this
-          specific Module within its Book, never restating the Book's own
-          description (see suggest-module-description.ts's base prompt). */}
+      {/* Description (ANA-98/ANA-99): AI Assistance and Translate with AI
+          are both grounded in this Module's own Arabic Title and Learning
+          Material plus the Book's title/description/longDescription --
+          describing this specific Module within its Book, never restating
+          the Book's own description (see suggest-module-description.ts's
+          base prompt). */}
       <FormField
         label="Description"
         translatable
@@ -223,32 +222,37 @@ function EditModuleModalBody({
           })
         }
         getAITranslationContext={() => ({
-          moduleTitle: toTranslatableString(title),
-          moduleContent: toTranslatableString(content),
+          moduleTitle: title.ar ?? "",
+          moduleContent: content.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, language, instructions, context }) =>
+        onAiAssist={({ text, instructions, context }) =>
           suggestModuleDescription({
             bookId: book.id,
             text,
-            language: (language ?? "ar") as AiAssistLanguage,
             additionalInstructions: instructions,
             ...context,
           })
         }
         getAIAssistanceContext={() => ({
-          moduleTitle: toTranslatableString(title),
-          moduleContent: toTranslatableString(content),
+          moduleTitle: title.ar ?? "",
+          moduleContent: content.ar ?? "",
         })}
         onBusyChange={setDescriptionBusy}
       />
 
-      {/* Content (ANA-98): this Module's Learning Material -- still loaded/
-          saved through the Material persistence established in ANA-94, this
-          field only gains AI context here. AI Assistance and Translate with
-          AI are both grounded in this Module's own Title/Description plus
-          the Book's title/description/longDescription, so a refinement or
-          translation is framed by its owning Module, not just its Book. */}
+      {/* Content (ANA-98/ANA-99): this Module's Learning Material -- still
+          loaded/saved through the Material persistence established in
+          ANA-94, this field only gains AI context here. AI Assistance and
+          Translate with AI are both grounded in this Module's own Arabic
+          Title/Description plus the Book's title/description/
+          longDescription, so a refinement or translation is framed by its
+          owning Module, not just its Book. When AI Assistance runs on a
+          Markdown selection (`isSelection`), the rest of this field's own
+          current Arabic value is sent as `fullMaterial` -- surrounding
+          context for the selected excerpt, never a second transformation
+          target (ANA-99); omitted when there's no selection, since `text`
+          already is the whole Learning Material in that case. */}
       <FormField
         label="Content"
         type="markdown"
@@ -267,22 +271,22 @@ function EditModuleModalBody({
           })
         }
         getAITranslationContext={() => ({
-          moduleTitle: toTranslatableString(title),
-          moduleDescription: toTranslatableString(description),
+          moduleTitle: title.ar ?? "",
+          moduleDescription: description.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, language, instructions, context }) =>
+        onAiAssist={({ text, instructions, isSelection, context }) =>
           assistLearningMaterial({
             bookId: book.id,
             text,
-            language: (language ?? "ar") as AiAssistLanguage,
             additionalInstructions: instructions,
+            fullMaterial: isSelection ? (content.ar ?? "") : undefined,
             ...context,
           })
         }
         getAIAssistanceContext={() => ({
-          moduleTitle: toTranslatableString(title),
-          moduleDescription: toTranslatableString(description),
+          moduleTitle: title.ar ?? "",
+          moduleDescription: description.ar ?? "",
         })}
         onBusyChange={setContentBusy}
       />
