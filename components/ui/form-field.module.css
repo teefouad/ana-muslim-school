@@ -1,0 +1,35 @@
+/* AI Assistance / Translate with AI action buttons (ANA-100) -- shared
+   styling for every Mantine `ActionIcon` this component renders, so every
+   `FormField` consumer (and a future delete-style action, should one ever
+   be added here) gets the same treatment from one place rather than each
+   consumer styling its own copy.
+
+   Specificity here (one class + a zero-specificity :where()) matches
+   Mantine's own hover/disabled selectors, so which one wins depends on
+   load order rather than specificity -- this app's build already relies on
+   that same tie-break for the identical disabled-background override in
+   learning-material-module-card.module.css's `.actionButton`, so this
+   mirrors that precedent rather than reaching for `!important`. */
+.actionButton {
+  transition: background-color 150ms ease;
+}
+
+/* Enabled/active state: no more Mantine's default blue-tinted hover
+   background -- a 30% transparent white background instead, both at rest
+   and while hovered/focused, so hovering never flashes blue underneath. */
+.actionButton:where(:not(:disabled, [data-disabled])) {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+@media (hover: hover) {
+  .actionButton:hover:where(:not(:disabled, [data-disabled])) {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Disabled state: fully transparent background (not Mantine's default
+   disabled-state fill) and a dimmed icon. */
+.actionButton:where(:disabled, [data-disabled]) {
+  background: transparent;
+  opacity: 0.5;
+}

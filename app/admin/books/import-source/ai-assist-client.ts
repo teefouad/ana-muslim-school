@@ -119,3 +119,81 @@ export async function suggestModuleDescription({
     moduleContent,
   });
 }
+
+/** The language of the Book field actually being written -- whichever
+ * language tab is active in `FormField` (ANA-100, PR review). AI
+ * Assistance always writes its result back to this same language, so this
+ * is never inferred from the Book's own Arabic/English content; it's the
+ * active tab at the moment the action was triggered. */
+export type BookFieldLanguage = "ar" | "en";
+
+export interface SuggestBookDescriptionInput {
+  text: string;
+  language: BookFieldLanguage;
+  additionalInstructions?: string;
+  /** The Book's own Title/Long Description, in the same `language` as the
+   * Description being written (ANA-100, PR review) -- the Book being
+   * edited is trusted directly from the caller, not reloaded server-side,
+   * since a Book being created has no persisted id yet to reload from. */
+  bookTitle: string;
+  bookLongDescription: string;
+}
+
+/** Suggests or improves a Book's Description via `POST /api/v1/ai/assist`
+ * (`field: "bookDescription"`, ANA-100) -- unlike the Module-level assist
+ * functions above, this never sends a `bookId`: a Book's own fields are
+ * always this same Book, so its context is sent directly, not reloaded
+ * server-side. Returns only the suggested description text, in `language`
+ * -- callers apply it to their own Description draft, in that same
+ * language. */
+export async function suggestBookDescription({
+  text,
+  language,
+  additionalInstructions,
+  bookTitle,
+  bookLongDescription,
+}: SuggestBookDescriptionInput): Promise<string> {
+  return requestAssist({
+    field: "bookDescription",
+    text,
+    language,
+    additionalInstructions,
+    bookTitle,
+    bookLongDescription,
+  });
+}
+
+export interface SuggestBookLongDescriptionInput {
+  text: string;
+  language: BookFieldLanguage;
+  additionalInstructions?: string;
+  /** The Book's own Title/Description, in the same `language` as the Long
+   * Description being written (ANA-100, PR review) -- see
+   * `SuggestBookDescriptionInput` for why this is sent directly rather
+   * than reloaded server-side. */
+  bookTitle: string;
+  bookDescription: string;
+}
+
+/** Suggests or improves a Book's Long Description via
+ * `POST /api/v1/ai/assist` (`field: "bookLongDescription"`, ANA-100) --
+ * see `suggestBookDescription` for why this never sends a `bookId`.
+ * Returns only the suggested long description text, in `language` --
+ * callers apply it to their own Long Description draft, in that same
+ * language. */
+export async function suggestBookLongDescription({
+  text,
+  language,
+  additionalInstructions,
+  bookTitle,
+  bookDescription,
+}: SuggestBookLongDescriptionInput): Promise<string> {
+  return requestAssist({
+    field: "bookLongDescription",
+    text,
+    language,
+    additionalInstructions,
+    bookTitle,
+    bookDescription,
+  });
+}

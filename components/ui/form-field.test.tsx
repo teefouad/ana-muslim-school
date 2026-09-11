@@ -633,6 +633,60 @@ describe("FormField", () => {
     });
   });
 
+  describe("shared AI/action-button styling (ANA-100)", () => {
+    it("gives both the AI Assistance and Translate with AI buttons the shared action-button class", () => {
+      renderWithProvider(
+        <FormField
+          label="Description"
+          translatable
+          value={{ ar: "وصف" }}
+          onChange={vi.fn()}
+          aiAssistance
+          onAiAssist={vi.fn()}
+          aiTranslation
+          onAiTranslate={vi.fn()}
+        />,
+      );
+
+      const assistButton = screen.getByRole("button", {
+        name: "AI Assistance for Description",
+      });
+      const translateButton = screen.getByRole("button", {
+        name: "Translate Description with AI",
+      });
+
+      // Both actions share one CSS Module class (form-field.module.css)
+      // rather than each inlining its own styling -- this is what keeps
+      // every FormField consumer visually consistent (ANA-100).
+      expect(assistButton.className).toMatch(/actionButton/);
+      expect(translateButton.className).toMatch(/actionButton/);
+      expect(assistButton.className).toBe(translateButton.className);
+    });
+
+    it("marks a disabled action button [data-disabled], distinct from its enabled rendering", () => {
+      renderWithProvider(
+        <FormField
+          label="Title"
+          value=""
+          onChange={vi.fn()}
+          aiAssistance
+          // No `onAiAssist` -- the action-button styling's disabled state
+          // must apply even when disabled for a reason other than a busy
+          // field (ANA-100's "Disabled state: ... background must be
+          // transparent, icon opacity 50%").
+        />,
+      );
+
+      const assistButton = screen.getByRole("button", {
+        name: "AI Assistance for Title",
+      });
+
+      expect(assistButton).toBeDisabled();
+      expect(assistButton).toHaveAttribute("data-disabled");
+      expect(assistButton.className).toMatch(/actionButton/);
+    });
+  });
+
   describe("controlled usage", () => {
     it("round-trips through a stateful parent", async () => {
       function Harness() {
