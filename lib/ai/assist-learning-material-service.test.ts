@@ -82,10 +82,10 @@ describe("assistLearningMaterialService", () => {
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
   });
 
-  it("returns invalid-input for empty/whitespace-only text", async () => {
+  it("returns invalid-input when text is not a string", async () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
-      text: "   ",
+      text: 42,
       language: "ar",
     });
 
@@ -94,6 +94,23 @@ describe("assistLearningMaterialService", () => {
       error: expect.objectContaining({ code: "invalid-input" }),
     });
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
+  });
+
+  it("allows empty/whitespace-only text (ANA-98) -- Module/Book context alone may be enough to draft Learning Material", async () => {
+    getBookByIdServiceMock.mockResolvedValueOnce({
+      ok: true,
+      value: SAMPLE_BOOK,
+    });
+    refineLearningMaterialMock.mockResolvedValueOnce("Drafted text");
+
+    const result = await assistLearningMaterialService({
+      bookId: "book-1",
+      text: "   ",
+      language: "ar",
+    });
+
+    expect(getBookByIdServiceMock).toHaveBeenCalledWith("book-1");
+    expect(result).toEqual({ ok: true, value: { text: "Drafted text" } });
   });
 
   it("returns the Book service's not-found error and never calls the AI helper when the Book doesn't exist", async () => {
@@ -138,6 +155,7 @@ describe("assistLearningMaterialService", () => {
         description: SAMPLE_BOOK.description,
         longDescription: SAMPLE_BOOK.longDescription,
       },
+      { title: undefined, description: undefined },
       "Use more headings",
     );
     expect(result).toEqual({ ok: true, value: { text: "Refined text" } });
@@ -160,8 +178,65 @@ describe("assistLearningMaterialService", () => {
     expect(refineLearningMaterialMock).toHaveBeenCalledWith(
       "Module text",
       expect.anything(),
+      expect.anything(),
       undefined,
     );
+  });
+
+  it("parses moduleTitle/moduleDescription and passes them through as this Module's own context (ANA-98)", async () => {
+    getBookByIdServiceMock.mockResolvedValueOnce({
+      ok: true,
+      value: SAMPLE_BOOK,
+    });
+    refineLearningMaterialMock.mockResolvedValueOnce("Refined text");
+
+    const moduleTitle = { ar: "عنوان الوحدة", en: "Module Title" };
+    const moduleDescription = { ar: "وصف الوحدة", en: "Module Description" };
+
+    await assistLearningMaterialService({
+      bookId: "book-1",
+      text: "Module text",
+      language: "ar",
+      moduleTitle,
+      moduleDescription,
+    });
+
+    expect(refineLearningMaterialMock).toHaveBeenCalledWith(
+      "Module text",
+      expect.anything(),
+      { title: moduleTitle, description: moduleDescription },
+      undefined,
+    );
+  });
+
+  it("returns invalid-input when moduleTitle is not a valid { ar, en } object", async () => {
+    const result = await assistLearningMaterialService({
+      bookId: "book-1",
+      text: "Module text",
+      language: "ar",
+      moduleTitle: { ar: "only-arabic" },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
+    expect(getBookByIdServiceMock).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid-input when moduleDescription is not a valid { ar, en } object", async () => {
+    const result = await assistLearningMaterialService({
+      bookId: "book-1",
+      text: "Module text",
+      language: "ar",
+      moduleDescription: "not an object",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
+    expect(getBookByIdServiceMock).not.toHaveBeenCalled();
   });
 
   it("maps an AiTaskError to an upstream-error, without leaking its message", async () => {

@@ -516,7 +516,7 @@ export default function EditBookPage() {
                     fields: getModuleFields(modalTarget.id),
                   }
           }
-          bookId={book.id}
+          book={book}
           onClose={() => setModalTarget(null)}
           onCreate={handleCreateModule}
           onSave={handleSaveModule}

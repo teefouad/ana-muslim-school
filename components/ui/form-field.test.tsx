@@ -372,7 +372,7 @@ describe("FormField", () => {
   });
 
   describe("Translate with AI flow", () => {
-    it("translates immediately when English is empty", async () => {
+    it("translates immediately when English is empty, without opening Additional Instructions (ANA-98)", async () => {
       const onChange = vi.fn();
       const getContext = vi.fn().mockReturnValue({ bookId: "book-1" });
       const onAiTranslate = vi.fn().mockResolvedValue("Description");
@@ -404,6 +404,9 @@ describe("FormField", () => {
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({ ar: "وصف", en: "Description" }),
       );
+      expect(
+        screen.queryByRole("dialog", { name: "Translate with AI" }),
+      ).not.toBeInTheDocument();
     });
 
     it("confirms before overwriting a non-empty English value", async () => {

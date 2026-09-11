@@ -8,6 +8,7 @@ import {
 } from "./edit-module-modal";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
+import type { Book } from "@/lib/books/types";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -15,6 +16,28 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+function lastRequestBody(): Record<string, unknown> {
+  const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+  const [, init] = calls[calls.length - 1] as [string, RequestInit];
+  return JSON.parse(init.body as string) as Record<string, unknown>;
+}
+
+const BOOK: Book = {
+  id: "book-1",
+  title: { ar: "عنوان الكتاب", en: "Book Title" },
+  description: { ar: "وصف الكتاب", en: "Book Description" },
+  longDescription: { ar: "وصف طويل للكتاب", en: "Book Long Description" },
+  color: "cyan.6",
+  imageId: "img-1",
+  modules: [],
+  isLocked: false,
+  isPublished: false,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+  createdBy: "a@example.com",
+  updatedBy: "a@example.com",
+};
 
 const EDIT_FIELDS = {
   title: { ar: "المقدمة", en: "" },
@@ -28,7 +51,7 @@ function renderModal(overrides: Partial<EditModuleModalProps> = {}) {
     <MantineProvider>
       <EditModuleModal
         state={{ mode: "edit", id: "module-1", fields: EDIT_FIELDS }}
-        bookId="book-1"
+        book={BOOK}
         onClose={vi.fn()}
         onCreate={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -244,10 +267,350 @@ describe("EditModuleModal", () => {
       await within(dialog).findByText("Something went wrong.");
       expect(within(dialog).getByLabelText("Title")).not.toBeDisabled();
     });
+
+    it("re-enables the form even when AI Assistance fails", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ error: "Something went wrong." }, 500),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Title",
+        }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await within(dialog).findByText("Something went wrong.");
+      expect(within(dialog).getByLabelText("Title")).not.toBeDisabled();
+    });
   });
 
-  describe("AI actions (from ANA-91, now wired through the shared FormField, ANA-97)", () => {
-    it("Translate title fills English from Arabic via /api/v1/ai/translate", async () => {
+  describe("AI Assistance opens Additional Instructions; Translate with AI runs directly (ANA-98)", () => {
+    it("never calls fetch until Generate is clicked, for AI Assistance", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Result" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Title",
+        }),
+      );
+      await screen.findByRole("dialog", { name: "AI Assistance" });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("calls fetch immediately for Translate with AI, without ever showing Additional Instructions", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Result" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "Translate Title with AI",
+        }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(
+        screen.queryByRole("dialog", { name: "Translate with AI" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Module Title AI context (ANA-98)", () => {
+    it("sends Module Content plus Book title/description/longDescription for AI Assistance", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Suggested title" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/ai/assist",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        field: "title",
+        text: "المقدمة",
+        moduleContent: { ar: "محتوى", en: "" },
+      });
+    });
+
+    it("sends Module Content for Translate with AI", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Introduction" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "Translate Title with AI",
+        }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        field: "title",
+        text: "المقدمة",
+        moduleContent: { ar: "محتوى", en: "" },
+      });
+    });
+
+    it("applies the AI Assistance result to the active Title language", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Suggested title" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      expect(
+        await within(dialog).findByDisplayValue("Suggested title"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("Module Description AI context (ANA-98)", () => {
+    it("sends Module Title, Module Content, and Book context for AI Assistance", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "وصف محسّن" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Description",
+        }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        field: "description",
+        text: "وصف",
+        moduleTitle: { ar: "المقدمة", en: "" },
+        moduleContent: { ar: "محتوى", en: "" },
+      });
+    });
+
+    it("sends Module Title and Module Content for Translate with AI", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Description" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "Translate Description with AI",
+        }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        field: "description",
+        text: "وصف",
+        moduleTitle: { ar: "المقدمة", en: "" },
+        moduleContent: { ar: "محتوى", en: "" },
+      });
+    });
+
+    it("applies the AI Assistance result to the active Description language", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "وصف محسّن" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Description",
+        }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      expect(
+        await within(dialog).findByDisplayValue("وصف محسّن"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("Module Content AI context (ANA-98)", () => {
+    it("exposes both AI Assistance and Translate with AI (previously missing)", async () => {
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Content",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole("button", {
+          name: "Translate Content with AI",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("sends Module Title, Module Description, and Book context for AI Assistance", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "محتوى محسّن" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Content",
+        }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      // assistLearningMaterial (the existing ANA-85 client fn, reused here
+      // unchanged for backward compatibility -- see ai-assist-client.ts)
+      // never sends an explicit `field` key; the server treats an omitted
+      // `field` as `"content"`, its default.
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        text: "محتوى",
+        moduleTitle: { ar: "المقدمة", en: "" },
+        moduleDescription: { ar: "وصف", en: "" },
+      });
+      expect(lastRequestBody()).not.toHaveProperty("field");
+    });
+
+    it("sends Module Title and Module Description for Translate with AI", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Content" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "Translate Content with AI",
+        }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        field: "content",
+        text: "محتوى",
+        moduleTitle: { ar: "المقدمة", en: "" },
+        moduleDescription: { ar: "وصف", en: "" },
+      });
+    });
+
+    it("applies the AI Assistance result to the active Content language", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "محتوى محسّن" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Content",
+        }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      expect(
+        await within(dialog).findByText("محتوى محسّن"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("Additional Instructions (ANA-98)", () => {
+    it("includes the trimmed Additional Instructions text in the AI Assistance request", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Suggested title" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.change(
+        within(suggestDialog).getByLabelText(
+          "Additional instructions or context (optional)",
+        ),
+        { target: { value: "Keep it short" } },
+      );
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        additionalInstructions: "Keep it short",
+      });
+    });
+
+    it("never opens Additional Instructions for Translate with AI, and never sends additionalInstructions", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Introduction" } }),
       );
@@ -260,52 +623,11 @@ describe("EditModuleModal", () => {
         }),
       );
 
-      await vi.waitFor(() =>
-        expect(fetch).toHaveBeenCalledWith(
-          "/api/v1/ai/translate",
-          expect.objectContaining({ method: "POST" }),
-        ),
-      );
-
-      const titleLanguageSwitcher = within(dialog).getAllByRole("radiogroup", {
-        name: "Language",
-      })[0];
-      fireEvent.click(
-        within(titleLanguageSwitcher).getByRole("radio", { name: "English" }),
-      );
-
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(
-        await within(dialog).findByDisplayValue("Introduction"),
-      ).toBeInTheDocument();
-    });
-
-    it("AI Assistance rewrites the active Description language via /api/v1/ai/assist", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف محسّن" } }),
-      );
-      renderModal();
-
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
-      fireEvent.click(
-        within(dialog).getByRole("button", {
-          name: "AI Assistance for Description",
-        }),
-      );
-
-      const suggestDialog = await screen.findByRole("dialog", {
-        name: "AI Assistance",
-      });
-      fireEvent.click(
-        within(suggestDialog).getByRole("button", { name: "Generate" }),
-      );
-
-      expect(
-        await within(dialog).findByDisplayValue("وصف محسّن"),
-      ).toBeInTheDocument();
-      expect(fetch).toHaveBeenCalledWith(
-        "/api/v1/ai/assist",
-        expect.objectContaining({ method: "POST" }),
-      );
+        screen.queryByRole("dialog", { name: "Translate with AI" }),
+      ).not.toBeInTheDocument();
+      expect(lastRequestBody()).not.toHaveProperty("additionalInstructions");
     });
   });
 });

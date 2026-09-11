@@ -1,17 +1,23 @@
 import "server-only";
 
 import { getBookByIdService } from "@/lib/books/books-service";
+import { parseTranslatableString } from "@/lib/learning-content/translatable-string";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { AiTaskError } from "./run-ai-task";
 import { refineLearningMaterial } from "./refine-learning-material";
 
 /**
  * Validates and runs the Module AI Assistant request for
- * `POST /api/v1/ai/assist` (ANA-85). The client only ever sends `bookId`,
- * `text`, `language`, and optional `additionalInstructions` -- the Book
- * itself is always loaded server-side here from `bookId`, never trusted from
- * the request body, and this is the only server boundary that calls the
- * specialized `refineLearningMaterial()` helper for this workflow.
+ * `POST /api/v1/ai/assist` (ANA-85), `field: "content"` (or omitted, its
+ * default). The client always sends `bookId` -- the Book itself is always
+ * loaded server-side here from it, never trusted from the request body.
+ * `text` may be empty (ANA-98): caller-supplied Module/Book context alone
+ * can be enough to draft Learning Material for a Module that has none yet,
+ * matching the Title/Description assist services' own "empty is valid"
+ * rule. `moduleTitle`/`moduleDescription`, when supplied, are this same
+ * Module's own current Title/Description (ANA-98) -- optional since a
+ * caller that never tracks either (e.g. the Module Builder import flow)
+ * has nothing to supply here.
  */
 export async function assistLearningMaterialService(
   body: Record<string, unknown>,
@@ -24,8 +30,30 @@ export async function assistLearningMaterialService(
     return fail("invalid-input", '`language` must be "ar" or "en".');
   }
 
-  if (typeof body.text !== "string" || body.text.trim().length === 0) {
-    return fail("invalid-input", "`text` must be a non-empty string.");
+  if (typeof body.text !== "string") {
+    return fail("invalid-input", "`text` must be a string.");
+  }
+
+  let moduleTitle;
+  if (body.moduleTitle !== undefined) {
+    moduleTitle = parseTranslatableString(body.moduleTitle);
+    if (!moduleTitle) {
+      return fail(
+        "invalid-input",
+        "`moduleTitle` must be a `{ ar, en }` object.",
+      );
+    }
+  }
+
+  let moduleDescription;
+  if (body.moduleDescription !== undefined) {
+    moduleDescription = parseTranslatableString(body.moduleDescription);
+    if (!moduleDescription) {
+      return fail(
+        "invalid-input",
+        "`moduleDescription` must be a `{ ar, en }` object.",
+      );
+    }
   }
 
   const additionalInstructions =
@@ -47,6 +75,7 @@ export async function assistLearningMaterialService(
         description: bookResult.value.description,
         longDescription: bookResult.value.longDescription,
       },
+      { title: moduleTitle, description: moduleDescription },
       additionalInstructions,
     );
 

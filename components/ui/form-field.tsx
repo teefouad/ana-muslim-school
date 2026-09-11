@@ -40,7 +40,7 @@ export interface FormFieldAiActionArgs<TContext> {
   language?: string;
   /** The Additional Instructions step's trimmed input, or `undefined` when
    * left blank. Always `undefined` for Translate with AI, which has no
-   * Additional Instructions step. */
+   * Additional Instructions step (ANA-98). */
   instructions?: string;
   /** Whatever this field's own `getAITranslationContext`/
    * `getAIAssistanceContext` returned for this action. */
@@ -180,6 +180,13 @@ function useFormFieldTranslateAction<TContext>({
   getContext?: () => TContext;
   onBusyChange?: (busy: boolean) => void;
 }) {
+  // Translate with AI deliberately runs directly, with no Additional
+  // Instructions step (ANA-98 -- unlike AI Assistance, which always shows
+  // one): it only ever transforms the whole Arabic value into English,
+  // never something an editor needs to redirect with free-form guidance.
+  // The one confirmation it does show guards against something else
+  // entirely -- overwriting a non-empty English value -- and is preserved
+  // unchanged.
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -379,11 +386,12 @@ function useFormFieldAssistAction<TContext>({
 // (`getAITranslationContext`/`getAIAssistanceContext`) rather than this
 // component knowing anything about Books or Modules, and both run through
 // the same shared `/api/v1/ai/*` request shape and Additional Instructions
-// step (AI Assistance only -- Translate with AI has never had one) that the
-// dashboard's existing AI-assisted editing already uses. Edit Book and Edit
-// Module's own Title/Description/(Long )Description/Content fields are
-// migrated onto this component in book-form.tsx and edit-module-modal.tsx
-// (ANA-97).
+// step (AI Assistance only -- Translate with AI runs directly, by design,
+// ANA-98) that the dashboard's existing AI-assisted editing already uses.
+// Edit Book and Edit Module's own Title/Description/(Long )Description/
+// Content fields are migrated onto this component in book-form.tsx and
+// edit-module-modal.tsx (ANA-97), with Edit Module's fields wired to their
+// full Book/Module AI context in ANA-98.
 export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const {
     label,
