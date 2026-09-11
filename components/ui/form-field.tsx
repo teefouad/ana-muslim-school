@@ -42,6 +42,16 @@ export interface FormFieldAiActionArgs<TContext> {
    * left blank. Always `undefined` for Translate with AI, which has no
    * Additional Instructions step (ANA-98). */
   instructions?: string;
+  /** True when `text` is a Markdown selection captured from a `type=
+   * "markdown"` field's editor, rather than the field's whole current
+   * value (ANA-99) -- lets a domain caller decide whether to supply the
+   * rest of the field's own current value as extra surrounding context
+   * (e.g. the full Learning Material around a selected paragraph) via
+   * `context`. Always `false` for Translate with AI and for every
+   * non-markdown field, which never operate on a selection. This is the
+   * only selection signal `FormField` exposes -- it stays generic and
+   * knows nothing about what a caller does with it. */
+  isSelection: boolean;
   /** Whatever this field's own `getAITranslationContext`/
    * `getAIAssistanceContext` returned for this action. */
   context: TContext;
@@ -202,6 +212,7 @@ function useFormFieldTranslateAction<TContext>({
       const en = await onAiTranslate({
         text: value.ar ?? "",
         language: "ar",
+        isSelection: false,
         context: getContext ? getContext() : (undefined as TContext),
       });
       onChange({ ...value, en });
@@ -328,6 +339,7 @@ function useFormFieldAssistAction<TContext>({
         text: selection ? selection.text : activeValue,
         language: translatable ? activeSlug : undefined,
         instructions,
+        isSelection: selection !== null,
         context: getContext ? getContext() : (undefined as TContext),
       });
 

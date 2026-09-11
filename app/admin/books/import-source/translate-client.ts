@@ -1,4 +1,3 @@
-import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { readErrorMessage } from "../fetch-json";
 
 /** Translates an Arabic Learning Material draft to English via
@@ -29,13 +28,13 @@ export interface TranslateModuleFieldInput {
   field: TranslatableModuleField;
   text: string;
   additionalInstructions?: string;
-  /** This Module's own sibling fields, when known (ANA-98) -- whichever of
-   * these aren't the field being translated, supplied as orientation
-   * context so the translation preserves the meaning appropriate to this
-   * Module rather than translating an isolated string. */
-  moduleTitle?: TranslatableString;
-  moduleDescription?: TranslatableString;
-  moduleContent?: TranslatableString;
+  /** This Module's own Arabic sibling fields, when known (ANA-98/ANA-99) --
+   * whichever of these aren't the field being translated, supplied as
+   * orientation context so the translation preserves the meaning
+   * appropriate to this Module rather than translating an isolated string. */
+  moduleTitle?: string;
+  moduleDescription?: string;
+  moduleContent?: string;
 }
 
 /** Translates one Module field (Title/Description/Content) from Arabic to

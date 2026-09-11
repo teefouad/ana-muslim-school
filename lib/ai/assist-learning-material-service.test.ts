@@ -43,7 +43,6 @@ describe("assistLearningMaterialService", () => {
   it("returns invalid-input when bookId is missing", async () => {
     const result = await assistLearningMaterialService({
       text: "text",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -58,21 +57,6 @@ describe("assistLearningMaterialService", () => {
     const result = await assistLearningMaterialService({
       bookId: 42,
       text: "text",
-      language: "ar",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      error: expect.objectContaining({ code: "invalid-input" }),
-    });
-    expect(getBookByIdServiceMock).not.toHaveBeenCalled();
-  });
-
-  it("returns invalid-input for a language other than ar/en", async () => {
-    const result = await assistLearningMaterialService({
-      bookId: "book-1",
-      text: "text",
-      language: "fr",
     });
 
     expect(result).toEqual({
@@ -86,7 +70,6 @@ describe("assistLearningMaterialService", () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
       text: 42,
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -106,7 +89,6 @@ describe("assistLearningMaterialService", () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
       text: "   ",
-      language: "ar",
     });
 
     expect(getBookByIdServiceMock).toHaveBeenCalledWith("book-1");
@@ -122,7 +104,6 @@ describe("assistLearningMaterialService", () => {
     const result = await assistLearningMaterialService({
       bookId: "missing-book",
       text: "Module text",
-      language: "ar",
     });
 
     expect(getBookByIdServiceMock).toHaveBeenCalledWith("missing-book");
@@ -143,7 +124,6 @@ describe("assistLearningMaterialService", () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
       text: "Module text",
-      language: "ar",
       additionalInstructions: "  Use more headings  ",
     });
 
@@ -156,6 +136,7 @@ describe("assistLearningMaterialService", () => {
         longDescription: SAMPLE_BOOK.longDescription,
       },
       { title: undefined, description: undefined },
+      undefined,
       "Use more headings",
     );
     expect(result).toEqual({ ok: true, value: { text: "Refined text" } });
@@ -171,7 +152,6 @@ describe("assistLearningMaterialService", () => {
     await assistLearningMaterialService({
       bookId: "book-1",
       text: "Module text",
-      language: "en",
       additionalInstructions: "   ",
     });
 
@@ -180,41 +160,38 @@ describe("assistLearningMaterialService", () => {
       expect.anything(),
       expect.anything(),
       undefined,
+      undefined,
     );
   });
 
-  it("parses moduleTitle/moduleDescription and passes them through as this Module's own context (ANA-98)", async () => {
+  it("parses moduleTitle/moduleDescription and passes them through as this Module's own Arabic context (ANA-98/ANA-99)", async () => {
     getBookByIdServiceMock.mockResolvedValueOnce({
       ok: true,
       value: SAMPLE_BOOK,
     });
     refineLearningMaterialMock.mockResolvedValueOnce("Refined text");
 
-    const moduleTitle = { ar: "عنوان الوحدة", en: "Module Title" };
-    const moduleDescription = { ar: "وصف الوحدة", en: "Module Description" };
-
     await assistLearningMaterialService({
       bookId: "book-1",
       text: "Module text",
-      language: "ar",
-      moduleTitle,
-      moduleDescription,
+      moduleTitle: "عنوان الوحدة",
+      moduleDescription: "وصف الوحدة",
     });
 
     expect(refineLearningMaterialMock).toHaveBeenCalledWith(
       "Module text",
       expect.anything(),
-      { title: moduleTitle, description: moduleDescription },
+      { title: "عنوان الوحدة", description: "وصف الوحدة" },
+      undefined,
       undefined,
     );
   });
 
-  it("returns invalid-input when moduleTitle is not a valid { ar, en } object", async () => {
+  it("returns invalid-input when moduleTitle is not a string", async () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
       text: "Module text",
-      language: "ar",
-      moduleTitle: { ar: "only-arabic" },
+      moduleTitle: { ar: "only-arabic", en: "" },
     });
 
     expect(result).toEqual({
@@ -224,12 +201,47 @@ describe("assistLearningMaterialService", () => {
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
   });
 
-  it("returns invalid-input when moduleDescription is not a valid { ar, en } object", async () => {
+  it("returns invalid-input when moduleDescription is not a string", async () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
       text: "Module text",
-      language: "ar",
-      moduleDescription: "not an object",
+      moduleDescription: 42,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
+    expect(getBookByIdServiceMock).not.toHaveBeenCalled();
+  });
+
+  it("passes fullMaterial through as selection-surrounding context (ANA-99)", async () => {
+    getBookByIdServiceMock.mockResolvedValueOnce({
+      ok: true,
+      value: SAMPLE_BOOK,
+    });
+    refineLearningMaterialMock.mockResolvedValueOnce("Refined excerpt");
+
+    await assistLearningMaterialService({
+      bookId: "book-1",
+      text: "Selected excerpt",
+      fullMaterial: "The complete Learning Material",
+    });
+
+    expect(refineLearningMaterialMock).toHaveBeenCalledWith(
+      "Selected excerpt",
+      expect.anything(),
+      expect.anything(),
+      "The complete Learning Material",
+      undefined,
+    );
+  });
+
+  it("returns invalid-input when fullMaterial is not a string", async () => {
+    const result = await assistLearningMaterialService({
+      bookId: "book-1",
+      text: "Module text",
+      fullMaterial: 42,
     });
 
     expect(result).toEqual({
@@ -251,7 +263,6 @@ describe("assistLearningMaterialService", () => {
     const result = await assistLearningMaterialService({
       bookId: "book-1",
       text: "Module text",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -271,7 +282,6 @@ describe("assistLearningMaterialService", () => {
       assistLearningMaterialService({
         bookId: "book-1",
         text: "Module text",
-        language: "ar",
       }),
     ).rejects.toThrow("boom");
   });

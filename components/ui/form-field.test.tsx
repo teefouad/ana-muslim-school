@@ -248,6 +248,7 @@ describe("FormField", () => {
         text: "وصف",
         language: "ar",
         instructions: "Make it shorter",
+        isSelection: false,
         context: { bookId: "book-1" },
       });
 
@@ -331,7 +332,7 @@ describe("FormField", () => {
 
       await vi.waitFor(() =>
         expect(onAiAssist).toHaveBeenCalledWith(
-          expect.objectContaining({ text: "Hello" }),
+          expect.objectContaining({ text: "Hello", isSelection: true }),
         ),
       );
       await vi.waitFor(() =>
@@ -365,7 +366,10 @@ describe("FormField", () => {
 
       await vi.waitFor(() =>
         expect(onAiAssist).toHaveBeenCalledWith(
-          expect.objectContaining({ text: "Hello world" }),
+          expect.objectContaining({
+            text: "Hello world",
+            isSelection: false,
+          }),
         ),
       );
     });
@@ -398,6 +402,7 @@ describe("FormField", () => {
         expect(onAiTranslate).toHaveBeenCalledWith({
           text: "وصف",
           language: "ar",
+          isSelection: false,
           context: { bookId: "book-1" },
         }),
       );

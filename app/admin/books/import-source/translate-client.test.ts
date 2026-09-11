@@ -53,7 +53,7 @@ describe("translateModuleField", () => {
       jsonResponse({ data: { text: "Translated title" } }),
     );
 
-    const moduleContent = { ar: "محتوى", en: "Content" };
+    const moduleContent = "محتوى الوحدة";
 
     const result = await translateModuleField({
       bookId: "book-1",

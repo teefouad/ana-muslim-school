@@ -33,7 +33,7 @@ const SAMPLE_BOOK = {
   updatedBy: "a@example.com",
 };
 
-const MODULE_CONTENT = { ar: "محتوى الوحدة", en: "Module content" };
+const MODULE_CONTENT = "محتوى الوحدة";
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -43,7 +43,6 @@ describe("suggestModuleTitleService", () => {
   it("returns invalid-input when bookId is missing", async () => {
     const result = await suggestModuleTitleService({
       text: "",
-      language: "ar",
       moduleContent: MODULE_CONTENT,
     });
 
@@ -54,25 +53,10 @@ describe("suggestModuleTitleService", () => {
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
   });
 
-  it("returns invalid-input for a language other than ar/en", async () => {
-    const result = await suggestModuleTitleService({
-      bookId: "book-1",
-      text: "",
-      language: "fr",
-      moduleContent: MODULE_CONTENT,
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      error: expect.objectContaining({ code: "invalid-input" }),
-    });
-  });
-
   it("returns invalid-input when text is not a string", async () => {
     const result = await suggestModuleTitleService({
       bookId: "book-1",
       text: 42,
-      language: "ar",
       moduleContent: MODULE_CONTENT,
     });
 
@@ -92,18 +76,16 @@ describe("suggestModuleTitleService", () => {
     const result = await suggestModuleTitleService({
       bookId: "book-1",
       text: "",
-      language: "ar",
       moduleContent: MODULE_CONTENT,
     });
 
     expect(result).toEqual({ ok: true, value: { text: "Suggested title" } });
   });
 
-  it("returns invalid-input when moduleContent is missing or not a valid { ar, en } object", async () => {
+  it("returns invalid-input when moduleContent is missing or not a string", async () => {
     const result = await suggestModuleTitleService({
       bookId: "book-1",
       text: "",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -111,6 +93,17 @@ describe("suggestModuleTitleService", () => {
       error: expect.objectContaining({ code: "invalid-input" }),
     });
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
+
+    const badType = await suggestModuleTitleService({
+      bookId: "book-1",
+      text: "",
+      moduleContent: { ar: "محتوى", en: "" },
+    });
+
+    expect(badType).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
   });
 
   it("returns the Book service's not-found error and never calls the AI helper when the Book doesn't exist", async () => {
@@ -122,7 +115,6 @@ describe("suggestModuleTitleService", () => {
     const result = await suggestModuleTitleService({
       bookId: "missing-book",
       text: "",
-      language: "ar",
       moduleContent: MODULE_CONTENT,
     });
 
@@ -143,7 +135,6 @@ describe("suggestModuleTitleService", () => {
     const result = await suggestModuleTitleService({
       bookId: "book-1",
       text: "Current title",
-      language: "ar",
       moduleContent: MODULE_CONTENT,
       additionalInstructions: "  Make it shorter  ",
     });
@@ -174,7 +165,6 @@ describe("suggestModuleTitleService", () => {
     const result = await suggestModuleTitleService({
       bookId: "book-1",
       text: "",
-      language: "ar",
       moduleContent: MODULE_CONTENT,
     });
 
@@ -195,7 +185,6 @@ describe("suggestModuleTitleService", () => {
       suggestModuleTitleService({
         bookId: "book-1",
         text: "",
-        language: "ar",
         moduleContent: MODULE_CONTENT,
       }),
     ).rejects.toThrow("boom");

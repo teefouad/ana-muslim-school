@@ -22,26 +22,39 @@ export type RunAiTaskInput = {
   input: string;
   /** Trusted server-side task instructions. Never sourced from a client request. */
   basePrompt: string;
-  /** Optional editor/user guidance, appended after `input` -- never replaces `basePrompt`. */
+  /** Trusted editor guidance (ANA-99) -- composed into the same `instructions`
+   * channel as `basePrompt`, at equal priority, never appended underneath it
+   * as ordinary `input` content. */
   additionalInstructions?: string;
   maxOutputTokens?: number;
 };
 
-function composeInput(input: string, additionalInstructions?: string): string {
+/**
+ * Composes `basePrompt` and `additionalInstructions` into one `instructions`
+ * string (ANA-99) -- both are trusted, model-level task instructions, so
+ * they belong in the same Responses API instruction channel at the same
+ * priority. `additionalInstructions` is never folded into `input`: doing so
+ * would demote it to ordinary data underneath `basePrompt`, exactly the
+ * "lower priority" behavior ANA-99 requires removing.
+ */
+function composeInstructions(
+  basePrompt: string,
+  additionalInstructions?: string,
+): string {
   const trimmedInstructions = additionalInstructions?.trim();
 
   if (!trimmedInstructions) {
-    return input;
+    return basePrompt;
   }
 
-  return `${input}\n\n---\nAdditional instructions from the editor:\n${trimmedInstructions}`;
+  return `${basePrompt}\n\n---\nAdditional instructions from the editor -- equally authoritative task instructions; apply them fully wherever they don't conflict with a rule above:\n${trimmedInstructions}`;
 }
 
 /**
  * Runs a single server-side AI text task against the shared OpenAI client.
- * `basePrompt` is sent as the Responses API `instructions` (model/system-
- * level task instructions, kept separate from `input` on the wire) while
- * `input` -- optionally followed by `additionalInstructions` -- is sent as
+ * `basePrompt` and `additionalInstructions` are composed into the Responses
+ * API `instructions` (the trusted, model/system-level channel, kept separate
+ * from `input` on the wire -- ANA-99) while `input` is sent, unmodified, as
  * the content to transform.
  */
 export async function runAiTask({
@@ -57,8 +70,8 @@ export async function runAiTask({
   try {
     response = await client.responses.create({
       model: AI_MODEL,
-      instructions: basePrompt,
-      input: composeInput(input, additionalInstructions),
+      instructions: composeInstructions(basePrompt, additionalInstructions),
+      input,
       ...(maxOutputTokens != null
         ? { max_output_tokens: maxOutputTokens }
         : {}),

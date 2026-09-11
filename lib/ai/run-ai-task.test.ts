@@ -38,7 +38,7 @@ describe("runAiTask", () => {
     );
   });
 
-  it("appends non-empty additional instructions after the input", async () => {
+  it("composes non-empty additional instructions into the instructions channel, at the same priority as the base prompt, never into the input (ANA-99)", async () => {
     createMock.mockResolvedValue(mockResponse());
 
     await runAiTask({
@@ -48,10 +48,10 @@ describe("runAiTask", () => {
     });
 
     const call = createMock.mock.calls[0][0];
-    expect(call.instructions).toBe("base instructions");
-    expect(call.input).toBe(
-      "source text\n\n---\nAdditional instructions from the editor:\nmake it shorter",
-    );
+    expect(call.input).toBe("source text");
+    expect(call.instructions).toMatch(/^base instructions/);
+    expect(call.instructions).toMatch(/make it shorter/);
+    expect(call.instructions).not.toMatch(/lower.priority/i);
   });
 
   it("ignores whitespace-only additional instructions", async () => {
@@ -64,7 +64,10 @@ describe("runAiTask", () => {
     });
 
     expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({ input: "source text" }),
+      expect.objectContaining({
+        input: "source text",
+        instructions: "base instructions",
+      }),
     );
   });
 

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +16,22 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// Selects the first `length` characters of the editor's first text node
+// directly through the native Selection API -- ported from form-field.test.tsx
+// (see that file's identical helper for why jsdom needs this instead of
+// simulated cursor movement).
+function selectFirstCharacters(root: HTMLElement, length: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNode = walker.nextNode() as Text;
+  const range = document.createRange();
+  range.setStart(textNode, 0);
+  range.setEnd(textNode, length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
 }
 
 function lastRequestBody(): Record<string, unknown> {
@@ -358,7 +375,7 @@ describe("EditModuleModal", () => {
         bookId: "book-1",
         field: "title",
         text: "المقدمة",
-        moduleContent: { ar: "محتوى", en: "" },
+        moduleContent: "محتوى",
       });
     });
 
@@ -379,7 +396,7 @@ describe("EditModuleModal", () => {
         bookId: "book-1",
         field: "title",
         text: "المقدمة",
-        moduleContent: { ar: "محتوى", en: "" },
+        moduleContent: "محتوى",
       });
     });
 
@@ -431,8 +448,8 @@ describe("EditModuleModal", () => {
         bookId: "book-1",
         field: "description",
         text: "وصف",
-        moduleTitle: { ar: "المقدمة", en: "" },
-        moduleContent: { ar: "محتوى", en: "" },
+        moduleTitle: "المقدمة",
+        moduleContent: "محتوى",
       });
     });
 
@@ -453,8 +470,8 @@ describe("EditModuleModal", () => {
         bookId: "book-1",
         field: "description",
         text: "وصف",
-        moduleTitle: { ar: "المقدمة", en: "" },
-        moduleContent: { ar: "محتوى", en: "" },
+        moduleTitle: "المقدمة",
+        moduleContent: "محتوى",
       });
     });
 
@@ -527,10 +544,64 @@ describe("EditModuleModal", () => {
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
         text: "محتوى",
-        moduleTitle: { ar: "المقدمة", en: "" },
-        moduleDescription: { ar: "وصف", en: "" },
+        moduleTitle: "المقدمة",
+        moduleDescription: "وصف",
       });
       expect(lastRequestBody()).not.toHaveProperty("field");
+      // No selection was made, so `text` already is the whole field --
+      // fullMaterial is omitted rather than duplicating it (ANA-99).
+      expect(lastRequestBody()).not.toHaveProperty("fullMaterial");
+    });
+
+    it("sends the full Content field as fullMaterial context, separate from the selected target, when AI Assistance runs on a Markdown selection (ANA-99)", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "جزء محسّن" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      // Title and Description are plain text inputs (also role "textbox");
+      // the Content field's own contenteditable Markdown editor -- the
+      // only one with a non-empty selection to make -- renders last.
+      const textboxes = within(dialog).getAllByRole("textbox");
+      const editable = textboxes[textboxes.length - 1];
+      await userEvent.setup().click(editable);
+      selectFirstCharacters(editable, 3);
+
+      const assistButton = within(dialog).getByRole("button", {
+        name: "AI Assistance for Content",
+      });
+
+      // The editor's own Lexical selection syncs from the native DOM
+      // selection asynchronously (see form-field.test.tsx's identical
+      // retry) -- retry the click until the dialog reflects a captured
+      // selection, cancelling in between so no stray dialog is left open.
+      await vi.waitFor(() => {
+        fireEvent.click(assistButton);
+        const suggestDialog = screen.getByRole("dialog", {
+          name: "AI Assistance",
+        });
+        if (!suggestDialog.textContent?.includes("text you selected")) {
+          fireEvent.click(
+            within(suggestDialog).getByRole("button", { name: "Cancel" }),
+          );
+          throw new Error("selection not yet synced");
+        }
+      });
+
+      const suggestDialog = screen.getByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        bookId: "book-1",
+        fullMaterial: "محتوى",
+      });
+      expect(lastRequestBody().text).not.toBe("محتوى");
     });
 
     it("sends Module Title and Module Description for Translate with AI", async () => {
@@ -550,8 +621,8 @@ describe("EditModuleModal", () => {
         bookId: "book-1",
         field: "content",
         text: "محتوى",
-        moduleTitle: { ar: "المقدمة", en: "" },
-        moduleDescription: { ar: "وصف", en: "" },
+        moduleTitle: "المقدمة",
+        moduleDescription: "وصف",
       });
     });
 

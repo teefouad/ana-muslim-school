@@ -48,7 +48,7 @@ describe("translateModuleField", () => {
     expect(input).toMatch(/Module Learning Material to translate/);
   });
 
-  it("includes the Book's title/description/longDescription as orientation", async () => {
+  it("includes only the Book's Arabic title/description/longDescription as orientation (ANA-99)", async () => {
     await translateModuleField("text", "title", {
       title: { ar: "عنوان الكتاب", en: "Book Title" },
       description: { ar: "وصف الكتاب", en: "Book Description" },
@@ -57,29 +57,30 @@ describe("translateModuleField", () => {
 
     const input: string = runAiTaskMock.mock.calls[0][0].input;
     expect(input).toMatch(/Book context/);
-    expect(input).toMatch(/Book Title/);
+    expect(input).toMatch(/عنوان الكتاب/);
+    expect(input).not.toMatch(/Book Title/);
   });
 
-  it("includes sibling Module fields as Module context when translating the title", async () => {
+  it("includes sibling Module Arabic fields as Module context when translating the title (ANA-99)", async () => {
     await translateModuleField("text", "title", BOOK, {
-      description: { ar: "", en: "Module Description" },
-      content: { ar: "", en: "Module Content" },
+      description: "وصف الوحدة",
+      content: "محتوى الوحدة",
     });
 
     const input: string = runAiTaskMock.mock.calls[0][0].input;
     expect(input).toMatch(/Module context/);
-    expect(input).toMatch(/Module Description/);
-    expect(input).toMatch(/Module Content/);
+    expect(input).toMatch(/وصف الوحدة/);
+    expect(input).toMatch(/محتوى الوحدة/);
   });
 
   it("omits the Module's own current content from context when translating the content field itself, to avoid duplicating the text being translated", async () => {
     await translateModuleField("text to translate", "content", BOOK, {
-      title: { ar: "", en: "Module Title" },
-      content: { ar: "", en: "Existing content that should not appear twice" },
+      title: "عنوان الوحدة",
+      content: "Existing content that should not appear twice",
     });
 
     const input: string = runAiTaskMock.mock.calls[0][0].input;
-    expect(input).toMatch(/Module Title/);
+    expect(input).toMatch(/عنوان الوحدة/);
     expect(
       input.match(/Existing content that should not appear twice/g)?.length ??
         0,
@@ -114,5 +115,13 @@ describe("translateModuleField", () => {
     expect(basePrompt).toMatch(/never additional text to\s+translate/i);
     expect(basePrompt).toMatch(/isolated string/i);
     expect(basePrompt).toMatch(/no preamble/i);
+  });
+
+  it("never describes Additional Instructions as lower priority than the base prompt (ANA-99 hard requirement)", async () => {
+    await translateModuleField("text", "title", BOOK);
+
+    const basePrompt: string = runAiTaskMock.mock.calls[0][0].basePrompt;
+    expect(basePrompt).not.toMatch(/lower.priority/i);
+    expect(basePrompt).toMatch(/equally important/i);
   });
 });

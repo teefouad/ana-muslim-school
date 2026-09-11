@@ -1,7 +1,6 @@
 import "server-only";
 
 import { getBookByIdService } from "@/lib/books/books-service";
-import { parseTranslatableString } from "@/lib/learning-content/translatable-string";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { AiTaskError } from "./run-ai-task";
 import { suggestModuleDescription } from "./suggest-module-description";
@@ -12,8 +11,9 @@ import { suggestModuleDescription } from "./suggest-module-description";
  * always sends `bookId` -- the Book itself is always loaded server-side
  * here from it, never trusted from the request body. `text` (the current
  * description) may be empty: `moduleTitle` and `moduleContent` -- this
- * Module's own Title and Learning Material -- are the required context a
- * description can be drafted from even before this Module has one.
+ * Module's own Arabic Title and Learning Material (ANA-99) -- are the
+ * required context a description can be drafted from even before this
+ * Module has one.
  */
 export async function suggestModuleDescriptionService(
   body: Record<string, unknown>,
@@ -22,30 +22,16 @@ export async function suggestModuleDescriptionService(
     return fail("invalid-input", "`bookId` must be a non-empty string.");
   }
 
-  if (body.language !== "ar" && body.language !== "en") {
-    return fail("invalid-input", '`language` must be "ar" or "en".');
-  }
-
   if (typeof body.text !== "string") {
     return fail("invalid-input", "`text` must be a string.");
   }
 
-  const moduleTitle = parseTranslatableString(body.moduleTitle);
-
-  if (!moduleTitle) {
-    return fail(
-      "invalid-input",
-      "`moduleTitle` must be a `{ ar, en }` object.",
-    );
+  if (typeof body.moduleTitle !== "string") {
+    return fail("invalid-input", "`moduleTitle` must be a string.");
   }
 
-  const moduleContent = parseTranslatableString(body.moduleContent);
-
-  if (!moduleContent) {
-    return fail(
-      "invalid-input",
-      "`moduleContent` must be a `{ ar, en }` object.",
-    );
+  if (typeof body.moduleContent !== "string") {
+    return fail("invalid-input", "`moduleContent` must be a string.");
   }
 
   const additionalInstructions =
@@ -62,8 +48,8 @@ export async function suggestModuleDescriptionService(
   try {
     const text = await suggestModuleDescription(
       body.text,
-      moduleTitle,
-      moduleContent,
+      body.moduleTitle,
+      body.moduleContent,
       {
         title: bookResult.value.title,
         description: bookResult.value.description,

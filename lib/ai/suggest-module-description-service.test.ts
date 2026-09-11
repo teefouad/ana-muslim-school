@@ -35,8 +35,8 @@ const SAMPLE_BOOK = {
   updatedBy: "a@example.com",
 };
 
-const MODULE_TITLE = { ar: "عنوان الوحدة", en: "Module title" };
-const MODULE_CONTENT = { ar: "محتوى الوحدة", en: "Module content" };
+const MODULE_TITLE = "عنوان الوحدة";
+const MODULE_CONTENT = "محتوى الوحدة";
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -46,7 +46,6 @@ describe("suggestModuleDescriptionService", () => {
   it("returns invalid-input when bookId is missing", async () => {
     const result = await suggestModuleDescriptionService({
       text: "",
-      language: "ar",
       moduleTitle: MODULE_TITLE,
       moduleContent: MODULE_CONTENT,
     });
@@ -68,7 +67,6 @@ describe("suggestModuleDescriptionService", () => {
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
       text: "",
-      language: "ar",
       moduleTitle: MODULE_TITLE,
       moduleContent: MODULE_CONTENT,
     });
@@ -79,11 +77,10 @@ describe("suggestModuleDescriptionService", () => {
     });
   });
 
-  it("returns invalid-input when moduleTitle is missing or not a valid { ar, en } object", async () => {
+  it("returns invalid-input when moduleTitle is missing or not a string", async () => {
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
       text: "",
-      language: "ar",
       moduleContent: MODULE_CONTENT,
     });
 
@@ -92,13 +89,24 @@ describe("suggestModuleDescriptionService", () => {
       error: expect.objectContaining({ code: "invalid-input" }),
     });
     expect(getBookByIdServiceMock).not.toHaveBeenCalled();
+
+    const badType = await suggestModuleDescriptionService({
+      bookId: "book-1",
+      text: "",
+      moduleTitle: { ar: "عنوان", en: "" },
+      moduleContent: MODULE_CONTENT,
+    });
+
+    expect(badType).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
   });
 
-  it("returns invalid-input when moduleContent is missing or not a valid { ar, en } object", async () => {
+  it("returns invalid-input when moduleContent is missing or not a string", async () => {
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
       text: "",
-      language: "ar",
       moduleTitle: MODULE_TITLE,
     });
 
@@ -118,7 +126,6 @@ describe("suggestModuleDescriptionService", () => {
     const result = await suggestModuleDescriptionService({
       bookId: "missing-book",
       text: "",
-      language: "ar",
       moduleTitle: MODULE_TITLE,
       moduleContent: MODULE_CONTENT,
     });
@@ -140,7 +147,6 @@ describe("suggestModuleDescriptionService", () => {
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
       text: "Current description",
-      language: "ar",
       moduleTitle: MODULE_TITLE,
       moduleContent: MODULE_CONTENT,
       additionalInstructions: "  Make it shorter  ",
@@ -176,7 +182,6 @@ describe("suggestModuleDescriptionService", () => {
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
       text: "",
-      language: "ar",
       moduleTitle: MODULE_TITLE,
       moduleContent: MODULE_CONTENT,
     });
@@ -198,7 +203,6 @@ describe("suggestModuleDescriptionService", () => {
       suggestModuleDescriptionService({
         bookId: "book-1",
         text: "",
-        language: "ar",
         moduleTitle: MODULE_TITLE,
         moduleContent: MODULE_CONTENT,
       }),
