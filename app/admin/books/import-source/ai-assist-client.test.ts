@@ -215,13 +215,14 @@ describe("suggestModuleDescription", () => {
 });
 
 describe("suggestBookDescription", () => {
-  it("POSTs field: bookDescription, text, bookTitle, and bookLongDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
+  it("POSTs field: bookDescription, text, language, bookTitle, and bookLongDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: { text: "Suggested description" } }),
     );
 
     const result = await suggestBookDescription({
       text: "",
+      language: "ar",
       bookTitle: "عنوان",
       bookLongDescription: "وصف طويل",
     });
@@ -232,11 +233,38 @@ describe("suggestBookDescription", () => {
       body: JSON.stringify({
         field: "bookDescription",
         text: "",
+        language: "ar",
         bookTitle: "عنوان",
         bookLongDescription: "وصف طويل",
       }),
     });
     expect(result).toBe("Suggested description");
+  });
+
+  it("POSTs language: en when the English tab is the one being assisted (PR review)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { text: "Suggested description" } }),
+    );
+
+    await suggestBookDescription({
+      text: "",
+      language: "en",
+      bookTitle: "Title",
+      bookLongDescription: "Long description",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/ai/assist",
+      expect.objectContaining({
+        body: JSON.stringify({
+          field: "bookDescription",
+          text: "",
+          language: "en",
+          bookTitle: "Title",
+          bookLongDescription: "Long description",
+        }),
+      }),
+    );
   });
 
   it("throws the server's error message on failure", async () => {
@@ -247,6 +275,7 @@ describe("suggestBookDescription", () => {
     await expect(
       suggestBookDescription({
         text: "",
+        language: "ar",
         bookTitle: "",
         bookLongDescription: "",
       }),
@@ -255,13 +284,14 @@ describe("suggestBookDescription", () => {
 });
 
 describe("suggestBookLongDescription", () => {
-  it("POSTs field: bookLongDescription, text, bookTitle, and bookDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
+  it("POSTs field: bookLongDescription, text, language, bookTitle, and bookDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ data: { text: "Suggested long description" } }),
     );
 
     const result = await suggestBookLongDescription({
       text: "",
+      language: "ar",
       bookTitle: "عنوان",
       bookDescription: "وصف",
     });
@@ -272,11 +302,38 @@ describe("suggestBookLongDescription", () => {
       body: JSON.stringify({
         field: "bookLongDescription",
         text: "",
+        language: "ar",
         bookTitle: "عنوان",
         bookDescription: "وصف",
       }),
     });
     expect(result).toBe("Suggested long description");
+  });
+
+  it("POSTs language: en when the English tab is the one being assisted (PR review)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ data: { text: "Suggested long description" } }),
+    );
+
+    await suggestBookLongDescription({
+      text: "",
+      language: "en",
+      bookTitle: "Title",
+      bookDescription: "Description",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/ai/assist",
+      expect.objectContaining({
+        body: JSON.stringify({
+          field: "bookLongDescription",
+          text: "",
+          language: "en",
+          bookTitle: "Title",
+          bookDescription: "Description",
+        }),
+      }),
+    );
   });
 
   it("throws the server's error message on failure", async () => {
@@ -287,6 +344,7 @@ describe("suggestBookLongDescription", () => {
     await expect(
       suggestBookLongDescription({
         text: "",
+        language: "ar",
         bookTitle: "",
         bookDescription: "",
       }),

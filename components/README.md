@@ -34,11 +34,23 @@ caller whose AI task needs the rest of the field's current value as
 surrounding context (e.g. the full Learning Material around a selected
 paragraph) reads `isSelection` and supplies that extra context itself; see
 edit-module-modal.tsx's Content field wiring (`fullMaterial`, ANA-99).
-Non-translation AI generation/assistance across this app is Arabic-only end
-to end (ANA-99): every `onAiAssist`/`getAIAssistanceContext` wired to a real
-`/api/v1/ai/assist` call sends and expects only Arabic text/context, never a
-bilingual `{ ar, en }` shape -- `FormField` itself stays language-agnostic
-(it doesn't enforce this), so that contract is each caller's responsibility.
+Non-translation AI generation/assistance is Arabic-only end to end for
+Module-level fields (ANA-99): every Module `onAiAssist`/
+`getAIAssistanceContext` wired to a real `/api/v1/ai/assist` call sends and
+expects only Arabic text/context, never a bilingual `{ ar, en }` shape.
+Book-level AI Assistance (`bookDescription`/`bookLongDescription`, ANA-100)
+is the one deliberate exception: since `FormField` lets an editor run AI
+Assistance from either language tab, Book field AI Assistance follows
+whichever language is active (`language` on `FormFieldAiActionArgs`) --
+context is sent in that same language and the AI is required to write its
+result in that same language, so switching to the English tab and running
+AI Assistance there can never overwrite the Arabic value (PR review, ANA-100
+-- see suggest-book-description.ts's/suggest-book-long-description.ts's
+language-parameterized base prompt, and book-form.tsx's `onAiAssist`, which
+builds this context inline rather than through `getAIAssistanceContext`
+since only `onAiAssist`'s own args carry `language`). `FormField` itself
+stays language-agnostic in both cases (it doesn't enforce either contract),
+so which one applies is each caller's responsibility.
 Both actions share the same
 busy/disabled/error handling; `onBusyChange` lets a caller managing several
 `FormField`s together freeze the rest of its form while any one field's AI
@@ -58,7 +70,7 @@ Description are trusted directly from the request body, the same way a
 Module's own current title/content are already trusted for Module-level AI
 Assistance. This is what lets Book field AI Assistance work identically
 before the Book has even been created (Add Book) and after (Edit Book) --
-see book-form.tsx's `getAIAssistanceContext` wiring.
+see book-form.tsx's `onAiAssist` wiring.
 
 The AI Assistance/Translate with AI `ActionIcon`s (and any future delete-
 style action added to this component) share one CSS Module class,

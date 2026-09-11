@@ -13,7 +13,11 @@ import { suggestBookDescription } from "./suggest-book-description";
  * so this works identically for a Book that hasn't been created yet
  * (Add Book) and one being edited. `text` (the current description) may be
  * empty: `bookTitle`/`bookLongDescription` context alone can be enough to
- * draft a description for a Book that has neither yet.
+ * draft a description for a Book that has neither yet. `language` is the
+ * language of the Description field actually being written (PR review) --
+ * required, since FormField's AI Assistance operates on whichever language
+ * tab is active and must write the result back to that same language, not
+ * always Arabic.
  */
 export async function suggestBookDescriptionService(
   body: Record<string, unknown>,
@@ -30,6 +34,10 @@ export async function suggestBookDescriptionService(
     return fail("invalid-input", "`bookLongDescription` must be a string.");
   }
 
+  if (body.language !== "ar" && body.language !== "en") {
+    return fail("invalid-input", '`language` must be "ar" or "en".');
+  }
+
   const additionalInstructions =
     typeof body.additionalInstructions === "string"
       ? body.additionalInstructions.trim() || undefined
@@ -40,6 +48,7 @@ export async function suggestBookDescriptionService(
       body.text,
       body.bookTitle,
       body.bookLongDescription,
+      body.language,
       additionalInstructions,
     );
 

@@ -14,7 +14,10 @@ import { suggestBookLongDescription } from "./suggest-book-long-description";
  * created yet (Add Book) and one being edited. `text` (the current long
  * description) may be empty: `bookTitle`/`bookDescription` context alone
  * can be enough to draft a long description for a Book that has neither
- * yet.
+ * yet. `language` is the language of the Long Description field actually
+ * being written (PR review) -- required, since FormField's AI Assistance
+ * operates on whichever language tab is active and must write the result
+ * back to that same language, not always Arabic.
  */
 export async function suggestBookLongDescriptionService(
   body: Record<string, unknown>,
@@ -31,6 +34,10 @@ export async function suggestBookLongDescriptionService(
     return fail("invalid-input", "`bookDescription` must be a string.");
   }
 
+  if (body.language !== "ar" && body.language !== "en") {
+    return fail("invalid-input", '`language` must be "ar" or "en".');
+  }
+
   const additionalInstructions =
     typeof body.additionalInstructions === "string"
       ? body.additionalInstructions.trim() || undefined
@@ -41,6 +48,7 @@ export async function suggestBookLongDescriptionService(
       body.text,
       body.bookTitle,
       body.bookDescription,
+      body.language,
       additionalInstructions,
     );
 

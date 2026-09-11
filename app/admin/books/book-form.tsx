@@ -144,11 +144,15 @@ export function BookForm({
         />
 
         {/* Description (ANA-100): Translate with AI and AI Assistance, the
-            latter grounded in this Book's own Arabic Title and Long
-            Description (see suggest-book-description.ts's base prompt) --
-            this Book's own fields are trusted directly, never reloaded
-            server-side, so this works identically before the Book is ever
-            created. */}
+            latter grounded in this Book's own Title and Long Description
+            (see suggest-book-description.ts's base prompt) -- this Book's
+            own fields are trusted directly, never reloaded server-side, so
+            this works identically before the Book is ever created.
+            AI Assistance operates on whichever language tab is active
+            (PR review) -- `language` picks which language's Title/Long
+            Description context is sent and which language the AI must
+            write its result in, so switching to the English tab never
+            has AI Assistance write Arabic into the English value. */}
         <FormField
           label="Description"
           translatable
@@ -161,24 +165,24 @@ export function BookForm({
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
           aiAssistance
-          onAiAssist={({ text, instructions, context }) =>
-            suggestBookDescription({
+          onAiAssist={({ text, language, instructions }) => {
+            const lang = language === "en" ? "en" : "ar";
+            return suggestBookDescription({
               text,
+              language: lang,
               additionalInstructions: instructions,
-              ...context,
-            })
-          }
-          getAIAssistanceContext={() => ({
-            bookTitle: values.title.ar ?? "",
-            bookLongDescription: values.longDescription.ar ?? "",
-          })}
+              bookTitle: values.title[lang] ?? "",
+              bookLongDescription: values.longDescription[lang] ?? "",
+            });
+          }}
           onBusyChange={setDescriptionBusy}
         />
 
         {/* Long description (ANA-100): Translate with AI and AI Assistance,
-            the latter grounded in this Book's own Arabic Title and
-            (short) Description (see suggest-book-long-description.ts's
-            base prompt). */}
+            the latter grounded in this Book's own Title and (short)
+            Description (see suggest-book-long-description.ts's base
+            prompt) -- same active-language handling as Description above
+            (PR review). */}
         <FormField
           label="Long description"
           type="markdown"
@@ -192,17 +196,16 @@ export function BookForm({
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
           aiAssistance
-          onAiAssist={({ text, instructions, context }) =>
-            suggestBookLongDescription({
+          onAiAssist={({ text, language, instructions }) => {
+            const lang = language === "en" ? "en" : "ar";
+            return suggestBookLongDescription({
               text,
+              language: lang,
               additionalInstructions: instructions,
-              ...context,
-            })
-          }
-          getAIAssistanceContext={() => ({
-            bookTitle: values.title.ar ?? "",
-            bookDescription: values.description.ar ?? "",
-          })}
+              bookTitle: values.title[lang] ?? "",
+              bookDescription: values.description[lang] ?? "",
+            });
+          }}
           onBusyChange={setLongDescriptionBusy}
         />
 

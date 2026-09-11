@@ -22,6 +22,7 @@ describe("suggestBookLongDescriptionService", () => {
       text: 42,
       bookTitle: "",
       bookDescription: "",
+      language: "ar",
     });
 
     expect(result).toEqual({
@@ -35,6 +36,7 @@ describe("suggestBookLongDescriptionService", () => {
     const result = await suggestBookLongDescriptionService({
       text: "",
       bookDescription: "",
+      language: "ar",
     });
 
     expect(result).toEqual({
@@ -48,12 +50,38 @@ describe("suggestBookLongDescriptionService", () => {
     const result = await suggestBookLongDescriptionService({
       text: "",
       bookTitle: "",
+      language: "ar",
     });
 
     expect(result).toEqual({
       ok: false,
       error: expect.objectContaining({ code: "invalid-input" }),
     });
+    expect(suggestBookLongDescriptionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid-input for a language other than ar/en (PR review: AI Assistance must operate on the active language)", async () => {
+    const missing = await suggestBookLongDescriptionService({
+      text: "",
+      bookTitle: "",
+      bookDescription: "",
+    });
+    expect(missing).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
+
+    const invalid = await suggestBookLongDescriptionService({
+      text: "",
+      bookTitle: "",
+      bookDescription: "",
+      language: "fr",
+    });
+    expect(invalid).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid-input" }),
+    });
+
     expect(suggestBookLongDescriptionMock).not.toHaveBeenCalled();
   });
 
@@ -66,6 +94,7 @@ describe("suggestBookLongDescriptionService", () => {
       text: "",
       bookTitle: "عنوان",
       bookDescription: "وصف",
+      language: "ar",
     });
 
     expect(result).toEqual({
@@ -74,7 +103,7 @@ describe("suggestBookLongDescriptionService", () => {
     });
   });
 
-  it("never loads a Book server-side -- calls the helper directly with the request body's own fields", async () => {
+  it("never loads a Book server-side -- calls the helper directly with the request body's own fields, including language", async () => {
     suggestBookLongDescriptionMock.mockResolvedValueOnce(
       "Suggested long description",
     );
@@ -83,6 +112,7 @@ describe("suggestBookLongDescriptionService", () => {
       text: "وصف طويل حالي",
       bookTitle: "عنوان",
       bookDescription: "وصف",
+      language: "en",
       additionalInstructions: "  Make it shorter  ",
     });
 
@@ -90,6 +120,7 @@ describe("suggestBookLongDescriptionService", () => {
       "وصف طويل حالي",
       "عنوان",
       "وصف",
+      "en",
       "Make it shorter",
     );
     expect(result).toEqual({
@@ -107,6 +138,7 @@ describe("suggestBookLongDescriptionService", () => {
       text: "",
       bookTitle: "",
       bookDescription: "",
+      language: "ar",
       additionalInstructions: "   ",
     });
 
@@ -114,6 +146,7 @@ describe("suggestBookLongDescriptionService", () => {
       "",
       "",
       "",
+      "ar",
       undefined,
     );
   });
@@ -127,6 +160,7 @@ describe("suggestBookLongDescriptionService", () => {
       text: "",
       bookTitle: "",
       bookDescription: "",
+      language: "ar",
     });
 
     expect(result).toEqual({
@@ -143,6 +177,7 @@ describe("suggestBookLongDescriptionService", () => {
         text: "",
         bookTitle: "",
         bookDescription: "",
+        language: "ar",
       }),
     ).rejects.toThrow("boom");
   });
