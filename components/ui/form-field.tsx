@@ -380,9 +380,10 @@ function useFormFieldAssistAction<TContext>({
 // component knowing anything about Books or Modules, and both run through
 // the same shared `/api/v1/ai/*` request shape and Additional Instructions
 // step (AI Assistance only -- Translate with AI has never had one) that the
-// dashboard's existing AI-assisted editing already uses. This task creates
-// the abstraction only; migrating Edit Book/Edit Module's own fields onto it
-// is a separate follow-up (ANA-97).
+// dashboard's existing AI-assisted editing already uses. Edit Book and Edit
+// Module's own Title/Description/(Long )Description/Content fields are
+// migrated onto this component in book-form.tsx and edit-module-modal.tsx
+// (ANA-97).
 export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const {
     label,

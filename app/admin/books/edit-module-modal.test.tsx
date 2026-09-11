@@ -202,7 +202,7 @@ describe("EditModuleModal", () => {
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       fireEvent.click(
         within(dialog).getByRole("button", {
-          name: "Translate title to English",
+          name: "Translate Title with AI",
         }),
       );
 
@@ -237,7 +237,7 @@ describe("EditModuleModal", () => {
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       fireEvent.click(
         within(dialog).getByRole("button", {
-          name: "Translate title to English",
+          name: "Translate Title with AI",
         }),
       );
 
@@ -246,7 +246,7 @@ describe("EditModuleModal", () => {
     });
   });
 
-  describe("AI actions (from ANA-91, still wired through the modal)", () => {
+  describe("AI actions (from ANA-91, now wired through the shared FormField, ANA-97)", () => {
     it("Translate title fills English from Arabic via /api/v1/ai/translate", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Introduction" } }),
@@ -256,7 +256,7 @@ describe("EditModuleModal", () => {
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       fireEvent.click(
         within(dialog).getByRole("button", {
-          name: "Translate title to English",
+          name: "Translate Title with AI",
         }),
       );
 
@@ -279,7 +279,7 @@ describe("EditModuleModal", () => {
       ).toBeInTheDocument();
     });
 
-    it("AI Suggest rewrites the active Description language via /api/v1/ai/assist", async () => {
+    it("AI Assistance rewrites the active Description language via /api/v1/ai/assist", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "وصف محسّن" } }),
       );
@@ -287,11 +287,13 @@ describe("EditModuleModal", () => {
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       fireEvent.click(
-        within(dialog).getByRole("button", { name: "AI Suggest description" }),
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Description",
+        }),
       );
 
       const suggestDialog = await screen.findByRole("dialog", {
-        name: "AI Suggest",
+        name: "AI Assistance",
       });
       fireEvent.click(
         within(suggestDialog).getByRole("button", { name: "Generate" }),

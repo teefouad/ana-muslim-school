@@ -5,9 +5,8 @@ import { SimpleGrid, Stack, TextInput } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
+import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
-import { TranslatableTextArea } from "@/components/ui/translatable-text-area";
-import { TranslatableTextInput } from "@/components/ui/translatable-text-input";
 import type {
   LanguageOption,
   TranslatedValue,
@@ -114,15 +113,17 @@ export function BookForm({
   return (
     <form id={id} onSubmit={handleSubmit}>
       <Stack gap="lg">
-        <TranslatableTextInput
+        <FormField
           label="Title"
+          translatable
           languages={LANGUAGES}
           value={values.title}
           onChange={(title) => setValues((prev) => ({ ...prev, title }))}
         />
 
-        <TranslatableTextInput
+        <FormField
           label="Description"
+          translatable
           languages={LANGUAGES}
           value={values.description}
           onChange={(description) =>
@@ -130,8 +131,10 @@ export function BookForm({
           }
         />
 
-        <TranslatableTextArea
+        <FormField
           label="Long description"
+          type="markdown"
+          translatable
           languages={LANGUAGES}
           value={values.longDescription}
           onChange={(longDescription) =>
