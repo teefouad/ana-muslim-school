@@ -43,7 +43,15 @@ export function toModuleFieldsValues(
   };
 }
 
-function toTranslatableString(value: TranslatedValue): TranslatableString {
+/** Normalizes a `FormField`-shaped `TranslatedValue` (whose `ar`/`en` keys
+ * may be absent for an unfilled draft) into a full `TranslatableString`.
+ * Exported for `edit-module-modal.tsx`'s own AI context builders (ANA-98),
+ * which need the exact same normalization to send a Module's Title/
+ * Description/Content as `{ ar, en }` context to a *different* field's AI
+ * action, not just when building a create/patch request body. */
+export function toTranslatableString(
+  value: TranslatedValue,
+): TranslatableString {
   return { ar: value.ar ?? "", en: value.en ?? "" };
 }
 

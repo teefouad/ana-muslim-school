@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
+import type { Book } from "@/lib/books/types";
 import { EditModuleModal } from "./edit-module-modal";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 
@@ -10,12 +11,28 @@ const FILLED_FIELDS = {
   content: { ar: "# محتوى\nنص تجريبي", en: "# Content\nSample text" },
 };
 
+const BOOK: Book = {
+  id: "book-1",
+  title: { ar: "عنوان الكتاب", en: "Book Title" },
+  description: { ar: "وصف الكتاب", en: "Book Description" },
+  longDescription: { ar: "وصف طويل للكتاب", en: "Book Long Description" },
+  color: "cyan.6",
+  imageId: "img-1",
+  modules: [],
+  isLocked: false,
+  isPublished: false,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+  createdBy: "a@example.com",
+  updatedBy: "a@example.com",
+};
+
 const meta = {
   title: "Books/EditModuleModal",
   component: EditModuleModal,
   tags: ["autodocs"],
   args: {
-    bookId: "book-1",
+    book: BOOK,
     onClose: () => {},
     onCreate: async () => {},
     onSave: async () => {},
