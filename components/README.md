@@ -18,14 +18,14 @@ plus a matching `getAITranslationContext`/`getAIAssistanceContext` builder
 that supplies whatever domain context that call needs (e.g. a Book id, or a
 Module's other fields) -- `FormField` never hard-codes Book- or Module-
 specific context; see edit-module-modal.tsx's Title/Description/Content
-wiring (ANA-98) for the pattern. Every AI action -- Translate with AI
-included (ANA-98) -- runs through the shared Additional Instructions step
-(`ai-instructions-modal.tsx`) before its request is sent; Translate with AI
-also keeps its existing replace-confirmation dialog first when the target
-language already has content, opening Additional Instructions only once
-that's confirmed (or immediately, when there's nothing to overwrite). AI
-Assistance stays enabled on an empty field -- caller context alone may be
-enough to generate a value -- and for `type="markdown"` operates on the
+wiring (ANA-98) for the pattern. AI Assistance runs through the shared
+Additional Instructions step (`ai-instructions-modal.tsx`); Translate with
+AI is a deliberate exception and runs directly (ANA-98: it only ever
+transforms the whole Arabic value into English, never something an editor
+needs to redirect with free-form guidance), preserving the existing
+replace-confirmation dialog when the target language already has content.
+AI Assistance stays enabled on an empty field -- caller context alone may
+be enough to generate a value -- and for `type="markdown"` operates on the
 editor's current selection when there is one, replacing only that range,
 falling back to the whole value otherwise. Both actions share the same
 busy/disabled/error handling; `onBusyChange` lets a caller managing several

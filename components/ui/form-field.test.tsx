@@ -372,7 +372,7 @@ describe("FormField", () => {
   });
 
   describe("Translate with AI flow", () => {
-    it("opens Additional Instructions immediately when English is empty, and sends the trimmed instructions once Generate is clicked", async () => {
+    it("translates immediately when English is empty, without opening Additional Instructions (ANA-98)", async () => {
       const onChange = vi.fn();
       const getContext = vi.fn().mockReturnValue({ bookId: "book-1" });
       const onAiTranslate = vi.fn().mockResolvedValue("Description");
@@ -393,63 +393,23 @@ describe("FormField", () => {
         screen.getByRole("button", { name: "Translate Description with AI" }),
       );
 
-      const dialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      expect(onAiTranslate).not.toHaveBeenCalled();
-
-      fireEvent.change(
-        within(dialog).getByLabelText(
-          "Additional instructions or context (optional)",
-        ),
-        { target: { value: "Keep it formal" } },
-      );
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
-
       expect(getContext).toHaveBeenCalledTimes(1);
       await vi.waitFor(() =>
         expect(onAiTranslate).toHaveBeenCalledWith({
           text: "وصف",
           language: "ar",
-          instructions: "Keep it formal",
           context: { bookId: "book-1" },
         }),
       );
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({ ar: "وصف", en: "Description" }),
       );
+      expect(
+        screen.queryByRole("dialog", { name: "Translate with AI" }),
+      ).not.toBeInTheDocument();
     });
 
-    it("passes undefined instructions when the Additional Instructions field is left blank", async () => {
-      const onAiTranslate = vi.fn().mockResolvedValue("Description");
-
-      renderWithProvider(
-        <FormField
-          label="Description"
-          translatable
-          value={{ ar: "وصف", en: "" }}
-          onChange={vi.fn()}
-          aiTranslation
-          onAiTranslate={onAiTranslate}
-        />,
-      );
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
-
-      await vi.waitFor(() =>
-        expect(onAiTranslate).toHaveBeenCalledWith(
-          expect.objectContaining({ instructions: undefined }),
-        ),
-      );
-    });
-
-    it("confirms before overwriting a non-empty English value, then still opens Additional Instructions", async () => {
+    it("confirms before overwriting a non-empty English value", async () => {
       const onChange = vi.fn();
       const onAiTranslate = vi.fn().mockResolvedValue("New description");
 
@@ -477,12 +437,6 @@ describe("FormField", () => {
           name: "Translate and replace",
         }),
       );
-
-      const dialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      expect(onAiTranslate).not.toHaveBeenCalled();
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
 
       await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
       await vi.waitFor(() =>
@@ -516,34 +470,6 @@ describe("FormField", () => {
       fireEvent.click(
         within(confirmDialog).getByRole("button", { name: "Cancel" }),
       );
-
-      expect(
-        screen.queryByRole("dialog", { name: "Translate with AI" }),
-      ).not.toBeInTheDocument();
-      expect(onAiTranslate).not.toHaveBeenCalled();
-    });
-
-    it("does not translate when cancelling Additional Instructions", async () => {
-      const onAiTranslate = vi.fn().mockResolvedValue("Description");
-
-      renderWithProvider(
-        <FormField
-          label="Description"
-          translatable
-          value={{ ar: "وصف", en: "" }}
-          onChange={vi.fn()}
-          aiTranslation
-          onAiTranslate={onAiTranslate}
-        />,
-      );
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
       expect(onAiTranslate).not.toHaveBeenCalled();
     });
@@ -694,10 +620,6 @@ describe("FormField", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Translate Title with AI" }),
       );
-      const dialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
 
       expect(
         await screen.findByText("Translation failed."),

@@ -39,8 +39,8 @@ export interface FormFieldAiActionArgs<TContext> {
   /** The active language slug, when this field is translatable. */
   language?: string;
   /** The Additional Instructions step's trimmed input, or `undefined` when
-   * left blank. Every AI action -- Translate with AI included -- goes
-   * through this same step before its request is sent (ANA-98). */
+   * left blank. Always `undefined` for Translate with AI, which has no
+   * Additional Instructions step (ANA-98). */
   instructions?: string;
   /** Whatever this field's own `getAITranslationContext`/
    * `getAIAssistanceContext` returned for this action. */
@@ -180,19 +180,18 @@ function useFormFieldTranslateAction<TContext>({
   getContext?: () => TContext;
   onBusyChange?: (busy: boolean) => void;
 }) {
-  // Overwriting a non-empty English value is destructive, so it gets its
-  // own confirmation step first (unchanged from before ANA-98); Additional
-  // Instructions (`open`) always follows it -- immediately when English was
-  // already empty, or once the overwrite is confirmed otherwise. Every AI
-  // action, Translate with AI included, goes through Additional
-  // Instructions before its request is sent (ANA-98's shared AI flow) --
-  // this was previously the one AI action without that step.
+  // Translate with AI deliberately runs directly, with no Additional
+  // Instructions step (ANA-98 -- unlike AI Assistance, which always shows
+  // one): it only ever transforms the whole Arabic value into English,
+  // never something an editor needs to redirect with free-form guidance.
+  // The one confirmation it does show guards against something else
+  // entirely -- overwriting a non-empty English value -- and is preserved
+  // unchanged.
   const [confirming, setConfirming] = useState(false);
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(instructions: string | undefined) {
+  async function run() {
     if (!onAiTranslate) return;
 
     setLoading(true);
@@ -203,7 +202,6 @@ function useFormFieldTranslateAction<TContext>({
       const en = await onAiTranslate({
         text: value.ar ?? "",
         language: "ar",
-        instructions,
         context: getContext ? getContext() : (undefined as TContext),
       });
       onChange({ ...value, en });
@@ -220,12 +218,7 @@ function useFormFieldTranslateAction<TContext>({
       setConfirming(true);
       return;
     }
-    setOpen(true);
-  }
-
-  function handleGenerate(instructions: string | undefined) {
-    setOpen(false);
-    void run(instructions);
+    void run();
   }
 
   return {
@@ -238,33 +231,20 @@ function useFormFieldTranslateAction<TContext>({
       !onAiTranslate ||
       !(value.ar ?? "").trim(),
     handleClick,
-    dialog: (
-      <>
-        {confirming && (
-          <ConfirmDialog
-            opened
-            title="Replace English translation?"
-            description="Translating again will replace the current English text."
-            confirmLabel="Translate and replace"
-            cancelLabel="Cancel"
-            onCancel={() => setConfirming(false)}
-            onConfirm={() => {
-              setConfirming(false);
-              setOpen(true);
-            }}
-          />
-        )}
-        {open && (
-          <AiInstructionsModal
-            opened
-            title="Translate with AI"
-            description="The AI will translate the Arabic text to English."
-            onCancel={() => setOpen(false)}
-            onGenerate={handleGenerate}
-          />
-        )}
-      </>
-    ),
+    dialog: confirming ? (
+      <ConfirmDialog
+        opened
+        title="Replace English translation?"
+        description="Translating again will replace the current English text."
+        confirmLabel="Translate and replace"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          void run();
+        }}
+      />
+    ) : null,
   };
 }
 
@@ -406,14 +386,12 @@ function useFormFieldAssistAction<TContext>({
 // (`getAITranslationContext`/`getAIAssistanceContext`) rather than this
 // component knowing anything about Books or Modules, and both run through
 // the same shared `/api/v1/ai/*` request shape and Additional Instructions
-// step that the dashboard's existing AI-assisted editing already uses --
-// every AI action, Translate with AI included, opens Additional
-// Instructions before its request is sent (ANA-98; Translate with AI had
-// no such step before that). Edit Book and Edit Module's own Title/
-// Description/(Long )Description/Content fields are migrated onto this
-// component in book-form.tsx and edit-module-modal.tsx (ANA-97), with
-// Edit Module's fields wired to their full Book/Module AI context in
-// ANA-98.
+// step (AI Assistance only -- Translate with AI runs directly, by design,
+// ANA-98) that the dashboard's existing AI-assisted editing already uses.
+// Edit Book and Edit Module's own Title/Description/(Long )Description/
+// Content fields are migrated onto this component in book-form.tsx and
+// edit-module-modal.tsx (ANA-97), with Edit Module's fields wired to their
+// full Book/Module AI context in ANA-98.
 export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const {
     label,

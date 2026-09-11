@@ -228,12 +228,6 @@ describe("EditModuleModal", () => {
           name: "Translate Title with AI",
         }),
       );
-      const instructionsDialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(
-        within(instructionsDialog).getByRole("button", { name: "Generate" }),
-      );
 
       await vi.waitFor(() => {
         expect(within(dialog).getByLabelText("Title")).toBeDisabled();
@@ -269,12 +263,6 @@ describe("EditModuleModal", () => {
           name: "Translate Title with AI",
         }),
       );
-      const instructionsDialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(
-        within(instructionsDialog).getByRole("button", { name: "Generate" }),
-      );
 
       await within(dialog).findByText("Something went wrong.");
       expect(within(dialog).getByLabelText("Title")).not.toBeDisabled();
@@ -304,8 +292,25 @@ describe("EditModuleModal", () => {
     });
   });
 
-  describe("Every AI action opens Additional Instructions before sending its request (ANA-98)", () => {
-    it("never calls fetch until Generate is clicked, for both Translate with AI and AI Assistance", async () => {
+  describe("AI Assistance opens Additional Instructions; Translate with AI runs directly (ANA-98)", () => {
+    it("never calls fetch until Generate is clicked, for AI Assistance", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Result" } }),
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "AI Assistance for Title",
+        }),
+      );
+      await screen.findByRole("dialog", { name: "AI Assistance" });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("calls fetch immediately for Translate with AI, without ever showing Additional Instructions", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Result" } }),
       );
@@ -318,21 +323,11 @@ describe("EditModuleModal", () => {
           name: "Translate Title with AI",
         }),
       );
-      await screen.findByRole("dialog", { name: "Translate with AI" });
-      expect(fetch).not.toHaveBeenCalled();
-      fireEvent.click(
-        within(
-          screen.getByRole("dialog", { name: "Translate with AI" }),
-        ).getByRole("button", { name: "Cancel" }),
-      );
 
-      fireEvent.click(
-        within(dialog).getByRole("button", {
-          name: "AI Assistance for Title",
-        }),
-      );
-      await screen.findByRole("dialog", { name: "AI Assistance" });
-      expect(fetch).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(
+        screen.queryByRole("dialog", { name: "Translate with AI" }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -379,13 +374,6 @@ describe("EditModuleModal", () => {
           name: "Translate Title with AI",
         }),
       );
-      const instructionsDialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(
-        within(instructionsDialog).getByRole("button", { name: "Generate" }),
-      );
-
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
@@ -460,13 +448,6 @@ describe("EditModuleModal", () => {
           name: "Translate Description with AI",
         }),
       );
-      const instructionsDialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(
-        within(instructionsDialog).getByRole("button", { name: "Generate" }),
-      );
-
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
@@ -564,13 +545,6 @@ describe("EditModuleModal", () => {
           name: "Translate Content with AI",
         }),
       );
-      const instructionsDialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.click(
-        within(instructionsDialog).getByRole("button", { name: "Generate" }),
-      );
-
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
@@ -606,7 +580,7 @@ describe("EditModuleModal", () => {
     });
   });
 
-  describe("Additional Instructions are forwarded to the AI request (ANA-98)", () => {
+  describe("Additional Instructions (ANA-98)", () => {
     it("includes the trimmed Additional Instructions text in the AI Assistance request", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Suggested title" } }),
@@ -636,7 +610,7 @@ describe("EditModuleModal", () => {
       });
     });
 
-    it("includes the trimmed Additional Instructions text in the Translate with AI request", async () => {
+    it("never opens Additional Instructions for Translate with AI, and never sends additionalInstructions", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Introduction" } }),
       );
@@ -648,23 +622,12 @@ describe("EditModuleModal", () => {
           name: "Translate Title with AI",
         }),
       );
-      const instructionsDialog = await screen.findByRole("dialog", {
-        name: "Translate with AI",
-      });
-      fireEvent.change(
-        within(instructionsDialog).getByLabelText(
-          "Additional instructions or context (optional)",
-        ),
-        { target: { value: "Formal tone" } },
-      );
-      fireEvent.click(
-        within(instructionsDialog).getByRole("button", { name: "Generate" }),
-      );
 
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
-      expect(lastRequestBody()).toMatchObject({
-        additionalInstructions: "Formal tone",
-      });
+      expect(
+        screen.queryByRole("dialog", { name: "Translate with AI" }),
+      ).not.toBeInTheDocument();
+      expect(lastRequestBody()).not.toHaveProperty("additionalInstructions");
     });
   });
 });
