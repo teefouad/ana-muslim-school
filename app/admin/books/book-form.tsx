@@ -232,7 +232,6 @@ export function BookForm({
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
           <ToggleCard
             label="Locked"
-            description="App users can't open locked books."
             variant="error"
             checked={values.isLocked}
             onChange={(isLocked) =>
@@ -242,7 +241,6 @@ export function BookForm({
           />
           <ToggleCard
             label="Published"
-            description="Only published books are visible in the app."
             variant="primary"
             checked={values.isPublished}
             onChange={(isPublished) =>

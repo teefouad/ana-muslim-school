@@ -1,8 +1,8 @@
 "use client";
 
 import { forwardRef } from "react";
-import dynamic from "next/dynamic";
 
+import MarkdownEditorCore from "./markdown-editor-core";
 import type { MarkdownEditorCoreProps } from "./markdown-editor-core";
 import type { MarkdownEditorHandle } from "./markdown-editor-types";
 
@@ -16,9 +16,9 @@ export type {
 // client-only/dynamic-import pattern, `ssr: false`) -- callers can use
 // `MarkdownEditor` like any other component without knowing about that
 // constraint.
-const MarkdownEditorCore = dynamic(() => import("./markdown-editor-core"), {
-  ssr: false,
-});
+// const MarkdownEditorCore = dynamic(() => import("./markdown-editor-core"), {
+//   ssr: false,
+// });
 
 export type MarkdownEditorProps = Omit<MarkdownEditorCoreProps, "handleRef">;
 

@@ -14,16 +14,17 @@
   transition: background-color 150ms ease;
 }
 
-/* Enabled/active state: no more Mantine's default blue-tinted hover
-   background -- a 30% transparent white background instead, both at rest
-   and while hovered/focused, so hovering never flashes blue underneath. */
-.actionButton:where(:not(:disabled, [data-disabled])) {
-  background-color: rgba(255, 255, 255, 0.3);
+.actionButton :global(.mantine-ActionIcon-icon) {
+  transition-duration: 0ms !important;
+}
+
+.actionButton :global(.mantine-ActionIcon-loader) {
+  transition-duration: 0ms !important;
 }
 
 @media (hover: hover) {
   .actionButton:hover:where(:not(:disabled, [data-disabled])) {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.1);
   }
 }
 

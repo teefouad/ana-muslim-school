@@ -33,7 +33,7 @@ export function ColorField({
         value={value}
         onChange={onChange}
         disabled={disabled}
-        style={{ flex: "0 0 100px" }}
+        style={{ flex: "0 0 140px" }}
       />
       <div
         style={{
