@@ -1,0 +1,33 @@
+.navLinkTitleRoot {
+  color: var(--mantine-color-dimmed);
+}
+
+.navLinkTitleRoot:hover {
+  color: var(--mantine-color-text);
+  background-color: transparent;
+}
+
+.navLinkTitleLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  transition: color 150ms ease;
+}
+
+.navLinkRoot {
+  border-radius: 8px;
+}
+
+.navLinkRoot:not([data-active="true"]) {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.navLinkRoot:hover:not([data-active="true"]) {
+  color: var(--mantine-color-text);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.navLinkLabel {
+  font-weight: 500;
+  transition: color 150ms ease;
+}

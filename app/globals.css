@@ -3,6 +3,11 @@
 :root {
   --background: #ffffff;
   --foreground: #0a0a0a;
+  --mantine-primary-color-filled: #059669;
+  --mantine-primary-color-filled-hover: #047857;
+  --mantine-primary-color-filled-active: #065f46;
+  --mantine-primary-color-light: #059669;
+  --mantine-primary-color-light-hover: #0aaa78;
 }
 
 @theme inline {

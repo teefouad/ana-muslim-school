@@ -18,6 +18,8 @@ import { UserCircle } from "lucide-react";
 import { SignOutButton } from "../sign-out-button";
 import { NAV_GROUPS, type NavAccess } from "./nav-config";
 
+import classes from "./dashboard-shell.module.css";
+
 type DashboardShellProps = {
   children: ReactNode;
   userEmail: string;
@@ -84,6 +86,10 @@ export function DashboardShell({
             label={group.label}
             defaultOpened
             childrenOffset={0}
+            classNames={{
+              root: classes.navLinkTitleRoot,
+              label: classes.navLinkTitleLabel,
+            }}
           >
             {group.items.map((item) => {
               const Icon = item.icon;
@@ -96,6 +102,10 @@ export function DashboardShell({
                   label={item.label}
                   leftSection={<Icon size={16} />}
                   active={pathname === item.href}
+                  classNames={{
+                    root: classes.navLinkRoot,
+                    label: classes.navLinkLabel,
+                  }}
                 />
               );
             })}

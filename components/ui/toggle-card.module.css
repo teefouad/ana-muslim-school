@@ -22,11 +22,11 @@
 
 .checkedPrimary {
   border-color: var(--mantine-primary-color-filled);
-  background-color: var(--mantine-primary-color-light);
+  background-color: rgba(from var(--mantine-primary-color-filled) r g b / 0.15);
 }
 
 .checkedPrimary:hover {
-  background-color: var(--mantine-primary-color-light-hover);
+  background-color: rgba(from var(--mantine-primary-color-filled) r g b / 0.2);
 }
 
 .checkedError {
