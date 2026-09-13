@@ -89,6 +89,7 @@ export function DashboardShell({
             classNames={{
               root: classes.navLinkTitleRoot,
               label: classes.navLinkTitleLabel,
+              collapse: classes.navLinkTitleCollapse,
             }}
           >
             {group.items.map((item) => {
