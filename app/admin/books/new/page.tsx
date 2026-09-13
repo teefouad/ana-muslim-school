@@ -71,10 +71,10 @@ export default function AddBookPage() {
   return (
     <Stack gap="xl" p="xl">
       <Group justify="space-between" wrap="wrap" gap="sm">
-        <Title order={2}>Add Book</Title>
+        <Title order={2}>New Book</Title>
         <Group gap="sm">
           <Button type="submit" form={BOOK_FORM_ID} loading={isSubmitting}>
-            Add book
+            Create book
           </Button>
         </Group>
       </Group>

@@ -11,7 +11,7 @@ export default function BooksPage() {
       <Group justify="space-between">
         <Title order={2}>Books</Title>
         <Button component={Link} href="/admin/books/new">
-          Add Book
+          New Book
         </Button>
       </Group>
       <Divider opacity={0.25} mx={-27} />
