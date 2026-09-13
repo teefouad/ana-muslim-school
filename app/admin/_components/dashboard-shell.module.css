@@ -1,5 +1,23 @@
 .navLinkTitleRoot {
+  position: relative;
   color: var(--mantine-color-dimmed);
+}
+
+.navLinkTitleCollapse[aria-hidden="false"] {
+  margin-bottom: 5px;
+}
+
+:global(.mantine-NavLink-collapse) + .navLinkTitleRoot {
+  margin-top: 10px;
+}
+
+:global(.mantine-NavLink-collapse) + .navLinkTitleRoot:before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 10px;
+  right: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.025);
 }
 
 .navLinkTitleRoot:hover {
@@ -18,12 +36,16 @@
   border-radius: 8px;
 }
 
+.navLinkRoot[data-active="true"] {
+  background: rgba(255, 255, 255, 0.025);
+}
+
 .navLinkRoot:not([data-active="true"]) {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.navLinkRoot:hover:not([data-active="true"]) {
-  color: var(--mantine-color-text);
+.navLinkRoot:hover {
+  color: #fff;
   background-color: rgba(255, 255, 255, 0.05);
 }
 
