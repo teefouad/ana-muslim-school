@@ -1,8 +1,11 @@
 "use client";
 
-import { Autocomplete, Group } from "@mantine/core";
+import { Autocomplete, ColorSwatch, Group } from "@mantine/core";
 
-import { APPLICATION_COLOR_TOKENS } from "./application-colors";
+import {
+  APPLICATION_COLOR_TOKENS,
+  resolveApplicationColor,
+} from "./application-colors";
 import { ColorSwatchPicker } from "./color-swatch-picker";
 
 export interface ColorFieldProps {
@@ -19,6 +22,13 @@ export interface ColorFieldProps {
 // pairing. Each instance is fully controlled and owns no state of its own,
 // so two instances on the same page (e.g. a Book form and a Module modal)
 // never share or clash over a value.
+//
+// The ColorSwatch between the Autocomplete and the picker grid (ANA-106) is
+// a live preview of `value`, resolved through `resolveApplicationColor` so a
+// named token (e.g. "pink.6") and a free-form value (e.g. a typed hex) both
+// paint correctly. It's purely decorative (`aria-hidden`) -- the Autocomplete
+// already exposes the value as text -- so it carries no independent
+// interaction or disabled state of its own to preserve.
 export function ColorField({
   label = "Color",
   value,
@@ -26,7 +36,7 @@ export function ColorField({
   disabled,
 }: ColorFieldProps) {
   return (
-    <Group style={{ alignItems: "flex-end" }}>
+    <Group style={{ position: "relative", alignItems: "flex-end" }}>
       <Autocomplete
         label={label}
         data={APPLICATION_COLOR_TOKENS}
@@ -34,6 +44,20 @@ export function ColorField({
         onChange={onChange}
         disabled={disabled}
         style={{ flex: "0 0 140px" }}
+      />
+      <ColorSwatch
+        color={resolveApplicationColor(value)}
+        size={24}
+        withShadow={false}
+        title={value}
+        aria-hidden="true"
+        data-testid="color-field-preview"
+        radius={5}
+        style={{
+          position: "absolute",
+          bottom: 6,
+          left: 110,
+        }}
       />
       <div
         style={{

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { describe, expect, it, vi } from "vitest";
@@ -11,6 +12,17 @@ function renderField(
     <MantineProvider>
       <ColorField value="pink.6" onChange={vi.fn()} {...overrides} />
     </MantineProvider>,
+  );
+}
+
+// Mantine's ColorSwatch paints `color` onto an inner overlay span (a stable
+// Styles API class), not onto the `data-testid` root element itself.
+function getPreviewColor(): string | null {
+  return (
+    screen
+      .getByTestId("color-field-preview")
+      .querySelector<HTMLElement>(".mantine-ColorSwatch-colorOverlay")?.style
+      .backgroundColor ?? null
   );
 }
 
@@ -75,6 +87,42 @@ describe("ColorField", () => {
     expect(screen.getByRole("combobox", { name: "Color" })).toBeDisabled();
     fireEvent.click(screen.getByRole("radio", { name: "Cyan" }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("renders a preview circle showing the current color, resolved from its token (ANA-106)", () => {
+    renderField({ value: "cyan.6" });
+
+    expect(getPreviewColor()).toBe("rgb(21, 170, 191)");
+  });
+
+  it("resolves a free-form value the same way the swatch picker would (ANA-106)", () => {
+    renderField({ value: "#1c7ed6ff" });
+
+    expect(getPreviewColor()).toBe("rgb(28, 126, 214)");
+  });
+
+  it("updates the preview immediately when a swatch selection changes the color (ANA-106)", () => {
+    function ControlledField() {
+      const [value, setValue] = useState("blue.6");
+      return <ColorField value={value} onChange={setValue} />;
+    }
+    render(
+      <MantineProvider>
+        <ControlledField />
+      </MantineProvider>,
+    );
+
+    expect(getPreviewColor()).toBe("rgb(34, 139, 230)");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Cyan" }));
+
+    expect(getPreviewColor()).toBe("rgb(21, 170, 191)");
+  });
+
+  it("keeps showing the current color in the preview when disabled (ANA-106)", () => {
+    renderField({ value: "teal.6", disabled: true });
+
+    expect(getPreviewColor()).toBe("rgb(18, 184, 134)");
   });
 
   it("keeps two instances' values fully independent", () => {
