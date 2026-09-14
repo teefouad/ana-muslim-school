@@ -25,6 +25,33 @@ beforeEach(() => {
 });
 
 describe("ApiPlayground", () => {
+  it("renders the configuration form and the response area side by side, with a placeholder before any response", () => {
+    renderWithProvider(<ApiPlayground />);
+
+    expect(screen.getByLabelText("Method")).toBeInTheDocument();
+    expect(
+      screen.getByText("API response will appear here."),
+    ).toBeInTheDocument();
+  });
+
+  it("replaces the placeholder with the API result once a response is received", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+
+    renderWithProvider(<ApiPlayground />);
+    expect(
+      screen.getByText("API response will appear here."),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send request" }));
+
+    expect(await screen.findByText("200")).toBeInTheDocument();
+    expect(
+      screen.queryByText("API response will appear here."),
+    ).not.toBeInTheDocument();
+  });
+
   it("defaults to the first registered endpoint with no request body editor", () => {
     renderWithProvider(<ApiPlayground />);
 

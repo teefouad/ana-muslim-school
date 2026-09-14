@@ -8,6 +8,7 @@ import {
   Box,
   Button,
   Code,
+  Flex,
   Group,
   NativeSelect,
   Paper,
@@ -209,205 +210,229 @@ export function ApiPlayground() {
   }
 
   return (
-    <Stack gap="lg">
-      <Paper withBorder p="md">
-        <Stack gap="md">
-          <Group align="flex-end" gap="xs">
-            <NativeSelect
-              label="Method"
-              data={methodOptions}
-              value={method}
-              onChange={(event) =>
-                handleMethodChange(event.currentTarget.value as HttpMethod)
-              }
-              disabled={loading}
-              w={100}
-            />
-            <Text
-              size="sm"
-              c="dimmed"
-              pb={8}
-              style={{ fontFamily: "monospace" }}
-            >
-              {API_BASE_PATH}
-            </Text>
-            <NativeSelect
-              label="Resource"
-              data={resourceOptions}
-              value={resourcePath}
-              onChange={(event) =>
-                handleResourceChange(event.currentTarget.value)
-              }
-              disabled={loading}
-              flex={1}
-            />
-          </Group>
-
-          {endpoint && (
-            <Group gap={6}>
-              <Text size="sm" c="dimmed">
-                Authentication:
-              </Text>
-              <Badge
-                color={endpoint.authRequired ? "yellow" : "gray"}
-                variant="light"
-                size="sm"
-              >
-                {endpoint.authRequired ? "Required" : "Not required"}
-              </Badge>
-            </Group>
-          )}
-
-          {endpoint && endpoint.pathParams.length > 0 && (
-            <Group grow>
-              {endpoint.pathParams.map((param) => (
-                <TextInput
-                  key={param}
-                  label={`Path parameter: ${param}`}
-                  value={pathParamValues[param] ?? ""}
-                  onChange={(event) =>
-                    handlePathParamChange(param, event.currentTarget.value)
-                  }
-                  required
-                />
-              ))}
-            </Group>
-          )}
-
-          {endpoint && endpoint.queryParams.length > 0 && (
-            <Group grow>
-              {endpoint.queryParams.map((param) => (
-                <TextInput
-                  key={param}
-                  label={`Query parameter: ${param}`}
-                  description="Optional"
-                  value={queryParamValues[param] ?? ""}
-                  onChange={(event) =>
-                    handleQueryParamChange(param, event.currentTarget.value)
-                  }
-                />
-              ))}
-            </Group>
-          )}
-
-          {endpoint && (
-            <Text size="sm" c="dimmed">
-              Request URL:{" "}
-              <Code>
-                {endpoint.method}{" "}
-                {buildRequestUrl(endpoint, pathParamValues, queryParamValues)}
-              </Code>
-            </Text>
-          )}
-
-          <Switch
-            label="Include authentication"
-            description={
-              authEnabled
-                ? "Sends the request using your current dashboard session."
-                : "Sends the request without your dashboard session, to test unauthenticated behavior."
-            }
-            checked={authEnabled}
-            onChange={(event) => setAuthEnabled(event.currentTarget.checked)}
-          />
-
-          {endpoint?.acceptsBody ? (
-            <Textarea
-              label="Request body (JSON)"
-              value={bodyText}
-              onChange={(event) => {
-                setBodyText(event.currentTarget.value);
-                setBodyError(null);
-              }}
-              error={bodyError}
-              minRows={8}
-              styles={{ input: { fontFamily: "monospace" } }}
-            />
-          ) : (
-            endpoint && (
-              <Text size="sm" c="dimmed">
-                This endpoint does not accept a request body.
-              </Text>
-            )
-          )}
-
-          {requestError && <Alert color="red">{requestError}</Alert>}
-
-          <Group justify="flex-end">
-            <Button onClick={handleSend} loading={loading} disabled={!endpoint}>
-              Send request
-            </Button>
-          </Group>
-        </Stack>
-      </Paper>
-
-      {response && (
+    <Flex gap="xl" direction={{ base: "column", md: "row" }} align="stretch">
+      <Box style={{ flex: 1, minWidth: 0 }}>
         <Paper withBorder p="md">
-          <Stack gap="sm">
-            <Group justify="space-between">
-              <Group gap="sm">
-                <Badge
-                  color={isSuccessStatus(response.status) ? "green" : "red"}
-                >
-                  {response.status}
-                </Badge>
-                <Text fw={500}>{response.statusText}</Text>
-              </Group>
-              <Group gap={4}>
-                <Tooltip label="Expand all">
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label="Expand all"
-                    disabled={response.json === undefined}
-                    onClick={() => {
-                      setTreeExpanded(true);
-                      setTreeVersion((version) => version + 1);
-                    }}
-                  >
-                    <ChevronsUpDown size={16} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label="Collapse all">
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label="Collapse all"
-                    disabled={response.json === undefined}
-                    onClick={() => {
-                      setTreeExpanded(false);
-                      setTreeVersion((version) => version + 1);
-                    }}
-                  >
-                    <ChevronsDownUp size={16} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label={copied ? "Copied!" : "Copy response"}>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label="Copy response"
-                    onClick={handleCopy}
-                  >
-                    {copied ? <Check size={16} /> : <Copy size={16} />}
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
+          <Stack gap="md">
+            <Group align="flex-end" gap="xs">
+              <NativeSelect
+                label="Method"
+                data={methodOptions}
+                value={method}
+                onChange={(event) =>
+                  handleMethodChange(event.currentTarget.value as HttpMethod)
+                }
+                disabled={loading}
+                w={100}
+              />
+              <Text
+                size="sm"
+                c="dimmed"
+                pb={8}
+                style={{ fontFamily: "monospace" }}
+              >
+                {API_BASE_PATH}
+              </Text>
+              <NativeSelect
+                label="Resource"
+                data={resourceOptions}
+                value={resourcePath}
+                onChange={(event) =>
+                  handleResourceChange(event.currentTarget.value)
+                }
+                disabled={loading}
+                flex={1}
+              />
             </Group>
-            <Box style={{ maxHeight: 480, overflow: "auto" }}>
-              {response.json !== undefined ? (
-                <JsonTreeView
-                  key={treeVersion}
-                  src={response.json}
-                  name={false}
-                  theme="monokai"
-                  displayDataTypes={false}
-                  collapsed={!treeExpanded}
-                />
-              ) : (
-                <Code block>{response.raw}</Code>
-              )}
-            </Box>
+
+            {endpoint && (
+              <Group gap={6}>
+                <Text size="sm" c="dimmed">
+                  Authentication:
+                </Text>
+                <Badge
+                  color={endpoint.authRequired ? "yellow" : "gray"}
+                  variant="light"
+                  size="sm"
+                >
+                  {endpoint.authRequired ? "Required" : "Not required"}
+                </Badge>
+              </Group>
+            )}
+
+            {endpoint && endpoint.pathParams.length > 0 && (
+              <Group grow>
+                {endpoint.pathParams.map((param) => (
+                  <TextInput
+                    key={param}
+                    label={`Path parameter: ${param}`}
+                    value={pathParamValues[param] ?? ""}
+                    onChange={(event) =>
+                      handlePathParamChange(param, event.currentTarget.value)
+                    }
+                    required
+                  />
+                ))}
+              </Group>
+            )}
+
+            {endpoint && endpoint.queryParams.length > 0 && (
+              <Group grow>
+                {endpoint.queryParams.map((param) => (
+                  <TextInput
+                    key={param}
+                    label={`Query parameter: ${param}`}
+                    description="Optional"
+                    value={queryParamValues[param] ?? ""}
+                    onChange={(event) =>
+                      handleQueryParamChange(param, event.currentTarget.value)
+                    }
+                  />
+                ))}
+              </Group>
+            )}
+
+            {endpoint && (
+              <Text size="sm" c="dimmed">
+                Request URL:{" "}
+                <Code>
+                  {endpoint.method}{" "}
+                  {buildRequestUrl(endpoint, pathParamValues, queryParamValues)}
+                </Code>
+              </Text>
+            )}
+
+            <Switch
+              label="Include authentication"
+              description={
+                authEnabled
+                  ? "Sends the request using your current dashboard session."
+                  : "Sends the request without your dashboard session, to test unauthenticated behavior."
+              }
+              checked={authEnabled}
+              onChange={(event) => setAuthEnabled(event.currentTarget.checked)}
+            />
+
+            {endpoint?.acceptsBody ? (
+              <Textarea
+                label="Request body (JSON)"
+                value={bodyText}
+                onChange={(event) => {
+                  setBodyText(event.currentTarget.value);
+                  setBodyError(null);
+                }}
+                error={bodyError}
+                minRows={8}
+                styles={{ input: { fontFamily: "monospace" } }}
+              />
+            ) : (
+              endpoint && (
+                <Text size="sm" c="dimmed">
+                  This endpoint does not accept a request body.
+                </Text>
+              )
+            )}
+
+            {requestError && <Alert color="red">{requestError}</Alert>}
+
+            <Group justify="flex-end">
+              <Button
+                onClick={handleSend}
+                loading={loading}
+                disabled={!endpoint}
+              >
+                Send request
+              </Button>
+            </Group>
           </Stack>
         </Paper>
-      )}
-    </Stack>
+      </Box>
+
+      <Box style={{ flex: 1, minWidth: 0 }}>
+        {response ? (
+          <Paper withBorder p="md">
+            <Stack gap="sm">
+              <Group justify="space-between">
+                <Group gap="sm">
+                  <Badge
+                    color={isSuccessStatus(response.status) ? "green" : "red"}
+                  >
+                    {response.status}
+                  </Badge>
+                  <Text fw={500}>{response.statusText}</Text>
+                </Group>
+                <Group gap={4}>
+                  <Tooltip label="Expand all">
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label="Expand all"
+                      disabled={response.json === undefined}
+                      onClick={() => {
+                        setTreeExpanded(true);
+                        setTreeVersion((version) => version + 1);
+                      }}
+                    >
+                      <ChevronsUpDown size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Collapse all">
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label="Collapse all"
+                      disabled={response.json === undefined}
+                      onClick={() => {
+                        setTreeExpanded(false);
+                        setTreeVersion((version) => version + 1);
+                      }}
+                    >
+                      <ChevronsDownUp size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label={copied ? "Copied!" : "Copy response"}>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label="Copy response"
+                      onClick={handleCopy}
+                    >
+                      {copied ? <Check size={16} /> : <Copy size={16} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              </Group>
+              <Box style={{ maxHeight: 480, overflow: "auto" }}>
+                {response.json !== undefined ? (
+                  <JsonTreeView
+                    key={treeVersion}
+                    src={response.json}
+                    name={false}
+                    theme="monokai"
+                    displayDataTypes={false}
+                    collapsed={!treeExpanded}
+                  />
+                ) : (
+                  <Code block>{response.raw}</Code>
+                )}
+              </Box>
+            </Stack>
+          </Paper>
+        ) : (
+          <Box
+            style={{
+              height: "100%",
+              minHeight: 200,
+              border: "1px dashed var(--mantine-color-default-border)",
+              borderRadius: "var(--mantine-radius-sm)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text size="sm" c="dimmed">
+              API response will appear here.
+            </Text>
+          </Box>
+        )}
+      </Box>
+    </Flex>
   );
 }
