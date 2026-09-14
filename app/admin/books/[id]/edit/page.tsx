@@ -127,25 +127,25 @@ function ModulesPanelSkeleton() {
 function BookFormSkeleton() {
   return (
     <Stack gap="lg" role="status" aria-label="Loading book">
-      <Stack gap={6} aria-hidden="true">
-        <Skeleton height={12} width={60} />
-        <Skeleton height={38} />
+      <Stack mt={15} gap={6} aria-hidden="true">
+        <Skeleton height={18} width={40} radius={5} />
+        <Skeleton height={36} />
       </Stack>
-      <Stack gap={6} aria-hidden="true">
-        <Skeleton height={12} width={110} />
-        <Skeleton height={84} />
+      <Stack mt={14} gap={6} aria-hidden="true">
+        <Skeleton height={18} width={80} radius={5} />
+        <Skeleton height={36} />
       </Stack>
-      <Stack gap={6} aria-hidden="true">
-        <Skeleton height={12} width={150} />
-        <Skeleton height={160} />
+      <Stack mt={15} gap={6} aria-hidden="true">
+        <Skeleton height={18} width={120} radius={5} />
+        <Skeleton height={180} />
       </Stack>
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" aria-hidden="true">
         <Skeleton height={62} />
         <Skeleton height={62} />
       </SimpleGrid>
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" aria-hidden="true">
-        <Skeleton height={62} radius="md" />
-        <Skeleton height={62} radius="md" />
+        <Skeleton height={55} radius="md" />
+        <Skeleton height={55} radius="md" />
       </SimpleGrid>
     </Stack>
   );
