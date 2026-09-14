@@ -120,10 +120,11 @@ interface FormFieldCommonProps<TContext> {
    * domain context `onAiAssist` needs (e.g. a Book id). Never inspected by
    * this component itself. */
   getAIAssistanceContext?: () => TContext;
-  /** Fires whenever this field's own AI request starts or finishes -- lets
-   * a caller managing several fields together freeze the rest of its form
-   * while any one field's AI request is in flight, matching the Edit
-   * Module modal's existing behavior. */
+  /** Fires whenever this field's own AI request starts or finishes. This
+   * field already disables itself for that window via its own internal
+   * `fieldBusy` -- a caller must not feed this back into another field's
+   * `disabled` (or a non-AI control's), which would freeze unrelated UI for
+   * an AI request it has nothing to do with (ANA-109). */
   onBusyChange?: (busy: boolean) => void;
 }
 

@@ -121,19 +121,6 @@ function EditModuleModalBody({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // While any field's own AI action is in flight, its response can still
-  // land and overwrite that field at any moment -- disabling every field
-  // (not just the field the AI action targets) for that whole window is
-  // what ANA-94 fixes: previously only the action buttons themselves
-  // showed a loading state, leaving every field, including Color, freely
-  // editable underneath an in-flight request that could clobber it seconds
-  // later. Each FormField reports its own busy window via `onBusyChange`
-  // (ANA-97) rather than this component tracking loading state itself.
-  const [titleBusy, setTitleBusy] = useState(false);
-  const [descriptionBusy, setDescriptionBusy] = useState(false);
-  const [contentBusy, setContentBusy] = useState(false);
-  const aiBusy = titleBusy || descriptionBusy || contentBusy;
-
   async function handlePrimaryAction() {
     setSaveError(null);
     setIsSaving(true);
@@ -170,7 +157,6 @@ function EditModuleModalBody({
         translatable
         value={title}
         onChange={setTitle}
-        disabled={aiBusy}
         aiTranslation
         onAiTranslate={({ text, instructions, context }) =>
           translateModuleField({
@@ -196,7 +182,6 @@ function EditModuleModalBody({
         getAIAssistanceContext={() => ({
           moduleContent: content.ar ?? "",
         })}
-        onBusyChange={setTitleBusy}
       />
 
       {/* Description (ANA-98/ANA-99): AI Assistance and Translate with AI
@@ -210,7 +195,6 @@ function EditModuleModalBody({
         translatable
         value={description}
         onChange={setDescription}
-        disabled={aiBusy}
         aiTranslation
         onAiTranslate={({ text, instructions, context }) =>
           translateModuleField({
@@ -238,7 +222,6 @@ function EditModuleModalBody({
           moduleTitle: title.ar ?? "",
           moduleContent: content.ar ?? "",
         })}
-        onBusyChange={setDescriptionBusy}
       />
 
       {/* Content (ANA-98/ANA-99): this Module's Learning Material -- still
@@ -259,7 +242,6 @@ function EditModuleModalBody({
         translatable
         value={content}
         onChange={setContent}
-        disabled={aiBusy}
         aiTranslation
         onAiTranslate={({ text, instructions, context }) =>
           translateModuleField({
@@ -288,10 +270,9 @@ function EditModuleModalBody({
           moduleTitle: title.ar ?? "",
           moduleDescription: description.ar ?? "",
         })}
-        onBusyChange={setContentBusy}
       />
 
-      <ColorField value={color} onChange={setColor} disabled={aiBusy} />
+      <ColorField value={color} onChange={setColor} />
 
       {saveError && (
         <Alert color="red" role="alert">
@@ -303,11 +284,7 @@ function EditModuleModalBody({
         <Button variant="default" onClick={onClose} disabled={isSaving}>
           Cancel
         </Button>
-        <Button
-          onClick={() => void handlePrimaryAction()}
-          loading={isSaving}
-          disabled={aiBusy}
-        >
+        <Button onClick={() => void handlePrimaryAction()} loading={isSaving}>
           {state.mode === "create" ? "Save Module" : "Save changes"}
         </Button>
       </Group>

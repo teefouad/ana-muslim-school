@@ -33,6 +33,16 @@ function lastRequestUrl(): string {
   return url;
 }
 
+// Long description is a `type="markdown"` field -- its contenteditable
+// body (also role "textbox", like every plain text input) has no `label
+// for` association to query by label text, unlike Title/Description. It's
+// the only "textbox" with a `contenteditable` attribute.
+function getLongDescriptionEditable(): HTMLElement {
+  return screen
+    .getAllByRole("textbox")
+    .find((el) => el.hasAttribute("contenteditable"))!;
+}
+
 // The Add/Edit Book pages submit this form from a header button outside the
 // form itself, via the HTML `form` attribute (ANA-61) -- reproduce that here
 // rather than reaching into the component internals to submit it.
@@ -598,6 +608,140 @@ describe("BookForm", () => {
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestUrl()).toBe("/api/v1/ai/translate");
       expect(lastRequestBody()).toEqual({ text: "عنوان الكتاب" });
+    });
+  });
+
+  describe("AI busy is scoped to the active field (ANA-109)", () => {
+    const FILLED_VALUES = {
+      ...createEmptyBookFormValues(),
+      title: { ar: "عنوان الكتاب", en: "" },
+      description: { ar: "وصف قصير", en: "" },
+      longDescription: { ar: "وصف طويل", en: "" },
+    };
+
+    it("disables only Title while its Translate request is running, and re-enables it once it resolves", async () => {
+      let resolveTranslate: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveTranslate = resolve)),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Title with AI" }),
+      );
+
+      await vi.waitFor(() => {
+        expect(screen.getByLabelText("Title")).toBeDisabled();
+      });
+      expect(screen.getByLabelText("Description")).not.toBeDisabled();
+      expect(getLongDescriptionEditable()).toHaveAttribute(
+        "contenteditable",
+        "true",
+      );
+      expect(
+        screen.getByRole("textbox", { name: "In-app image ID" }),
+      ).not.toBeDisabled();
+      expect(
+        screen.getByRole("combobox", { name: "Color" }),
+      ).not.toBeDisabled();
+      expect(
+        screen.getByRole("radiogroup", { name: "Color" }),
+      ).not.toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByRole("switch", { name: "Locked" })).not.toBeDisabled();
+      expect(
+        screen.getByRole("switch", { name: "Published" }),
+      ).not.toBeDisabled();
+
+      resolveTranslate(jsonResponse({ data: { text: "Book Title" } }));
+
+      await vi.waitFor(() => {
+        expect(screen.getByLabelText("Title")).not.toBeDisabled();
+      });
+    });
+
+    it("disables only Description while its Translate request is running", async () => {
+      let resolveTranslate: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveTranslate = resolve)),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Description with AI" }),
+      );
+
+      await vi.waitFor(() => {
+        expect(screen.getByLabelText("Description")).toBeDisabled();
+      });
+      expect(screen.getByLabelText("Title")).not.toBeDisabled();
+      expect(getLongDescriptionEditable()).toHaveAttribute(
+        "contenteditable",
+        "true",
+      );
+
+      resolveTranslate(jsonResponse({ data: { text: "Short description" } }));
+
+      await vi.waitFor(() => {
+        expect(screen.getByLabelText("Description")).not.toBeDisabled();
+      });
+    });
+
+    it("re-enables Title even when its Translate request fails, leaving other fields untouched throughout", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ error: "Something went wrong." }, 500),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Title with AI" }),
+      );
+
+      await screen.findByText("Something went wrong.");
+      expect(screen.getByLabelText("Title")).not.toBeDisabled();
+      expect(screen.getByLabelText("Description")).not.toBeDisabled();
+    });
+
+    it("re-enables Description even when its AI Assistance request fails", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ error: "Something went wrong." }, 500),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={FILLED_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Description" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await screen.findByText("Something went wrong.");
+      expect(screen.getByLabelText("Description")).not.toBeDisabled();
+      expect(screen.getByLabelText("Title")).not.toBeDisabled();
     });
   });
 });
