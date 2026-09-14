@@ -99,4 +99,30 @@ describe("ActionIconButton", () => {
       expect.stringContaining("--ai-color: var(--mantine-color-red-3)"),
     );
   });
+
+  // A destructive action's hover must be visibly tied to its red icon, not
+  // the same neutral white tint every other action button gets (PR review).
+  it("gives a bare red color the destructive hover class", () => {
+    renderButton({ color: "red" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }).className,
+    ).toMatch(/destructive/);
+  });
+
+  it("does not give an already-shaded red the destructive hover class", () => {
+    renderButton({ color: "red.3" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }).className,
+    ).not.toMatch(/destructive/);
+  });
+
+  it("does not give the default color the destructive hover class", () => {
+    renderButton();
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }).className,
+    ).not.toMatch(/destructive/);
+  });
 });

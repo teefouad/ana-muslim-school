@@ -32,6 +32,21 @@
   }
 }
 
+/* Destructive (delete) actions get a translucent red hover instead of the
+   neutral white tint above, so the hover state reads as visibly tied to the
+   red icon rather than the same neutral treatment every other action button
+   gets. `var(--ai-hover)` reuses Mantine's own hover color -- already
+   computed from the `red.6` shade `ActionIconButton` pins for `color="red"`
+   -- rather than a second hardcoded rgba that could drift from it. Compound
+   selector (two classes) so this reliably outranks `.actionButton`'s own
+   hover rule above regardless of source order, rather than relying on a
+   same-specificity tie-break. */
+@media (hover: hover) {
+  .actionButton.destructive:hover:where(:not(:disabled, [data-disabled])) {
+    background-color: var(--ai-hover);
+  }
+}
+
 /* Disabled state: fully transparent background (not Mantine's default
    disabled-state fill) and a dimmed icon. */
 .actionButton:where(:disabled, [data-disabled]) {
