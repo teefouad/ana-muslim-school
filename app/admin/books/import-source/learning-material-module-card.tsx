@@ -5,17 +5,10 @@ import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Text,
-  Textarea,
-} from "@mantine/core";
+import { Alert, Button, Group, Modal, Text, Textarea } from "@mantine/core";
 import { GripVertical, Languages, Sparkles, Trash2 } from "lucide-react";
 
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import {
@@ -506,39 +499,36 @@ export function LearningMaterialModuleCard({
         {/* Opens the instructions dialog for the active editor's current
             selection (ANA-85, PR review) -- disabled when there's no
             non-empty selection, since there's nothing to transform. */}
-        <ActionIcon
-          variant="subtle"
-          className={styles.actionButton}
+        <ActionIconButton
+          className={styles.headerAction}
           aria-label="AI Assistant"
           disabled={isAiAssistDisabled}
           loading={isGenerating}
           onClick={handleAiAssistClick}
         >
           <Sparkles size={16} aria-hidden="true" />
-        </ActionIcon>
+        </ActionIconButton>
         {onTranslate && (
-          <ActionIcon
-            variant="subtle"
-            className={styles.actionButton}
+          <ActionIconButton
+            className={styles.headerAction}
             aria-label="Translate to English"
             disabled={isTranslateDisabled}
             loading={isTranslating}
             onClick={handleTranslateClick}
           >
             <Languages size={16} aria-hidden="true" />
-          </ActionIcon>
+          </ActionIconButton>
         )}
         {onDelete && (
-          <ActionIcon
-            variant="subtle"
+          <ActionIconButton
             color="red"
-            className={styles.actionButton}
+            className={styles.headerAction}
             aria-label={`Delete Module ${index + 1}`}
             disabled={isCardFrozen || deleteDisabled}
             onClick={handleDeleteClick}
           >
-            <Trash2 size={14} aria-hidden="true" />
-          </ActionIcon>
+            <Trash2 size={16} aria-hidden="true" />
+          </ActionIconButton>
         )}
         <div
           style={{

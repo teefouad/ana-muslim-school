@@ -2,7 +2,6 @@
 
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import {
-  ActionIcon,
   Alert,
   Group,
   Stack,
@@ -14,8 +13,8 @@ import {
 } from "@mantine/core";
 import { Languages, Sparkles } from "lucide-react";
 
+import { ActionIconButton } from "./action-icon-button";
 import { AiInstructionsModal } from "./ai-instructions-modal";
-import styles from "./form-field.module.css";
 import {
   MarkdownEditor,
   type MarkdownEditorHandle,
@@ -483,28 +482,24 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const headerActions = (
     <Group gap="xs" wrap="nowrap">
       {aiAssistance && (
-        <ActionIcon
-          variant="subtle"
-          className={styles.actionButton}
+        <ActionIconButton
           aria-label={`AI Assistance for ${label}`}
           disabled={assist.disabled || translate.loading}
           loading={assist.loading}
           onClick={assist.handleClick}
         >
           <Sparkles size={16} aria-hidden="true" />
-        </ActionIcon>
+        </ActionIconButton>
       )}
       {aiTranslation && (
-        <ActionIcon
-          variant="subtle"
-          className={styles.actionButton}
+        <ActionIconButton
           aria-label={`Translate ${label} with AI`}
           disabled={translate.disabled || assist.loading}
           loading={translate.loading}
           onClick={translate.handleClick}
         >
           <Languages size={16} aria-hidden="true" />
-        </ActionIcon>
+        </ActionIconButton>
       )}
     </Group>
   );
