@@ -116,6 +116,7 @@ describe("getResourcePaths", () => {
       "/books/:bookId/modules/:moduleId",
       "/books/:bookId/modules/:moduleId/lessons",
       "/books/:bookId/modules/:moduleId/lessons/:lessonId",
+      "/books/:bookId/questions",
       "/books/:bookId/modules/:moduleId/questions",
       "/books/:bookId/modules/:moduleId/questions/:questionId",
     ]);
