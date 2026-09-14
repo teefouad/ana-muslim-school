@@ -414,7 +414,7 @@ describe("FormField", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("confirms before overwriting a non-empty English value", async () => {
+    it("replaces a non-empty English value immediately, without a confirmation modal (ANA-102)", async () => {
       const onChange = vi.fn();
       const onAiTranslate = vi.fn().mockResolvedValue("New description");
 
@@ -433,16 +433,6 @@ describe("FormField", () => {
         screen.getByRole("button", { name: "Translate Description with AI" }),
       );
 
-      expect(onAiTranslate).not.toHaveBeenCalled();
-      const confirmDialog = await screen.findByRole("dialog", {
-        name: "Replace English translation?",
-      });
-      fireEvent.click(
-        within(confirmDialog).getByRole("button", {
-          name: "Translate and replace",
-        }),
-      );
-
       await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({
@@ -450,17 +440,22 @@ describe("FormField", () => {
           en: "New description",
         }),
       );
+      expect(
+        screen.queryByRole("dialog", { name: "Replace English translation?" }),
+      ).not.toBeInTheDocument();
     });
 
-    it("does not translate when cancelling the overwrite confirmation", async () => {
-      const onAiTranslate = vi.fn().mockResolvedValue("New description");
+    it("leaves the existing English value untouched while the request is in flight", async () => {
+      const { promise, resolve } = deferred<string>();
+      const onChange = vi.fn();
+      const onAiTranslate = vi.fn().mockReturnValue(promise);
 
       renderWithProvider(
         <FormField
           label="Description"
           translatable
           value={{ ar: "وصف", en: "Old description" }}
-          onChange={vi.fn()}
+          onChange={onChange}
           aiTranslation
           onAiTranslate={onAiTranslate}
         />,
@@ -469,14 +464,77 @@ describe("FormField", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Translate Description with AI" }),
       );
-      const confirmDialog = await screen.findByRole("dialog", {
-        name: "Replace English translation?",
-      });
-      fireEvent.click(
-        within(confirmDialog).getByRole("button", { name: "Cancel" }),
+
+      await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
+      expect(onChange).not.toHaveBeenCalled();
+
+      resolve("New description");
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({
+          ar: "وصف",
+          en: "New description",
+        }),
+      );
+    });
+
+    it("does not overwrite the existing English value when the request fails", async () => {
+      const onChange = vi.fn();
+      const onAiTranslate = vi
+        .fn()
+        .mockRejectedValue(new Error("Translation failed."));
+
+      renderWithProvider(
+        <FormField
+          label="Description"
+          translatable
+          value={{ ar: "وصف", en: "Old description" }}
+          onChange={onChange}
+          aiTranslation
+          onAiTranslate={onAiTranslate}
+        />,
       );
 
-      expect(onAiTranslate).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Description with AI" }),
+      );
+
+      expect(
+        await screen.findByText("Translation failed."),
+      ).toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("does not touch other fields' values when translating one field", async () => {
+      const onDescriptionChange = vi.fn();
+      const onAiTranslate = vi.fn().mockResolvedValue("Translated title");
+
+      renderWithProvider(
+        <>
+          <FormField
+            label="Title"
+            translatable
+            value={{ ar: "عنوان", en: "" }}
+            onChange={vi.fn()}
+            aiTranslation
+            onAiTranslate={onAiTranslate}
+          />
+          <FormField
+            label="Description"
+            translatable
+            value={{ ar: "وصف", en: "Existing description" }}
+            onChange={onDescriptionChange}
+            aiTranslation
+            onAiTranslate={vi.fn()}
+          />
+        </>,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Title with AI" }),
+      );
+
+      await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
+      expect(onDescriptionChange).not.toHaveBeenCalled();
     });
   });
 

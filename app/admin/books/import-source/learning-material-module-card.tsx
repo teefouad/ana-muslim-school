@@ -138,7 +138,7 @@ export interface LearningMaterialModuleCardProps {
   style?: CSSProperties;
 }
 
-type PendingAction = "delete" | "translate" | null;
+type PendingAction = "delete" | null;
 
 // The single Module-card shell shared by the Create-from-PDF Learning
 // Material step and the saved-Source ("View source text") workspace
@@ -175,9 +175,8 @@ export function LearningMaterialModuleCard({
   // language, matching TranslatableTextArea's own default-language rule.
   const [activeLanguage, setActiveLanguage] = useState<Language>("ar");
   const dir = activeLanguage === "ar" ? "rtl" : "ltr";
-  // Which of this card's own confirmation dialogs (if any) is open -- both
-  // Delete and "Replace English translation?" reuse the same ConfirmDialog
-  // primitive rather than inventing a second confirmation UX (ANA-77).
+  // Which of this card's own confirmation dialogs (if any) is open -- only
+  // Delete has one; Translate no longer does (ANA-102).
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -363,19 +362,8 @@ export function LearningMaterialModuleCard({
   }
 
   function handleTranslateClick() {
-    // Replacing non-empty English content is destructive, so it gets its
-    // own confirmation; an empty English draft translates immediately
-    // (ANA-77).
-    if (material.en.trim()) {
-      setPendingAction("translate");
-      return;
-    }
-
-    void runTranslate();
-  }
-
-  function handleConfirmTranslate() {
-    setPendingAction(null);
+    // Always runs immediately, with no confirmation step, even when it
+    // will replace a non-empty English draft (ANA-102).
     void runTranslate();
   }
 
@@ -613,17 +601,6 @@ export function LearningMaterialModuleCard({
           isConfirming={isDeleting}
           onCancel={handleCancelPendingAction}
           onConfirm={handleConfirmDelete}
-        />
-      )}
-      {pendingAction === "translate" && (
-        <ConfirmDialog
-          opened
-          title="Replace English translation?"
-          description="Translating again will replace the current English Learning Material."
-          confirmLabel="Translate and replace"
-          cancelLabel="Cancel"
-          onCancel={handleCancelPendingAction}
-          onConfirm={handleConfirmTranslate}
         />
       )}
       {isAiDialogOpen && (

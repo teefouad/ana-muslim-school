@@ -477,42 +477,7 @@ describe("LearningMaterialModuleCard", () => {
       expect(await screen.findByText("Translated text")).toBeInTheDocument();
     });
 
-    it("requires confirmation before replacing non-empty English content", () => {
-      const onTranslate = vi.fn();
-      renderCard({
-        material: { ar: "Arabic content", en: "Existing English" },
-        onTranslate,
-      });
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
-
-      expect(
-        screen.getByRole("dialog", { name: "Replace English translation?" }),
-      ).toBeInTheDocument();
-      expect(onTranslate).not.toHaveBeenCalled();
-    });
-
-    it("canceling the replacement leaves content untouched and makes no request", () => {
-      const onTranslate = vi.fn();
-      renderCard({
-        material: { ar: "Arabic content", en: "Existing English" },
-        onTranslate,
-      });
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-      expect(onTranslate).not.toHaveBeenCalled();
-      expect(
-        screen.queryByRole("dialog", { name: "Replace English translation?" }),
-      ).not.toBeInTheDocument();
-    });
-
-    it("translates after confirming replacement of existing English content, without changing the active language tab (ANA-83)", async () => {
+    it("translates immediately when replacing non-empty English content, without a confirmation modal (ANA-102)", async () => {
       const onTranslate = vi.fn().mockResolvedValue(undefined);
       renderCard({
         material: { ar: "Arabic content", en: "Existing English" },
@@ -524,11 +489,11 @@ describe("LearningMaterialModuleCard", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Translate to English" }),
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate and replace" }),
-      );
 
       await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
+      expect(
+        screen.queryByRole("dialog", { name: "Replace English translation?" }),
+      ).not.toBeInTheDocument();
       expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
     });
 

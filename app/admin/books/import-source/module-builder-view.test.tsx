@@ -545,20 +545,27 @@ describe("ModuleBuilderView", () => {
       expect(screen.getByText("Arabic two!")).toBeInTheDocument();
     });
 
-    it("requires confirmation before replacing non-empty English content", () => {
+    it("replaces non-empty English content immediately, without a confirmation modal (ANA-102)", async () => {
+      translateArabicToEnglishMock.mockResolvedValueOnce("New translation");
+      const onModulesChange = vi.fn();
       const modules: TempModule[] = [
         { id: "module-1", material: { ar: "First", en: "Existing" } },
       ];
-      renderView({ modules });
+      renderView({ modules, onModulesChange });
 
       fireEvent.click(
         screen.getByRole("button", { name: "Translate to English" }),
       );
 
+      await vi.waitFor(() =>
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("First"),
+      );
       expect(
-        screen.getByRole("dialog", { name: "Replace English translation?" }),
-      ).toBeInTheDocument();
-      expect(translateArabicToEnglishMock).not.toHaveBeenCalled();
+        screen.queryByRole("dialog", { name: "Replace English translation?" }),
+      ).not.toBeInTheDocument();
+      expect(applyLastModulesUpdate(onModulesChange, modules)).toEqual([
+        { id: "module-1", material: { ar: "First", en: "New translation" } },
+      ]);
     });
   });
 

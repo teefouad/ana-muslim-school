@@ -100,9 +100,8 @@ export const AiAssistant: Story = {
   },
 };
 
-// Non-empty English content makes Translate destructive -- clicking it
-// opens a "Replace English translation?" confirmation before calling
-// `onTranslate` (ANA-77).
+// Clicking Translate replaces non-empty English content immediately, with
+// no confirmation step (ANA-102).
 export const TranslateReplacesExistingEnglish: Story = {
   args: {
     material: {
