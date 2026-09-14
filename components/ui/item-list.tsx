@@ -50,6 +50,10 @@ export interface ItemListProps<T> {
    * delete actions. Entirely optional -- a plain click has no required
    * behavior; omit this to leave rows non-interactive. */
   onItemClick?: (item: T, index: number) => void;
+  /** Fired when a row is double-clicked, outside of its drag grip and its
+   * edit/delete actions (ANA-103). Independent of `onItemClick` -- a caller
+   * can wire either, both, or neither. */
+  onItemDoubleClick?: (item: T, index: number) => void;
   /** Fired when a row's edit action is clicked. Its presence is what
    * decides whether the edit affordance renders at all. */
   onEditItem?: (item: T, index: number) => void;
@@ -91,6 +95,7 @@ interface RowChromeProps {
   component?: "li" | "div";
   testId: string;
   onClick?: () => void;
+  onDoubleClick?: () => void;
   showGrip: boolean;
   isDragging: boolean;
   editLabel?: string;
@@ -118,6 +123,7 @@ function RowChrome({
   component = "li",
   testId,
   onClick,
+  onDoubleClick,
   showGrip,
   isDragging,
   editLabel,
@@ -162,10 +168,11 @@ function RowChrome({
         </span>
       )}
 
-      {onClick ? (
+      {onClick || onDoubleClick ? (
         <UnstyledButton
           type="button"
           onClick={onClick}
+          onDoubleClick={onDoubleClick}
           className={contentClassName}
           style={{ textAlign: "start" }}
         >
@@ -280,6 +287,7 @@ export function ItemList<T>({
   onReorder,
   reorderDisabled = false,
   onItemClick,
+  onItemDoubleClick,
   onEditItem,
   getEditLabel,
   editDisabled = false,
@@ -344,6 +352,11 @@ export function ItemList<T>({
               id={getItemId(item)}
               testId={testIdFor(item)}
               onClick={onItemClick ? () => onItemClick(item, index) : undefined}
+              onDoubleClick={
+                onItemDoubleClick
+                  ? () => onItemDoubleClick(item, index)
+                  : undefined
+              }
               reorderDisabled={reorderDisabled}
               editLabel={getEditLabel?.(item, index)}
               onEdit={onEditItem ? () => onEditItem(item, index) : undefined}
@@ -367,6 +380,11 @@ export function ItemList<T>({
               key={getItemId(item)}
               testId={testIdFor(item)}
               onClick={onItemClick ? () => onItemClick(item, index) : undefined}
+              onDoubleClick={
+                onItemDoubleClick
+                  ? () => onItemDoubleClick(item, index)
+                  : undefined
+              }
               showGrip={false}
               isDragging={false}
               editLabel={getEditLabel?.(item, index)}
@@ -414,6 +432,7 @@ function SortableRow({
   id,
   testId,
   onClick,
+  onDoubleClick,
   reorderDisabled,
   editLabel,
   onEdit,
@@ -427,6 +446,7 @@ function SortableRow({
   id: string;
   testId: string;
   onClick?: () => void;
+  onDoubleClick?: () => void;
   reorderDisabled: boolean;
   editLabel?: string;
   onEdit?: () => void;
@@ -450,6 +470,7 @@ function SortableRow({
     <RowChrome
       testId={testId}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       showGrip
       isDragging={isDragging}
       editLabel={editLabel}

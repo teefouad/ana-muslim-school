@@ -110,6 +110,35 @@ describe("ItemList", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("double-clicking a row fires onItemDoubleClick with the item and its index (ANA-103)", () => {
+    const onItemDoubleClick = vi.fn();
+    renderList({ onItemDoubleClick });
+
+    fireEvent.doubleClick(screen.getByText("Beta"));
+
+    expect(onItemDoubleClick).toHaveBeenCalledWith(items[1], 1);
+  });
+
+  test("onItemDoubleClick is independent of onItemClick -- a plain click does not fire it", () => {
+    const onItemClick = vi.fn();
+    const onItemDoubleClick = vi.fn();
+    renderList({ onItemClick, onItemDoubleClick });
+
+    fireEvent.click(screen.getByText("Alpha"));
+
+    expect(onItemClick).toHaveBeenCalledWith(items[0], 0);
+    expect(onItemDoubleClick).not.toHaveBeenCalled();
+  });
+
+  test("a row has no double-click behavior when onItemDoubleClick is omitted", () => {
+    const onItemDoubleClick = vi.fn();
+    renderList();
+
+    fireEvent.doubleClick(screen.getByText("Alpha"));
+
+    expect(onItemDoubleClick).not.toHaveBeenCalled();
+  });
+
   test("no edit/delete actions render when their handlers are omitted", () => {
     renderList();
 

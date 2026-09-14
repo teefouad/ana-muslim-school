@@ -128,6 +128,10 @@ export function ModulesPanel({
         // Opens the caller's own top-level Edit Module modal (ANA-91) --
         // this panel owns no editing UI itself, only the ItemList wiring.
         onEditItem={(module) => onEditModule?.(module)}
+        // Double-clicking a row opens the same Edit Module modal as its
+        // pencil action (ANA-103) -- reuses `onEditModule` rather than
+        // introducing a separate modal or editing path.
+        onItemDoubleClick={(module) => onEditModule?.(module)}
         getEditLabel={(module, index) =>
           `Edit ${getModuleLabel(module, index)}`
         }

@@ -131,6 +131,45 @@ describe("ModulesPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("calls onEditModule with the double-clicked module (ANA-103)", () => {
+    const onEditModule = vi.fn();
+    const onModulesChange = vi.fn();
+    renderPanel({ onEditModule, onModulesChange });
+
+    fireEvent.doubleClick(screen.getByText("Introduction"));
+
+    expect(onEditModule).toHaveBeenCalledWith(MODULES[0]);
+    expect(onModulesChange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("double-clicking a different module opens onEditModule for that module", () => {
+    const onEditModule = vi.fn();
+    renderPanel({ onEditModule });
+
+    fireEvent.doubleClick(screen.getByText("Module 2"));
+
+    expect(onEditModule).toHaveBeenCalledWith(MODULES[1]);
+  });
+
+  it("does nothing when a module row is double-clicked without onEditModule", () => {
+    const onModulesChange = vi.fn();
+    renderPanel({ onModulesChange });
+
+    fireEvent.doubleClick(screen.getByText("Introduction"));
+
+    expect(onModulesChange).not.toHaveBeenCalled();
+  });
+
+  it("a single click on a module row does not call onEditModule (preserves existing single-click behavior)", () => {
+    const onEditModule = vi.fn();
+    renderPanel({ onEditModule });
+
+    fireEvent.click(screen.getByText("Introduction"));
+
+    expect(onEditModule).not.toHaveBeenCalled();
+  });
+
   it("disables Add module, reordering, and the edit/delete actions when disabled", () => {
     renderPanel({ disabled: true });
 

@@ -1487,6 +1487,76 @@ describe("EditBookPage", () => {
         ).toBeInTheDocument();
       });
 
+      it("also opens, seeded with the Module's current values, when its row is double-clicked (ANA-103)", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({
+              id: "module-1",
+              title: { ar: "أ", en: "A" },
+              description: { ar: "وصف", en: "Desc" },
+              color: "cyan.6",
+            }),
+          ],
+          materials: [
+            buildMaterialFixture({
+              id: "material-1",
+              moduleId: "module-1",
+              content: { ar: "محتوى موجود", en: "" },
+            }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.doubleClick(screen.getByText("أ"));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(within(dialog).getByLabelText("Title")).toHaveValue("أ");
+        expect(within(dialog).getByLabelText("Description")).toHaveValue("وصف");
+        expect(
+          within(dialog).getByRole("combobox", { name: "Color" }),
+        ).toHaveValue("cyan.6");
+        expect(
+          await within(dialog).findByText("محتوى موجود"),
+        ).toBeInTheDocument();
+      });
+
+      it("double-clicking a different module's row opens the modal for that module", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+            buildModuleFixture({ id: "module-2", title: { ar: "ب", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("ب");
+        fireEvent.doubleClick(screen.getByText("ب"));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(within(dialog).getByLabelText("Title")).toHaveValue("ب");
+      });
+
+      it("a single click on a module row does not open the Edit Module modal", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByText("أ"));
+
+        expect(
+          screen.queryByRole("dialog", { name: "Edit Module" }),
+        ).not.toBeInTheDocument();
+      });
+
       it("opens seeded with blank Content when the Module has no Material yet", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
