@@ -121,14 +121,13 @@ function EditModuleModalBody({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // While any field's own AI action is in flight, its response can still
-  // land and overwrite that field at any moment -- disabling every field
-  // (not just the field the AI action targets) for that whole window is
-  // what ANA-94 fixes: previously only the action buttons themselves
-  // showed a loading state, leaving every field, including Color, freely
-  // editable underneath an in-flight request that could clobber it seconds
-  // later. Each FormField reports its own busy window via `onBusyChange`
-  // (ANA-97) rather than this component tracking loading state itself.
+  // Each field disables only itself while its own AI request is in flight
+  // (ANA-109) -- these three flags are never fed back into another field's
+  // `disabled`. They exist solely to keep Save disabled while any one of
+  // them is unresolved: saving now would persist the pre-translation value,
+  // and the AI result would then be silently lost once it lands after
+  // `onClose` unmounts this component (PR review). Cancel stays unaffected
+  // -- discarding the draft is always safe, in-flight request or not.
   const [titleBusy, setTitleBusy] = useState(false);
   const [descriptionBusy, setDescriptionBusy] = useState(false);
   const [contentBusy, setContentBusy] = useState(false);
@@ -170,7 +169,6 @@ function EditModuleModalBody({
         translatable
         value={title}
         onChange={setTitle}
-        disabled={aiBusy}
         aiTranslation
         onAiTranslate={({ text, instructions, context }) =>
           translateModuleField({
@@ -210,7 +208,6 @@ function EditModuleModalBody({
         translatable
         value={description}
         onChange={setDescription}
-        disabled={aiBusy}
         aiTranslation
         onAiTranslate={({ text, instructions, context }) =>
           translateModuleField({
@@ -259,7 +256,6 @@ function EditModuleModalBody({
         translatable
         value={content}
         onChange={setContent}
-        disabled={aiBusy}
         aiTranslation
         onAiTranslate={({ text, instructions, context }) =>
           translateModuleField({
@@ -291,7 +287,7 @@ function EditModuleModalBody({
         onBusyChange={setContentBusy}
       />
 
-      <ColorField value={color} onChange={setColor} disabled={aiBusy} />
+      <ColorField value={color} onChange={setColor} />
 
       {saveError && (
         <Alert color="red" role="alert">

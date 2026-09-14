@@ -51,11 +51,23 @@ builds this context inline rather than through `getAIAssistanceContext`
 since only `onAiAssist`'s own args carry `language`). `FormField` itself
 stays language-agnostic in both cases (it doesn't enforce either contract),
 so which one applies is each caller's responsibility.
-Both actions share the same
-busy/disabled/error handling; `onBusyChange` lets a caller managing several
-`FormField`s together freeze the rest of its form while any one field's AI
-request is in flight (see edit-module-modal.tsx's `aiBusy` pattern, ANA-97;
-book-form.tsx's identical pattern, ANA-100).
+Both actions share the same busy/disabled/error handling, scoped to that one
+field: `FormField` combines its own `disabled` prop with its own
+translate/assist loading state into a local `fieldBusy` that only ever
+freezes itself. A caller with several `FormField`s in one form must not
+aggregate their busy states into one flag and feed it back into every
+field's `disabled` (or into unrelated, non-AI controls) -- that was the
+book-form.tsx/edit-module-modal.tsx `aiBusy` bug fixed by ANA-109: an
+in-flight Translate/AI Assistance request on one field must never disable
+any other field or control. `onBusyChange` still reports one field's own
+busy window to its caller for whatever else it might need beyond disabling
+that field itself -- edit-module-modal.tsx aggregates its three fields'
+`onBusyChange` calls into one `aiBusy` flag again, but only to gate its own
+Save Module/Save changes action (never Cancel, and never fed back into any
+field's `disabled`): saving while a translation is still in flight would
+persist the pre-translation value and silently lose the AI result once it
+resolves after the modal has already closed (ANA-109 PR review). book-form.tsx
+has no such save action of its own to gate and wires nothing.
 `translatable-field-header.tsx` is the label + actions + language-switcher
 row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
 share.
