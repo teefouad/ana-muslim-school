@@ -227,6 +227,87 @@ describe("EditBookPage", () => {
     expect(fetch).toHaveBeenCalledWith("/api/v1/books/book-1");
   });
 
+  it("shows a book-shaped skeleton while the Book is loading, not a spinner (ANA-104)", () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+
+        if (method === "GET" && url === "/api/v1/books/book-1") {
+          return new Promise(() => {});
+        }
+        throw new Error(`Unhandled fetch: ${method} ${url}`);
+      },
+    );
+    renderPage();
+
+    expect(
+      screen.getByRole("status", { name: "Loading book" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Loading modules" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading book…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading modules…")).not.toBeInTheDocument();
+  });
+
+  it("shows a modules-shaped skeleton while Modules/Materials are loading, not a spinner (ANA-104)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+
+        if (method === "GET" && url === "/api/v1/books/book-1") {
+          return Promise.resolve(jsonResponse({ data: buildBookFixture() }));
+        }
+        if (method === "GET" && url === "/api/v1/books/book-1/modules") {
+          return new Promise(() => {});
+        }
+        if (method === "GET" && url === "/api/v1/materials?bookId=book-1") {
+          return new Promise(() => {});
+        }
+        if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+          return Promise.resolve(jsonResponse({ data: [] }));
+        }
+        throw new Error(`Unhandled fetch: ${method} ${url}`);
+      },
+    );
+    renderPage();
+
+    // Lets the Book itself resolve first (mirrors the Source-lookup test
+    // above) so this only exercises the Modules/Materials loading state,
+    // not the Book's own transient one.
+    await screen.findByRole("button", { name: "Save changes" });
+
+    expect(
+      await screen.findByRole("status", { name: "Loading modules" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading book" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading modules…")).not.toBeInTheDocument();
+  });
+
+  it("replaces the modules skeleton with the loaded modules list (ANA-104)", async () => {
+    setupFetch(buildBookFixture(), {
+      modules: [
+        buildModuleFixture({
+          id: "module-1",
+          title: { ar: "الوحدة الأولى", en: "" },
+        }),
+      ],
+    });
+    renderPage();
+
+    expect(await screen.findByText("الوحدة الأولى")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading book" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading modules" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("has no Cancel button", async () => {
     setupFetch(buildBookFixture());
     renderPage();
@@ -256,6 +337,9 @@ describe("EditBookPage", () => {
     expect(
       await screen.findByRole("heading", { name: "طويل" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading book" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders Module Builder immediately next to Save changes in the header, both enabled once loaded", async () => {

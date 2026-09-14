@@ -10,7 +10,8 @@ import {
   Divider,
   Flex,
   Group,
-  Loader,
+  SimpleGrid,
+  Skeleton,
   Stack,
   Text,
   Title,
@@ -65,6 +66,90 @@ function getModuleLabel(module: Module): string {
 type ModuleModalTarget = { mode: "create" } | { mode: "edit"; id: string };
 
 const BOOK_FORM_ID = "edit-book-form";
+
+const MODULES_SKELETON_ROW_COUNT = 4;
+
+// Approximates ModulesPanel/ItemList's own card chrome -- header, a few
+// rows, an Add footer (see modules-panel.tsx/item-list.tsx) -- closely
+// enough that swapping in the real panel doesn't shift the page's layout
+// (ANA-104). Rendered both while the Book itself is still loading (there is
+// no owning Book id yet to key the Modules/Materials SWR hooks off of) and,
+// once it has, while those hooks are loading in turn -- see both call sites
+// below. `aria-hidden` keeps its decorative bars out of the accessibility
+// tree; the wrapping `status` region's `aria-label` is what's announced.
+function ModulesPanelSkeleton() {
+  return (
+    <Box
+      role="status"
+      aria-label="Loading modules"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        border: "1px solid var(--mantine-color-default-border)",
+        borderRadius: 12,
+      }}
+    >
+      <Box
+        p="md"
+        style={{
+          borderBottom: "1px solid var(--mantine-color-default-border)",
+        }}
+        aria-hidden="true"
+      >
+        <Skeleton height={14} width={70} />
+        <Skeleton height={11} width={90} mt={6} />
+      </Box>
+      <Stack gap="xs" p="md" style={{ flex: 1 }} aria-hidden="true">
+        {Array.from({ length: MODULES_SKELETON_ROW_COUNT }).map((_, index) => (
+          <Skeleton key={index} height={40} radius={12} />
+        ))}
+      </Stack>
+      <Box
+        p="md"
+        style={{
+          borderTop: "1px solid var(--mantine-color-default-border)",
+        }}
+        aria-hidden="true"
+      >
+        <Skeleton height={36} radius={8} />
+      </Box>
+    </Box>
+  );
+}
+
+// Approximates BookForm's own field layout (Title, Description, Long
+// description, In-app image ID + Color, Locked + Published -- see
+// book-form.tsx) so the page's left column keeps a stable height while the
+// Book itself is still loading (ANA-104); BookForm only ever renders once
+// `book` has resolved. Same `aria-hidden`/`status` pattern as
+// `ModulesPanelSkeleton` above.
+function BookFormSkeleton() {
+  return (
+    <Stack gap="lg" role="status" aria-label="Loading book">
+      <Stack gap={6} aria-hidden="true">
+        <Skeleton height={12} width={60} />
+        <Skeleton height={38} />
+      </Stack>
+      <Stack gap={6} aria-hidden="true">
+        <Skeleton height={12} width={110} />
+        <Skeleton height={84} />
+      </Stack>
+      <Stack gap={6} aria-hidden="true">
+        <Skeleton height={12} width={150} />
+        <Skeleton height={160} />
+      </Stack>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" aria-hidden="true">
+        <Skeleton height={62} />
+        <Skeleton height={62} />
+      </SimpleGrid>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" aria-hidden="true">
+        <Skeleton height={62} radius="md" />
+        <Skeleton height={62} radius="md" />
+      </SimpleGrid>
+    </Stack>
+  );
+}
 
 // Edit Book (ANA-65): loads through `GET /api/v1/books/{bookId}` and saves
 // through `PATCH /api/v1/books/{bookId}` -- a 404 renders as a real
@@ -419,12 +504,18 @@ export default function EditBookPage() {
       {submitError && <Alert color="red">{submitError}</Alert>}
 
       {isLoading && (
-        <Group gap="sm">
-          <Loader size="sm" />
-          <Text size="sm" c="dimmed">
-            Loading book…
-          </Text>
-        </Group>
+        <Flex
+          gap="xl"
+          direction={{ base: "column", md: "row" }}
+          align="stretch"
+        >
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            <BookFormSkeleton />
+          </Box>
+          <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
+            <ModulesPanelSkeleton />
+          </Box>
+        </Flex>
       )}
 
       {error && !notFound && <Alert color="red">{error.message}</Alert>}
@@ -450,12 +541,7 @@ export default function EditBookPage() {
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
             {modulesLoading || materialsLoading ? (
-              <Group gap="sm">
-                <Loader size="sm" />
-                <Text size="sm" c="dimmed">
-                  Loading modules…
-                </Text>
-              </Group>
+              <ModulesPanelSkeleton />
             ) : materialsError ? (
               // Blocks the whole panel rather than rendering it with
               // `materialsData` left `undefined` (ANA-94 PR review) --

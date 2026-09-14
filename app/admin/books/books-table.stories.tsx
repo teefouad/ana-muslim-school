@@ -46,3 +46,17 @@ export const Empty: Story = {
     );
   },
 };
+
+// A `fetch` that never resolves, so the skeleton loading state renders and
+// stays put (ANA-104).
+export const Loading: Story = {
+  render: () => {
+    globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+
+    return (
+      <div style={{ width: 900 }}>
+        <BooksTable />
+      </div>
+    );
+  },
+};

@@ -3,7 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { Alert, Badge, Group, Loader, Stack, Text } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Group,
+  Skeleton,
+  Stack,
+  Table,
+  TableScrollContainer,
+  TableTbody,
+  TableTd,
+  TableTh,
+  TableThead,
+  TableTr,
+  Text,
+} from "@mantine/core";
 
 import { resolveApplicationColor } from "@/components/ui/application-colors";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -82,6 +96,59 @@ const columns: DataTableColumn<Book>[] = [
   },
 ];
 
+const SKELETON_ROW_COUNT = 5;
+
+// A row-and-column-shaped placeholder matching this table's own header and
+// column count (ANA-104), swapped for the real DataTable as soon as the
+// `/api/v1/books` request resolves -- so the row skips straight from this
+// skeleton into loaded content with no layout shift. `aria-hidden` on the
+// table itself keeps its decorative header/cells out of the accessibility
+// tree; the wrapping `status` region's `aria-label` is what's announced.
+function BooksTableSkeleton() {
+  return (
+    <div role="status" aria-label="Loading books">
+      <TableScrollContainer minWidth={800}>
+        <Table verticalSpacing="sm" aria-hidden="true">
+          <TableThead>
+            <TableTr>
+              {columns.map((column) => (
+                <TableTh key={column.key}>{column.header}</TableTh>
+              ))}
+            </TableTr>
+          </TableThead>
+          <TableTbody>
+            {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
+              <TableTr key={index}>
+                <TableTd>
+                  <Stack gap={4}>
+                    <Skeleton height={14} width="70%" />
+                    <Skeleton height={10} width="40%" />
+                  </Stack>
+                </TableTd>
+                <TableTd>
+                  <Skeleton height={14} width="50%" />
+                </TableTd>
+                <TableTd>
+                  <Skeleton height={20} width={70} radius="sm" />
+                </TableTd>
+                <TableTd>
+                  <Skeleton height={20} width={70} radius="sm" />
+                </TableTd>
+                <TableTd>
+                  <Group gap="xs" wrap="nowrap">
+                    <Skeleton height={14} width={14} radius={4} />
+                    <Skeleton height={14} width={50} />
+                  </Group>
+                </TableTd>
+              </TableTr>
+            ))}
+          </TableTbody>
+        </Table>
+      </TableScrollContainer>
+    </div>
+  );
+}
+
 // Presentation wrapper pairing the reusable DataTable (ANA-59) with the real
 // `/api/v1/books` REST boundary (ANA-65) -- no Firestore/repository access
 // from this Client Component. Uses SWR for the list read rather than a
@@ -97,14 +164,7 @@ export function BooksTable() {
   const [deletingBook, setDeletingBook] = useState<Book | null>(null);
 
   if (!data && !error) {
-    return (
-      <Group gap="sm">
-        <Loader size="sm" />
-        <Text size="sm" c="dimmed">
-          Loading books…
-        </Text>
-      </Group>
-    );
+    return <BooksTableSkeleton />;
   }
 
   const books = data?.data ?? [];
