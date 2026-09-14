@@ -5,6 +5,38 @@ Reusable UI primitives that aren't specific to one route live under
 and reuse or extend an existing component instead of introducing an
 equivalent one.
 
+## ActionIconButton
+
+`components/ui/action-icon-button.tsx` is the shared icon-button used for
+every action button across the admin (ANA-105): AI Assistance/Translate with
+AI on `FormField` (the Edit Module modal's fields), Module Builder's AI
+Assistant/Translate/Delete (`learning-material-module-card.tsx`), the
+Modules panel's Edit/Delete (`item-list.tsx`), and the Books/Users listing
+Edit/Delete (`data-table.tsx`). It's a thin wrapper around Mantine's
+`ActionIcon` (`variant="subtle"` by default) that applies one shared CSS
+Module class (`action-icon-button.module.css`, originated as ANA-100's
+FormField-local `.actionButton`): a 150ms hover background transition
+(`rgba(255, 255, 255, 0.1)`), and a disabled state with a fully transparent
+background (not Mantine's default disabled fill) and a dimmed icon. Reach
+for this instead of a bare `ActionIcon` for any new icon-only action button,
+so it stays visually consistent with the rest of the admin without
+restyling per screen. `color` is left to the caller -- every action button
+uses the default (theme primary) color except a destructive one (Delete),
+which passes `color="red"` everywhere it appears, a deliberate, consistent
+exception rather than a per-screen choice. Icon size is `16` at every one of
+these call sites; a caller-supplied `className` layers on top of the shared
+class for layout only (e.g. `learning-material-module-card.module.css`'s
+`.headerAction` for inter-button spacing) -- never to restyle the button's
+own look.
+
+Module Builder's Font Size (zoom) and Text Direction (align) controls
+(`font-size-control.tsx`, `text-direction-control.tsx`) also build on this
+component -- they pass a smaller `size={28}`/icon `size={14}` (a compact
+bordered `control-group.module.css` group, not an inline action row) and
+Text Direction additionally toggles `variant="light"`/`"subtle"` with
+`aria-pressed` for its active/inactive state, both of which pass straight
+through as ordinary `ActionIconProps`.
+
 ## FormField
 
 `components/ui/form-field.tsx` is the reusable field for the repeated
@@ -84,15 +116,11 @@ Assistance. This is what lets Book field AI Assistance work identically
 before the Book has even been created (Add Book) and after (Edit Book) --
 see book-form.tsx's `onAiAssist` wiring.
 
-The AI Assistance/Translate with AI `ActionIcon`s (and any future delete-
-style action added to this component) share one CSS Module class,
-`styles.actionButton` in `form-field.module.css` (ANA-100): disabled is a
-fully transparent background with 50%-opacity icon; enabled is a 30%
-transparent white background (`rgba(255, 255, 255, 0.3)`), replacing
-Mantine's default blue-tinted hover, with a 150ms `background-color`
-transition between the two. Keep any new action button on this same class
-rather than styling it inline, so every `FormField` consumer stays visually
-consistent.
+The AI Assistance/Translate with AI actions (and any future delete-style
+action added to this component) render through the shared `ActionIconButton`
+(see above), not a bare `ActionIcon` -- that's what keeps every `FormField`
+consumer visually consistent with the rest of the admin's action buttons
+(ANA-100, generalized into a shared component in ANA-105).
 
 ## Conventions
 
@@ -112,6 +140,13 @@ consistent.
   design system stays consistent. Tailwind utility classes are fine for small
   layout tweaks Mantine doesn't cover, matching the pattern already used in
   `app/admin/_components/dashboard-shell.tsx`.
+- **Typography**: Inter is the admin dashboard's primary font (ANA-105), set
+  once via `lib/mantine/theme.ts`'s `fontFamily`/`headings.fontFamily`
+  (loaded through `next/font/google` in `app/layout.tsx` as `--font-inter`)
+  so every Mantine component inherits it automatically. Don't set a
+  component-local `fontFamily` to Inter explicitly, and don't reach for
+  Geist Sans/Mono in admin UI -- those stay loaded only for the unrelated
+  default Next.js landing page (`app/page.tsx`).
 - **No business logic**: shared components take `value`/`onChange` (or a
   small imperative ref API) and stay free of translation/Firestore/API
   concerns -- callers own that.

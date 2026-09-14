@@ -1,0 +1,128 @@
+import { MantineProvider } from "@mantine/core";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { ActionIconButton } from "./action-icon-button";
+
+function renderButton(
+  overrides: Partial<React.ComponentProps<typeof ActionIconButton>> = {},
+) {
+  const props: React.ComponentProps<typeof ActionIconButton> = {
+    "aria-label": "AI Assistance",
+    onClick: vi.fn(),
+    children: <span>icon</span>,
+    ...overrides,
+  };
+
+  render(
+    <MantineProvider>
+      <ActionIconButton {...props} />
+    </MantineProvider>,
+  );
+
+  return props;
+}
+
+describe("ActionIconButton", () => {
+  it("renders as a button with the given accessible label", () => {
+    renderButton();
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }),
+    ).toBeInTheDocument();
+  });
+
+  it("calls onClick when clicked", () => {
+    const onClick = vi.fn();
+    renderButton({ onClick });
+
+    fireEvent.click(screen.getByRole("button", { name: "AI Assistance" }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("is disabled and does not call onClick when disabled", () => {
+    const onClick = vi.fn();
+    renderButton({ onClick, disabled: true });
+
+    const button = screen.getByRole("button", { name: "AI Assistance" });
+    expect(button).toBeDisabled();
+
+    fireEvent.click(button);
+
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("shows a loading state", () => {
+    renderButton({ loading: true });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }),
+    ).toHaveAttribute("data-loading", "true");
+  });
+
+  it("defaults to the subtle variant, overridable per call site", () => {
+    renderButton({ variant: "filled" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }),
+    ).toHaveAttribute("data-variant", "filled");
+  });
+
+  // A bare `color="red"` on the "subtle" variant resolves through Mantine's
+  // `red-light-color` token, which is `red-0` (near white) in dark mode --
+  // designed to read against the "light"/"subtle" variant's own tinted
+  // background, not this button's transparent one. Every real delete action
+  // in the app passes exactly `color="red"` (never an already-shaded
+  // `"red.6"`), so this component pins an explicit shade itself rather than
+  // relying on every call site to know about the quirk.
+  it("pins an explicit shade for a bare red color, instead of Mantine's near-white dark-mode default", () => {
+    renderButton({ color: "red" });
+
+    const style = screen
+      .getByRole("button", { name: "AI Assistance" })
+      .getAttribute("style");
+
+    expect(style).toContain("--ai-color: var(--mantine-color-red-6)");
+    expect(style).not.toContain(
+      "--ai-color: var(--mantine-color-red-light-color)",
+    );
+  });
+
+  it("leaves an already-shaded color untouched", () => {
+    renderButton({ color: "red.3" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }),
+    ).toHaveAttribute(
+      "style",
+      expect.stringContaining("--ai-color: var(--mantine-color-red-3)"),
+    );
+  });
+
+  // A destructive action's hover must be visibly tied to its red icon, not
+  // the same neutral white tint every other action button gets (PR review).
+  it("gives a bare red color the destructive hover class", () => {
+    renderButton({ color: "red" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }).className,
+    ).toMatch(/destructive/);
+  });
+
+  it("does not give an already-shaded red the destructive hover class", () => {
+    renderButton({ color: "red.3" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }).className,
+    ).not.toMatch(/destructive/);
+  });
+
+  it("does not give the default color the destructive hover class", () => {
+    renderButton();
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }).className,
+    ).not.toMatch(/destructive/);
+  });
+});

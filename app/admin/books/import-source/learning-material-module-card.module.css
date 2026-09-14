@@ -81,27 +81,21 @@
 
 /* AI Assistant, Translate, and Delete: always visible, in that fixed order
    (ANA-88) -- previously hidden at rest and revealed only on header
-   hover/focus-within (ANA-77). The `+` combinator only inserts a gap
-   between two of these buttons that actually render next to each other,
-   regardless of which optional ones (Translate/Delete) the caller wired --
-   it never adds space before the first action button or after the last one
-   towards the language switcher. `margin-inline-start` follows the active
-   language's direction (RTL/LTR) rather than assuming a fixed left/right. */
-.actionButton {
+   hover/focus-within (ANA-77). Layout only -- the look (hover/disabled
+   treatment) comes from the shared ActionIconButton (ANA-105); this class
+   just spaces these buttons apart from each other and from the grip/title.
+   The `+` combinator only inserts a gap between two of these buttons that
+   actually render next to each other, regardless of which optional ones
+   (Translate/Delete) the caller wired -- it never adds space before the
+   first action button or after the last one towards the language switcher.
+   `margin-inline-start` follows the active language's direction (RTL/LTR)
+   rather than assuming a fixed left/right. */
+.headerAction {
   flex-shrink: 0;
 }
 
-.actionButton + .actionButton {
+.headerAction + .headerAction {
   margin-inline-start: 5px;
-}
-
-/* A disabled action button must render with no background of its own --
-   fully transparent, not Mantine's default disabled-state fill (ANA-88).
-   Specificity here (two classes) already outweighs Mantine's own disabled
-   selector (one class plus a zero-specificity :where()), so this needs no
-   !important. */
-.actionButton:where(:disabled, [data-disabled]) {
-  background: transparent;
 }
 
 .body {

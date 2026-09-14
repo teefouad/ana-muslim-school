@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import {
-  ActionIcon,
   Group,
   Table,
   TableScrollContainer,
@@ -17,6 +16,7 @@ import {
 } from "@mantine/core";
 import { Pencil, Trash2 } from "lucide-react";
 
+import { ActionIconButton } from "./action-icon-button";
 import styles from "./data-table.module.css";
 
 export interface DataTableColumn<T> {
@@ -149,27 +149,25 @@ export function DataTable<T>({
                     <Group gap="xs" wrap="nowrap" className={styles.actions}>
                       {canEdit && (
                         <Tooltip label={editLabel} disabled={!editLabel}>
-                          <ActionIcon
-                            variant="subtle"
+                          <ActionIconButton
                             aria-label={editLabel}
                             disabled={editDisabled}
                             onClick={() => onEditItem?.(item, index)}
                           >
                             <Pencil size={16} aria-hidden="true" />
-                          </ActionIcon>
+                          </ActionIconButton>
                         </Tooltip>
                       )}
                       {canDelete && (
                         <Tooltip label={deleteLabel} disabled={!deleteLabel}>
-                          <ActionIcon
-                            variant="subtle"
+                          <ActionIconButton
                             color="red"
                             aria-label={deleteLabel}
                             disabled={deleting || deleteDisabled}
                             onClick={() => onDeleteItem?.(item, index)}
                           >
                             <Trash2 size={16} aria-hidden="true" />
-                          </ActionIcon>
+                          </ActionIconButton>
                         </Tooltip>
                       )}
                     </Group>

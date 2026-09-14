@@ -713,9 +713,10 @@ describe("FormField", () => {
         name: "Translate Description with AI",
       });
 
-      // Both actions share one CSS Module class (form-field.module.css)
-      // rather than each inlining its own styling -- this is what keeps
-      // every FormField consumer visually consistent (ANA-100).
+      // Both actions render through the shared ActionIconButton
+      // (action-icon-button.module.css, ANA-105, originally ANA-100's
+      // FormField-local class) rather than each inlining its own styling --
+      // this is what keeps every FormField consumer visually consistent.
       expect(assistButton.className).toMatch(/actionButton/);
       expect(translateButton.className).toMatch(/actionButton/);
       expect(assistButton.className).toBe(translateButton.className);

@@ -1,8 +1,8 @@
 "use client";
 
-import { ActionIcon } from "@mantine/core";
 import { AlignLeft, AlignRight } from "lucide-react";
 
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import type { TextDirection } from "./import-source-types";
 import styles from "./control-group.module.css";
 
@@ -17,7 +17,7 @@ export function TextDirectionControl({
 }: TextDirectionControlProps) {
   return (
     <div className={styles.group}>
-      <ActionIcon
+      <ActionIconButton
         variant={value === "ltr" ? "light" : "subtle"}
         size={28}
         aria-pressed={value === "ltr"}
@@ -25,8 +25,8 @@ export function TextDirectionControl({
         onClick={() => onChange("ltr")}
       >
         <AlignLeft size={14} aria-hidden="true" />
-      </ActionIcon>
-      <ActionIcon
+      </ActionIconButton>
+      <ActionIconButton
         variant={value === "rtl" ? "light" : "subtle"}
         size={28}
         aria-pressed={value === "rtl"}
@@ -34,7 +34,7 @@ export function TextDirectionControl({
         onClick={() => onChange("rtl")}
       >
         <AlignRight size={14} aria-hidden="true" />
-      </ActionIcon>
+      </ActionIconButton>
     </div>
   );
 }

@@ -4,7 +4,24 @@ import {
   type CSSVariablesResolver,
 } from "@mantine/core";
 
+// Falls back to Mantine's own default stack (see DEFAULT_FONT_FAMILY in
+// @mantine/core) if the `--font-inter` variable from `next/font/google`
+// (wired onto <html> in app/layout.tsx) isn't present -- e.g. a test/
+// Storybook render that mounts this theme without that layout.
+const FONT_FAMILY =
+  "var(--font-inter), -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif, Apple Color Emoji, Segoe UI Emoji";
+
 export const theme = createTheme({
+  // Inter as the admin dashboard's primary font (ANA-105), set once here so
+  // every Mantine component -- pages, forms, modals, tables, and every
+  // components/ui primitive -- picks it up consistently rather than each
+  // screen opting in on its own. Arabic-language fields keep rendering in
+  // the browser's own fallback sans-serif (the stack above, same as before
+  // this change) since Inter itself has no Arabic glyphs.
+  fontFamily: FONT_FAMILY,
+  headings: {
+    fontFamily: FONT_FAMILY,
+  },
   components: {
     // Elevated surfaces (the login card, form panels) stay at Mantine's
     // default dark-mode body shade so they read as a step above the app

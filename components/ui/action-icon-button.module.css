@@ -1,0 +1,55 @@
+/* The shared icon-button treatment for every action button across the admin
+   (ANA-105) -- AI Assistance/Translate with AI on FormField (ANA-100),
+   Module Builder's AI Assistant/Translate/Delete, the Modules panel's Edit/
+   Delete, and the Books/Users listing Edit/Delete. Originated in FormField's
+   own `.actionButton` class (the Edit Module modal's fields, the most-
+   established of these); pulled out here so every consumer gets the same
+   hover/disabled treatment from one place instead of each screen styling
+   its own copy.
+
+   Specificity here (one class + a zero-specificity :where()) matches
+   Mantine's own hover/disabled selectors, so which one wins depends on load
+   order rather than specificity -- this app's build already relies on that
+   same tie-break for the identical disabled-background override this class
+   replaces in learning-material-module-card.module.css and
+   item-list.module.css, so this mirrors that precedent rather than reaching
+   for `!important`. */
+.actionButton {
+  transition: background-color 150ms ease;
+}
+
+.actionButton :global(.mantine-ActionIcon-icon) {
+  transition-duration: 0ms !important;
+}
+
+.actionButton :global(.mantine-ActionIcon-loader) {
+  transition-duration: 0ms !important;
+}
+
+@media (hover: hover) {
+  .actionButton:hover:where(:not(:disabled, [data-disabled])) {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Destructive (delete) actions get a translucent red hover instead of the
+   neutral white tint above, so the hover state reads as visibly tied to the
+   red icon rather than the same neutral treatment every other action button
+   gets. `var(--ai-hover)` reuses Mantine's own hover color -- already
+   computed from the `red.6` shade `ActionIconButton` pins for `color="red"`
+   -- rather than a second hardcoded rgba that could drift from it. Compound
+   selector (two classes) so this reliably outranks `.actionButton`'s own
+   hover rule above regardless of source order, rather than relying on a
+   same-specificity tie-break. */
+@media (hover: hover) {
+  .actionButton.destructive:hover:where(:not(:disabled, [data-disabled])) {
+    background-color: var(--ai-hover);
+  }
+}
+
+/* Disabled state: fully transparent background (not Mantine's default
+   disabled-state fill) and a dimmed icon. */
+.actionButton:where(:disabled, [data-disabled]) {
+  background: transparent;
+  opacity: 0.5;
+}

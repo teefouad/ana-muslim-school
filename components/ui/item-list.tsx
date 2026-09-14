@@ -7,9 +7,10 @@ import type {
 } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ActionIcon, Box, Group, Tooltip, UnstyledButton } from "@mantine/core";
+import { Box, Group, Tooltip, UnstyledButton } from "@mantine/core";
 import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 
+import { ActionIconButton } from "./action-icon-button";
 import styles from "./item-list.module.css";
 import { SortableList } from "./sortable-list";
 
@@ -185,30 +186,23 @@ function RowChrome({
       {(canEdit || canDelete) && (
         <Group gap={4} wrap="nowrap" className={styles.actions}>
           {canEdit && (
-            <Tooltip label={editLabel} disabled={!editLabel}>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                aria-label={editLabel}
-                disabled={editDisabled}
-                onClick={onEdit}
-              >
-                <Pencil size={14} aria-hidden="true" />
-              </ActionIcon>
-            </Tooltip>
+            <ActionIconButton
+              aria-label={editLabel}
+              disabled={editDisabled}
+              onClick={onEdit}
+            >
+              <Pencil size={16} aria-hidden="true" />
+            </ActionIconButton>
           )}
           {canDelete && (
-            <Tooltip label={deleteLabel} disabled={!deleteLabel}>
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                aria-label={deleteLabel}
-                disabled={deleting || deleteDisabled}
-                onClick={onDelete}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </ActionIcon>
-            </Tooltip>
+            <ActionIconButton
+              color="red"
+              aria-label={deleteLabel}
+              disabled={deleting || deleteDisabled}
+              onClick={onDelete}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+            </ActionIconButton>
           )}
         </Group>
       )}
