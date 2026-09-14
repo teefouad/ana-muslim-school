@@ -21,12 +21,24 @@ export type ActionIconButtonProps = ActionIconProps &
 // own `className`.
 export function ActionIconButton({
   variant = "subtle",
+  color,
   className,
   ...props
 }: ActionIconButtonProps) {
   return (
     <ActionIcon
       variant={variant}
+      // An unshaded theme color name (`color="red"`, this component's only
+      // real-world use of `color`, for a destructive action) resolves through
+      // Mantine's `*-light-color` token for the "subtle"/"light" variants --
+      // a token designed to read against that *same variant's own* tinted
+      // background, not against this button's transparent one. In dark mode
+      // that token is `red-0` (near white), so an unshaded "subtle" red
+      // button renders almost indistinguishable from every other action
+      // button instead of visibly red. Pinning an explicit shade sidesteps
+      // that token entirely -- Mantine's numeric shades (0-9) are the same
+      // swatch in both color schemes, unlike the semantic light/dark tokens.
+      color={color === "red" ? "red.6" : color}
       className={[styles.actionButton, className].filter(Boolean).join(" ")}
       {...props}
     />

@@ -68,4 +68,35 @@ describe("ActionIconButton", () => {
       screen.getByRole("button", { name: "AI Assistance" }),
     ).toHaveAttribute("data-variant", "filled");
   });
+
+  // A bare `color="red"` on the "subtle" variant resolves through Mantine's
+  // `red-light-color` token, which is `red-0` (near white) in dark mode --
+  // designed to read against the "light"/"subtle" variant's own tinted
+  // background, not this button's transparent one. Every real delete action
+  // in the app passes exactly `color="red"` (never an already-shaded
+  // `"red.6"`), so this component pins an explicit shade itself rather than
+  // relying on every call site to know about the quirk.
+  it("pins an explicit shade for a bare red color, instead of Mantine's near-white dark-mode default", () => {
+    renderButton({ color: "red" });
+
+    const style = screen
+      .getByRole("button", { name: "AI Assistance" })
+      .getAttribute("style");
+
+    expect(style).toContain("--ai-color: var(--mantine-color-red-6)");
+    expect(style).not.toContain(
+      "--ai-color: var(--mantine-color-red-light-color)",
+    );
+  });
+
+  it("leaves an already-shaded color untouched", () => {
+    renderButton({ color: "red.3" });
+
+    expect(
+      screen.getByRole("button", { name: "AI Assistance" }),
+    ).toHaveAttribute(
+      "style",
+      expect.stringContaining("--ai-color: var(--mantine-color-red-3)"),
+    );
+  });
 });
