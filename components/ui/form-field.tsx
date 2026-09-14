@@ -15,7 +15,6 @@ import {
 import { Languages, Sparkles } from "lucide-react";
 
 import { AiInstructionsModal } from "./ai-instructions-modal";
-import { ConfirmDialog } from "./confirm-dialog";
 import styles from "./form-field.module.css";
 import {
   MarkdownEditor,
@@ -195,10 +194,10 @@ function useFormFieldTranslateAction<TContext>({
   // Instructions step (ANA-98 -- unlike AI Assistance, which always shows
   // one): it only ever transforms the whole Arabic value into English,
   // never something an editor needs to redirect with free-form guidance.
-  // The one confirmation it does show guards against something else
-  // entirely -- overwriting a non-empty English value -- and is preserved
-  // unchanged.
-  const [confirming, setConfirming] = useState(false);
+  // Clicking Translate always runs immediately, with no confirmation step,
+  // even when overwriting a non-empty English value (ANA-102) -- the
+  // existing English value stays untouched until the request resolves, and
+  // a failed request never overwrites it.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -225,14 +224,6 @@ function useFormFieldTranslateAction<TContext>({
     }
   }
 
-  function handleClick() {
-    if ((value.en ?? "").trim()) {
-      setConfirming(true);
-      return;
-    }
-    void run();
-  }
-
   return {
     loading,
     error,
@@ -242,21 +233,7 @@ function useFormFieldTranslateAction<TContext>({
       loading ||
       !onAiTranslate ||
       !(value.ar ?? "").trim(),
-    handleClick,
-    dialog: confirming ? (
-      <ConfirmDialog
-        opened
-        title="Replace English translation?"
-        description="Translating again will replace the current English text."
-        confirmLabel="Translate and replace"
-        cancelLabel="Cancel"
-        onCancel={() => setConfirming(false)}
-        onConfirm={() => {
-          setConfirming(false);
-          void run();
-        }}
-      />
-    ) : null,
+    handleClick: () => void run(),
   };
 }
 
@@ -604,7 +581,6 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
           {assist.error}
         </Alert>
       )}
-      {translatable && translate.dialog}
       {assist.dialog}
     </Stack>
   );
