@@ -29,6 +29,14 @@ class for layout only (e.g. `learning-material-module-card.module.css`'s
 `.headerAction` for inter-button spacing) -- never to restyle the button's
 own look.
 
+Module Builder's Font Size (zoom) and Text Direction (align) controls
+(`font-size-control.tsx`, `text-direction-control.tsx`) also build on this
+component -- they pass a smaller `size={28}`/icon `size={14}` (a compact
+bordered `control-group.module.css` group, not an inline action row) and
+Text Direction additionally toggles `variant="light"`/`"subtle"` with
+`aria-pressed` for its active/inactive state, both of which pass straight
+through as ordinary `ActionIconProps`.
+
 ## FormField
 
 `components/ui/form-field.tsx` is the reusable field for the repeated

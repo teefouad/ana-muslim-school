@@ -1,8 +1,8 @@
 "use client";
 
-import { ActionIcon } from "@mantine/core";
 import { Minus, Plus } from "lucide-react";
 
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { useClampedStepper } from "./use-clamped-stepper";
 import styles from "./control-group.module.css";
 
@@ -28,25 +28,23 @@ export function FontSizeControl({ value, onChange }: FontSizeControlProps) {
 
   return (
     <div className={styles.group}>
-      <ActionIcon
-        variant="subtle"
+      <ActionIconButton
         size={28}
         aria-label="Decrease font size"
         disabled={!stepper.canDecrement}
         onClick={stepper.decrement}
       >
         <Minus size={14} aria-hidden="true" />
-      </ActionIcon>
+      </ActionIconButton>
       <span className={styles.label}>{value}%</span>
-      <ActionIcon
-        variant="subtle"
+      <ActionIconButton
         size={28}
         aria-label="Increase font size"
         disabled={!stepper.canIncrement}
         onClick={stepper.increment}
       >
         <Plus size={14} aria-hidden="true" />
-      </ActionIcon>
+      </ActionIconButton>
     </div>
   );
 }

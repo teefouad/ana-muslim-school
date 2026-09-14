@@ -186,27 +186,23 @@ function RowChrome({
       {(canEdit || canDelete) && (
         <Group gap={4} wrap="nowrap" className={styles.actions}>
           {canEdit && (
-            <Tooltip label={editLabel} disabled={!editLabel}>
-              <ActionIconButton
-                aria-label={editLabel}
-                disabled={editDisabled}
-                onClick={onEdit}
-              >
-                <Pencil size={16} aria-hidden="true" />
-              </ActionIconButton>
-            </Tooltip>
+            <ActionIconButton
+              aria-label={editLabel}
+              disabled={editDisabled}
+              onClick={onEdit}
+            >
+              <Pencil size={16} aria-hidden="true" />
+            </ActionIconButton>
           )}
           {canDelete && (
-            <Tooltip label={deleteLabel} disabled={!deleteLabel}>
-              <ActionIconButton
-                color="red"
-                aria-label={deleteLabel}
-                disabled={deleting || deleteDisabled}
-                onClick={onDelete}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </ActionIconButton>
-            </Tooltip>
+            <ActionIconButton
+              color="red"
+              aria-label={deleteLabel}
+              disabled={deleting || deleteDisabled}
+              onClick={onDelete}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+            </ActionIconButton>
           )}
         </Group>
       )}
