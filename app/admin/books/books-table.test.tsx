@@ -54,11 +54,34 @@ describe("BooksTable", () => {
     expect(fetch).toHaveBeenCalledWith("/api/v1/books");
   });
 
-  it("shows a loading state before the request resolves", () => {
+  it("shows a books-shaped skeleton before the request resolves, not a spinner", () => {
     (fetch as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
     renderTable();
 
-    expect(screen.getByText("Loading books…")).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Loading books" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading books…")).not.toBeInTheDocument();
+  });
+
+  it("replaces the skeleton with the loaded books once the request resolves", async () => {
+    mockFetchOnce(
+      jsonResponse({
+        data: [
+          buildBookFixture({ id: "book-1", title: { ar: "كتاب", en: "" } }),
+        ],
+      }),
+    );
+    renderTable();
+
+    expect(
+      screen.getByRole("status", { name: "Loading books" }),
+    ).toBeInTheDocument();
+
+    expect(await screen.findByText("كتاب")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Loading books" }),
+    ).not.toBeInTheDocument();
   });
 
   it("displays returned Book data", async () => {
