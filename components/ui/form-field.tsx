@@ -124,7 +124,11 @@ interface FormFieldCommonProps<TContext> {
    * field already disables itself for that window via its own internal
    * `fieldBusy` -- a caller must not feed this back into another field's
    * `disabled` (or a non-AI control's), which would freeze unrelated UI for
-   * an AI request it has nothing to do with (ANA-109). */
+   * an AI request it has nothing to do with (ANA-109). A caller may still
+   * aggregate several fields' `onBusyChange` calls to gate its own action
+   * that isn't a field at all, e.g. disabling a Save button so it can't
+   * persist a value while that value's own translation is still in flight
+   * (see edit-module-modal.tsx's `aiBusy`, ANA-109 PR review). */
   onBusyChange?: (busy: boolean) => void;
 }
 

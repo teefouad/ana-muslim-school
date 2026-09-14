@@ -61,8 +61,13 @@ book-form.tsx/edit-module-modal.tsx `aiBusy` bug fixed by ANA-109: an
 in-flight Translate/AI Assistance request on one field must never disable
 any other field or control. `onBusyChange` still reports one field's own
 busy window to its caller for whatever else it might need beyond disabling
-that same field, but neither book-form.tsx nor edit-module-modal.tsx wires
-it up any more.
+that field itself -- edit-module-modal.tsx aggregates its three fields'
+`onBusyChange` calls into one `aiBusy` flag again, but only to gate its own
+Save Module/Save changes action (never Cancel, and never fed back into any
+field's `disabled`): saving while a translation is still in flight would
+persist the pre-translation value and silently lose the AI result once it
+resolves after the modal has already closed (ANA-109 PR review). book-form.tsx
+has no such save action of its own to gate and wires nothing.
 `translatable-field-header.tsx` is the label + actions + language-switcher
 row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
 share.

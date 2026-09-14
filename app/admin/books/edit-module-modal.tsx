@@ -121,6 +121,18 @@ function EditModuleModalBody({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Each field disables only itself while its own AI request is in flight
+  // (ANA-109) -- these three flags are never fed back into another field's
+  // `disabled`. They exist solely to keep Save disabled while any one of
+  // them is unresolved: saving now would persist the pre-translation value,
+  // and the AI result would then be silently lost once it lands after
+  // `onClose` unmounts this component (PR review). Cancel stays unaffected
+  // -- discarding the draft is always safe, in-flight request or not.
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [descriptionBusy, setDescriptionBusy] = useState(false);
+  const [contentBusy, setContentBusy] = useState(false);
+  const aiBusy = titleBusy || descriptionBusy || contentBusy;
+
   async function handlePrimaryAction() {
     setSaveError(null);
     setIsSaving(true);
@@ -182,6 +194,7 @@ function EditModuleModalBody({
         getAIAssistanceContext={() => ({
           moduleContent: content.ar ?? "",
         })}
+        onBusyChange={setTitleBusy}
       />
 
       {/* Description (ANA-98/ANA-99): AI Assistance and Translate with AI
@@ -222,6 +235,7 @@ function EditModuleModalBody({
           moduleTitle: title.ar ?? "",
           moduleContent: content.ar ?? "",
         })}
+        onBusyChange={setDescriptionBusy}
       />
 
       {/* Content (ANA-98/ANA-99): this Module's Learning Material -- still
@@ -270,6 +284,7 @@ function EditModuleModalBody({
           moduleTitle: title.ar ?? "",
           moduleDescription: description.ar ?? "",
         })}
+        onBusyChange={setContentBusy}
       />
 
       <ColorField value={color} onChange={setColor} />
@@ -284,7 +299,11 @@ function EditModuleModalBody({
         <Button variant="default" onClick={onClose} disabled={isSaving}>
           Cancel
         </Button>
-        <Button onClick={() => void handlePrimaryAction()} loading={isSaving}>
+        <Button
+          onClick={() => void handlePrimaryAction()}
+          loading={isSaving}
+          disabled={aiBusy}
+        >
           {state.mode === "create" ? "Save Module" : "Save changes"}
         </Button>
       </Group>

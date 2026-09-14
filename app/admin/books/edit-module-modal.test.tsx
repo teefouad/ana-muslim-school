@@ -269,9 +269,15 @@ describe("EditModuleModal", () => {
       expect(
         within(dialog).getByRole("radiogroup", { name: "Color" }),
       ).not.toHaveAttribute("aria-disabled", "true");
+      // Save stays disabled while Title's own translation is unresolved --
+      // unlike Description/Content/Color, it isn't "a field this AI request
+      // has nothing to do with": saving now would persist Title's
+      // pre-translation value, and the AI result would be lost once it
+      // resolves after this component has already unmounted (PR review).
+      // Cancel is unaffected -- discarding the draft is always safe.
       expect(
         within(dialog).getByRole("button", { name: "Save changes" }),
-      ).not.toBeDisabled();
+      ).toBeDisabled();
       expect(
         within(dialog).getByRole("button", { name: "Cancel" }),
       ).not.toBeDisabled();
@@ -281,6 +287,9 @@ describe("EditModuleModal", () => {
       await vi.waitFor(() => {
         expect(within(dialog).getByLabelText("Title")).not.toBeDisabled();
       });
+      expect(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      ).not.toBeDisabled();
     });
 
     it("disables only Description while its Translate request is running", async () => {
@@ -305,12 +314,20 @@ describe("EditModuleModal", () => {
         "contenteditable",
         "true",
       );
+      // Save is still gated on Description's own in-flight request, even
+      // though Description itself is the only field disabled.
+      expect(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      ).toBeDisabled();
 
       resolveTranslate(jsonResponse({ data: { text: "Description" } }));
 
       await vi.waitFor(() => {
         expect(within(dialog).getByLabelText("Description")).not.toBeDisabled();
       });
+      expect(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      ).not.toBeDisabled();
     });
 
     it("disables only Content while its Translate request is running", async () => {
@@ -338,6 +355,9 @@ describe("EditModuleModal", () => {
       expect(
         within(dialog).getByRole("combobox", { name: "Color" }),
       ).not.toBeDisabled();
+      expect(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      ).toBeDisabled();
 
       resolveTranslate(jsonResponse({ data: { text: "Content" } }));
 
@@ -347,6 +367,60 @@ describe("EditModuleModal", () => {
           "true",
         );
       });
+      expect(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      ).not.toBeDisabled();
+    });
+
+    it("does not persist the pre-translation value when Save is clicked while Translate is still in flight (PR review regression)", async () => {
+      let resolveTranslate: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveTranslate = resolve)),
+      );
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      renderModal({ onSave, onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: "Translate Title with AI",
+        }),
+      );
+
+      await vi.waitFor(() => {
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).toBeDisabled();
+      });
+
+      // A disabled native button ignores clicks -- Save must not have
+      // persisted the still-untranslated Title while its own AI result was
+      // unresolved.
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+
+      resolveTranslate(jsonResponse({ data: { text: "Introduction" } }));
+      await vi.waitFor(() => {
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toBeDisabled();
+      });
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith(
+          "module-1",
+          expect.objectContaining({
+            title: expect.objectContaining({ en: "Introduction" }),
+          }),
+        ),
+      );
     });
 
     it("re-enables Title even when its Translate request fails, leaving other fields untouched throughout", async () => {
