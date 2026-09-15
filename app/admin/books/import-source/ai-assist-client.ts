@@ -120,6 +120,64 @@ export async function suggestModuleDescription({
   });
 }
 
+export interface SuggestLessonFieldInput {
+  text: string;
+  additionalInstructions?: string;
+  /** The owning Module's own current Arabic Title/Description/Learning
+   * Material (ANA-116) -- always this Module's *current* editor values,
+   * including any unsaved edits still held in the Edit Module modal's own
+   * state, never a fresh server reload (the server trusts these directly,
+   * exactly like a Book's own fields for Book-level AI Assistance). */
+  moduleTitle: string;
+  moduleDescription: string;
+  moduleContent: string;
+}
+
+/** Suggests or improves a Lesson's Title via `POST /api/v1/ai/assist`
+ * (`field: "lessonTitle"`, ANA-116) -- unlike Module-level AI Assistance,
+ * this never sends a `bookId`/Module id for the server to reload from: the
+ * owning Module's context is sent directly, the same way a Book's own
+ * fields are sent directly for Book-level AI Assistance. Returns only the
+ * suggested title text -- callers apply it to their own Title draft. */
+export async function suggestLessonTitle({
+  text,
+  additionalInstructions,
+  moduleTitle,
+  moduleDescription,
+  moduleContent,
+}: SuggestLessonFieldInput): Promise<string> {
+  return requestAssist({
+    field: "lessonTitle",
+    text,
+    additionalInstructions,
+    moduleTitle,
+    moduleDescription,
+    moduleContent,
+  });
+}
+
+/** Suggests or improves a Lesson's One-line description via
+ * `POST /api/v1/ai/assist` (`field: "lessonDescription"`, ANA-116) -- see
+ * `suggestLessonTitle` for why this never sends a `bookId`/Module id
+ * either. Returns only the suggested description text -- callers apply it
+ * to their own Description draft. */
+export async function suggestLessonDescription({
+  text,
+  additionalInstructions,
+  moduleTitle,
+  moduleDescription,
+  moduleContent,
+}: SuggestLessonFieldInput): Promise<string> {
+  return requestAssist({
+    field: "lessonDescription",
+    text,
+    additionalInstructions,
+    moduleTitle,
+    moduleDescription,
+    moduleContent,
+  });
+}
+
 /** The language of the Book field actually being written -- whichever
  * language tab is active in `FormField` (ANA-100, PR review). AI
  * Assistance always writes its result back to this same language, so this

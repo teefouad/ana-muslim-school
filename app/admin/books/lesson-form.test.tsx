@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,7 +24,14 @@ function renderForm(overrides: Partial<LessonFormProps> = {}) {
   const onChange = vi.fn();
   const utils = render(
     <MantineProvider>
-      <LessonForm value={VALUE} onChange={onChange} {...overrides} />
+      <LessonForm
+        value={VALUE}
+        onChange={onChange}
+        moduleTitle="عنوان الوحدة"
+        moduleDescription="وصف الوحدة"
+        moduleContent="محتوى الوحدة"
+        {...overrides}
+      />
     </MantineProvider>,
   );
   return { onChange, ...utils };
@@ -198,5 +205,117 @@ describe("LessonForm", () => {
     fireEvent.click(screen.getByRole("radio", { name: "0" }));
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  describe("AI Assistance (ANA-116)", () => {
+    function lastRequestBody(): Record<string, unknown> {
+      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const [, init] = calls[calls.length - 1] as [string, RequestInit];
+      return JSON.parse(init.body as string) as Record<string, unknown>;
+    }
+
+    it("exposes AI Assistance for both Title and One-line description", () => {
+      renderForm();
+
+      expect(
+        screen.getByRole("button", { name: "AI Assistance for Title" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "AI Assistance for One-line description",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("sends the current Module Title/Description/Content as context for Title's AI Assistance, applying the result to Title only", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "اقتراح" } }),
+      );
+      const { onChange } = renderForm();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/ai/assist",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(lastRequestBody()).toMatchObject({
+        field: "lessonTitle",
+        text: "المقدمة",
+        moduleTitle: "عنوان الوحدة",
+        moduleDescription: "وصف الوحدة",
+        moduleContent: "محتوى الوحدة",
+      });
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({
+          title: { ar: "اقتراح", en: "" },
+        }),
+      );
+    });
+
+    it("sends the current Module Title/Description/Content as context for One-line description's AI Assistance, applying the result to Description only", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "وصف مقترح" } }),
+      );
+      const { onChange } = renderForm();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "AI Assistance for One-line description",
+        }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(lastRequestBody()).toMatchObject({
+        field: "lessonDescription",
+        text: "وصف قصير",
+        moduleTitle: "عنوان الوحدة",
+        moduleDescription: "وصف الوحدة",
+        moduleContent: "محتوى الوحدة",
+      });
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({
+          description: { ar: "وصف مقترح", en: "" },
+        }),
+      );
+    });
+
+    it("reports Title's own AI Assistance busy state through onTitleBusyChange", async () => {
+      let resolveAssist: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveAssist = resolve)),
+      );
+      const onTitleBusyChange = vi.fn();
+      renderForm({ onTitleBusyChange });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await vi.waitFor(() =>
+        expect(onTitleBusyChange).toHaveBeenCalledWith(true),
+      );
+
+      resolveAssist(jsonResponse({ data: { text: "اقتراح" } }));
+
+      await vi.waitFor(() =>
+        expect(onTitleBusyChange).toHaveBeenCalledWith(false),
+      );
+    });
   });
 });

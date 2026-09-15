@@ -4,6 +4,8 @@ import { requireBooksPermission } from "@/lib/auth/require-books-permission";
 import { assistLearningMaterialService } from "@/lib/ai/assist-learning-material-service";
 import { suggestBookDescriptionService } from "@/lib/ai/suggest-book-description-service";
 import { suggestBookLongDescriptionService } from "@/lib/ai/suggest-book-long-description-service";
+import { suggestLessonDescriptionService } from "@/lib/ai/suggest-lesson-description-service";
+import { suggestLessonTitleService } from "@/lib/ai/suggest-lesson-title-service";
 import { suggestModuleDescriptionService } from "@/lib/ai/suggest-module-description-service";
 import { suggestModuleTitleService } from "@/lib/ai/suggest-module-title-service";
 import { serviceErrorResponse } from "@/lib/http/error-response";
@@ -15,6 +17,8 @@ const FIELDS = [
   "content",
   "bookDescription",
   "bookLongDescription",
+  "lessonTitle",
+  "lessonDescription",
 ] as const;
 
 /**
@@ -26,14 +30,20 @@ const FIELDS = [
  * backed by its own specialized lib/ai helper and validated by its own
  * service, and each always reloading its owning Book server-side from a
  * client-supplied `bookId`, never trusted from the request body -- versus
- * `"bookDescription"`/`"bookLongDescription"` (Book-level, ANA-100), which
- * never load a Book server-side at all: a Book's own fields are always
+ * `"bookDescription"`/`"bookLongDescription"` (Book-level, ANA-100) and
+ * `"lessonTitle"`/`"lessonDescription"` (Lesson-level, ANA-116), which
+ * never load anything server-side at all: a Book's own fields are always
  * this same Book (there is no separate owning entity to fetch, and no
- * `bookId` when the Book hasn't been created yet), so `bookTitle`/
- * `bookDescription`/`bookLongDescription` context is trusted directly from
- * the request body for those two, the same way a Module's own current
- * title/content are trusted for Module-level AI Assistance. Every `field`
- * shares this one REST boundary and `books.update` permission check (see
+ * `bookId` when the Book hasn't been created yet), and a Lesson's
+ * suggestion context is always its owning Module's *current* (possibly
+ * unsaved) Title/Description/Learning Material still held in the Edit
+ * Module modal's own state, which a server-side reload by id would
+ * silently discard -- so `bookTitle`/`bookDescription`/
+ * `bookLongDescription`/`moduleTitle`/`moduleDescription`/`moduleContent`
+ * context is trusted directly from the request body for those four, the
+ * same way a Module's own current title/content are trusted for
+ * Module-level AI Assistance. Every `field` shares this one REST boundary
+ * and `books.update` permission check (see
  * lib/auth/require-books-permission.ts). Never persists anything itself --
  * the caller applies the returned text to its own draft state.
  */
@@ -62,7 +72,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          '`field` must be "title", "description", "content", "bookDescription", or "bookLongDescription".',
+          '`field` must be "title", "description", "content", "bookDescription", "bookLongDescription", "lessonTitle", or "lessonDescription".',
       },
       { status: 400 },
     );
@@ -77,7 +87,11 @@ export async function POST(request: Request) {
           ? await suggestBookDescriptionService(body.value)
           : field === "bookLongDescription"
             ? await suggestBookLongDescriptionService(body.value)
-            : await assistLearningMaterialService(body.value);
+            : field === "lessonTitle"
+              ? await suggestLessonTitleService(body.value)
+              : field === "lessonDescription"
+                ? await suggestLessonDescriptionService(body.value)
+                : await assistLearningMaterialService(body.value);
 
   if (!result.ok) {
     return serviceErrorResponse(result.error);

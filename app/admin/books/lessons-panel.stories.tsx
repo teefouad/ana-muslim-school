@@ -1,11 +1,11 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
+import type { Lesson } from "@/lib/lessons/types";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { LessonsPanel, type LessonsPanelProps } from "./lessons-panel";
-import type { MockLesson } from "./mock-lessons";
 
-const SAMPLE_LESSONS: MockLesson[] = [
+const SAMPLE_LESSONS: Lesson[] = [
   buildLessonFixture({
     id: "lesson-1",
     title: { ar: "ما هي الصلاة؟", en: "What is Salah?" },
@@ -54,7 +54,7 @@ const meta = {
   args: {
     onLessonsChange: () => {},
     onEditLesson: () => {},
-    onDeleteLesson: () => {},
+    onDeleteLesson: () => Promise.resolve(),
     onNewLesson: () => {},
   },
   render: (args) => (

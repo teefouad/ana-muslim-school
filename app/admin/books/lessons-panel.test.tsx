@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 
+import type { Lesson } from "@/lib/lessons/types";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { LessonsPanel } from "./lessons-panel";
-import type { MockLesson } from "./mock-lessons";
 
-const LESSONS: MockLesson[] = [
+const LESSONS: Lesson[] = [
   buildLessonFixture({
     id: "lesson-1",
     title: { ar: "Introduction", en: "" },
@@ -55,7 +55,7 @@ function renderPanel(
         lessons={LESSONS}
         onLessonsChange={vi.fn()}
         onEditLesson={vi.fn()}
-        onDeleteLesson={vi.fn()}
+        onDeleteLesson={vi.fn().mockResolvedValue(undefined)}
         onNewLesson={vi.fn()}
         {...overrides}
       />
@@ -183,9 +183,9 @@ describe("LessonsPanel", () => {
     });
   });
 
-  describe("Delete lesson (ANA-115, frontend-only local removal)", () => {
+  describe("Delete lesson (ANA-116, persisted through the caller's onDeleteLesson)", () => {
     it("shows a confirmation dialog instead of deleting immediately", () => {
-      const onDeleteLesson = vi.fn();
+      const onDeleteLesson = vi.fn().mockResolvedValue(undefined);
       renderPanel({ onDeleteLesson });
 
       fireEvent.click(
@@ -198,8 +198,8 @@ describe("LessonsPanel", () => {
       expect(onDeleteLesson).not.toHaveBeenCalled();
     });
 
-    it("calls onDeleteLesson once confirmed, with no network request", () => {
-      const onDeleteLesson = vi.fn();
+    it("calls onDeleteLesson once confirmed", async () => {
+      const onDeleteLesson = vi.fn().mockResolvedValue(undefined);
       renderPanel({ onDeleteLesson });
 
       fireEvent.click(
@@ -207,12 +207,13 @@ describe("LessonsPanel", () => {
       );
       fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
 
-      expect(onDeleteLesson).toHaveBeenCalledWith(LESSONS[0]);
-      expect(fetch).not.toHaveBeenCalled();
+      await vi.waitFor(() =>
+        expect(onDeleteLesson).toHaveBeenCalledWith(LESSONS[0]),
+      );
     });
 
     it("makes no call when canceled", () => {
-      const onDeleteLesson = vi.fn();
+      const onDeleteLesson = vi.fn().mockResolvedValue(undefined);
       renderPanel({ onDeleteLesson });
 
       fireEvent.click(
@@ -224,6 +225,21 @@ describe("LessonsPanel", () => {
       expect(
         screen.queryByRole("dialog", { name: "Delete lesson?" }),
       ).not.toBeInTheDocument();
+    });
+
+    it("keeps the row and shows an error when the delete request fails", async () => {
+      const onDeleteLesson = vi
+        .fn()
+        .mockRejectedValue(new Error("Lesson not found."));
+      renderPanel({ onDeleteLesson });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
+
+      expect(await screen.findByText("Lesson not found.")).toBeInTheDocument();
+      expect(screen.getByText("Introduction")).toBeInTheDocument();
     });
   });
 });

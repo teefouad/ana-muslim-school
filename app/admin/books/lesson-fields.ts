@@ -1,15 +1,20 @@
 import type { TranslatedValue } from "@/components/ui/translatable-value";
-import { LESSON_TYPES, type LessonType } from "@/lib/lessons/types";
-import type { MockLesson } from "./mock-lessons";
+import {
+  LESSON_TYPES,
+  type Lesson,
+  type LessonType,
+  type LessonWritableFields,
+} from "@/lib/lessons/types";
+import { toTranslatableString } from "./module-fields";
 
 /**
  * The Lesson editor's controlled field values (ANA-114/ANA-115) --
  * deliberately limited to Type/Title/One-line description/Published/
  * Position, the only fields this editor exposes. Configuration and the
- * Questions section are a later task (ANA-110). Frontend-only, matching
- * `MockLesson`'s own fields minus `id` -- Lesson persistence is deferred to
- * a follow-up task (ANA-116), so this never assumes or builds a backend
- * request body.
+ * Questions section are a later task (ANA-110). Real Lesson persistence
+ * (ANA-116) fills every other `LessonWritableFields` key with a temporary,
+ * schema-valid default -- see `toLessonCreateFields` -- rather than exposing
+ * them here.
  */
 export interface LessonFieldsValues {
   title: TranslatedValue;
@@ -19,9 +24,9 @@ export interface LessonFieldsValues {
   isPublished: boolean;
 }
 
-/** Seeds the Lesson editor's fields from an existing, local `MockLesson`
- * (ANA-111/ANA-114). */
-export function toLessonFieldsValues(lesson: MockLesson): LessonFieldsValues {
+/** Seeds the Lesson editor's fields from a real, API-backed Lesson
+ * (ANA-116). */
+export function toLessonFieldsValues(lesson: Lesson): LessonFieldsValues {
   return {
     title: lesson.title,
     description: lesson.description,
@@ -44,5 +49,59 @@ export function createEmptyLessonFieldsValues(): LessonFieldsValues {
     type: LESSON_TYPES[0],
     position: 2,
     isPublished: false,
+  };
+}
+
+/** Temporary, schema-valid defaults for the Lesson fields this editor
+ * doesn't expose yet (ANA-116) -- Configuration/Questions UI is out of
+ * scope for this task; these placeholder values only let create/update
+ * round-trip through the real, already-stricter backend schema. Proper
+ * population is a later task (ANA-110). A function (not a shared constant)
+ * so every call gets its own fresh, mutable `azkar`/`questions` arrays. */
+function hiddenLessonFieldDefaults(): Pick<
+  LessonWritableFields,
+  "reward" | "duration" | "videoURL" | "azkar" | "questions" | "isLocked"
+> {
+  return {
+    reward: { coins: 0 },
+    duration: 0,
+    videoURL: "",
+    azkar: [],
+    questions: [],
+    isLocked: false,
+  };
+}
+
+/** Builds a `POST /api/v1/books/{bookId}/modules/{moduleId}/lessons` body
+ * (ANA-116) from the editor's fields -- every writable field is required by
+ * that endpoint, so the fields this editor doesn't expose are filled with
+ * `hiddenLessonFieldDefaults()`. */
+export function toLessonCreateFields(
+  fields: LessonFieldsValues,
+): LessonWritableFields {
+  return {
+    title: toTranslatableString(fields.title),
+    description: toTranslatableString(fields.description),
+    type: fields.type,
+    position: fields.position,
+    isPublished: fields.isPublished,
+    ...hiddenLessonFieldDefaults(),
+  };
+}
+
+/** Builds a `PATCH .../lessons/{lessonId}` body (ANA-116) from the editor's
+ * fields -- deliberately includes only the five fields this editor owns;
+ * that endpoint leaves every omitted field (`reward`/`duration`/
+ * `videoURL`/`azkar`/`questions`/`isLocked`) unchanged, so an existing
+ * Lesson's hidden fields are never reset by a Lesson editor save. */
+export function toLessonPatchFields(
+  fields: LessonFieldsValues,
+): Partial<LessonWritableFields> {
+  return {
+    title: toTranslatableString(fields.title),
+    description: toTranslatableString(fields.description),
+    type: fields.type,
+    position: fields.position,
+    isPublished: fields.isPublished,
   };
 }
