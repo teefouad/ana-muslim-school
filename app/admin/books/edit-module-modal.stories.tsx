@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import type { Book } from "@/lib/books/types";
 import { EditModuleModal } from "./edit-module-modal";
+import type { MockLesson } from "./mock-lessons";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 
 const FILLED_FIELDS = {
@@ -54,6 +55,26 @@ export const Create: Story = {
 export const Edit: Story = {
   args: {
     state: { mode: "edit", id: "module-1", fields: FILLED_FIELDS },
+  },
+};
+
+// Edit mode's three-column layout (ANA-111): Module form, Lessons list, and
+// the Lesson editor placeholder -- Lessons here are local/mock data only
+// (real Lesson loading is out of scope, ANA-110), reorderable and
+// appendable via the Lessons list's own Add lesson button.
+const SAMPLE_LESSONS: MockLesson[] = [
+  { id: "lesson-1", title: "What is Salah?", position: 0 },
+  { id: "lesson-2", title: "The five daily prayers", position: 1 },
+];
+
+export const EditWithLessons: Story = {
+  args: {
+    state: {
+      mode: "edit",
+      id: "module-1",
+      fields: FILLED_FIELDS,
+      lessons: SAMPLE_LESSONS,
+    },
   },
 };
 

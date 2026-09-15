@@ -1,7 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Group, Modal, Stack } from "@mantine/core";
+import {
+  Alert,
+  Box,
+  Button,
+  Flex,
+  Group,
+  Modal,
+  Stack,
+  Text,
+} from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
 import { FormField } from "@/components/ui/form-field";
@@ -13,6 +22,8 @@ import {
   suggestModuleTitle,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
+import { LessonsPanel } from "./lessons-panel";
+import type { MockLesson } from "./mock-lessons";
 import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
@@ -28,9 +39,19 @@ function errorMessage(err: unknown): string {
  * create request succeeds (see `[id]/edit/page.tsx`'s `handleCreateModule`).
  * `"edit"` seeds it from an existing, real Module's current fields, primary
  * action Save changes -- unchanged from ANA-91 except that saving now
- * persists through the backend instead of only updating local state. */
+ * persists through the backend instead of only updating local state.
+ * `lessons` (ANA-111) is this Module's Lessons list, in display order --
+ * optional and local-UI-only, since real Lesson loading/persistence is out
+ * of scope for this task (ANA-110); omitted (or empty) shows the Lessons
+ * list's own empty state. */
 export type EditModuleModalState =
-  { mode: "create" } | { mode: "edit"; id: string; fields: ModuleFieldsValues };
+  | { mode: "create" }
+  | {
+      mode: "edit";
+      id: string;
+      fields: ModuleFieldsValues;
+      lessons?: MockLesson[];
+    };
 
 export interface EditModuleModalProps {
   /** `null` closes the modal. */
@@ -73,7 +94,13 @@ export function EditModuleModal({
       opened={state !== null}
       onClose={onClose}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
-      size="lg"
+      // Edit mode's three-column layout (Module form, Lessons list, Lesson
+      // placeholder, ANA-111) needs materially more width than the
+      // single-column form Create mode still uses -- capped against the
+      // viewport the same way Module Builder's own wide modal is
+      // (import-source-modal.tsx), rather than a fixed size that would
+      // overflow a narrow viewport.
+      size={state?.mode === "edit" ? "min(1100px, calc(100vw - 48px))" : "lg"}
       centered
     >
       {state && (
@@ -133,6 +160,17 @@ function EditModuleModalBody({
   const [contentBusy, setContentBusy] = useState(false);
   const aiBusy = titleBusy || descriptionBusy || contentBusy;
 
+  // The Lessons list shown in edit mode's middle column (ANA-111) -- local
+  // UI state only, seeded from whatever order the caller provided
+  // (`state.lessons`, itself local/mock data -- real Lesson loading is out
+  // of scope, ANA-110). Reordering and Add Lesson only ever update this
+  // state through LessonsPanel's own `onLessonsChange`; neither makes a
+  // network request, and neither is included in `handlePrimaryAction`'s
+  // save payload below.
+  const [lessons, setLessons] = useState<MockLesson[]>(
+    state.mode === "edit" ? (state.lessons ?? []) : [],
+  );
+
   async function handlePrimaryAction() {
     setSaveError(null);
     setIsSaving(true);
@@ -154,7 +192,7 @@ function EditModuleModalBody({
     }
   }
 
-  return (
+  const moduleForm = (
     <Stack gap="lg">
       {/* Title (ANA-98/ANA-99): AI Assistance and Translate with AI are both
           grounded in this Module's own Arabic Learning Material plus the
@@ -308,5 +346,43 @@ function EditModuleModalBody({
         </Button>
       </Group>
     </Stack>
+  );
+
+  // Create mode keeps its existing single-column layout unchanged. Edit
+  // mode gains the three-column layout (ANA-111): Module form, Lessons
+  // list, and a placeholder for the future Lesson editor (ANA-110) --
+  // `align="stretch"` matches all three columns to the form's own natural
+  // height, the same pattern the Edit Book page already uses for its own
+  // BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`).
+  if (state.mode === "create") {
+    return moduleForm;
+  }
+
+  return (
+    <Flex gap="lg" direction={{ base: "column", md: "row" }} align="stretch">
+      <Box style={{ flex: 2, minWidth: 0 }}>{moduleForm}</Box>
+      <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
+        <LessonsPanel lessons={lessons} onLessonsChange={setLessons} />
+      </Box>
+      <Box style={{ flex: 1, minWidth: 0 }}>
+        <Box
+          style={{
+            height: "100%",
+            minHeight: 280,
+            border: "1px dashed var(--mantine-color-default-border)",
+            borderRadius: "var(--mantine-radius-sm)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: 16,
+          }}
+        >
+          <Text size="sm" c="dimmed">
+            Select a lesson to edit.
+          </Text>
+        </Box>
+      </Box>
+    </Flex>
   );
 }
