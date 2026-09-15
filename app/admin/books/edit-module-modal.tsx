@@ -376,7 +376,19 @@ function EditModuleModalBody({
       />
 
       <ColorField value={color} onChange={setColor} />
+    </>
+  );
 
+  // Edit mode grows a Lessons column beside the form, plus a placeholder
+  // reserving space for the future Lesson editor (ANA-111) -- create mode
+  // has no real Module id yet to attach Lessons to, so it keeps the
+  // original single-column layout untouched. Save/Cancel (and any save
+  // error) are the modal's own action footer, not part of either the form
+  // or the Lessons columns -- they sit outside/below the columns in both
+  // modes, matching the fact that they act on the whole modal, not one
+  // column of it.
+  const footer = (
+    <>
       {saveError && (
         <Alert color="red" role="alert">
           {saveError}
@@ -398,41 +410,47 @@ function EditModuleModalBody({
     </>
   );
 
-  // Edit mode grows a Lessons column beside the form, plus a placeholder
-  // reserving space for the future Lesson editor (ANA-111) -- create mode
-  // has no real Module id yet to attach Lessons to, so it keeps the
-  // original single-column layout untouched.
   if (!isEditWithLessons) {
-    return <Stack gap="lg">{formFields}</Stack>;
+    return (
+      <Stack gap="lg">
+        <Stack gap="lg">{formFields}</Stack>
+        {footer}
+      </Stack>
+    );
   }
 
   return (
-    <Flex gap="xl" align="stretch" direction={{ base: "column", md: "row" }}>
-      <Stack gap="lg" className={styles.formColumn}>
-        {formFields}
-      </Stack>
-      <Box className={styles.lessonsColumn}>
-        {lessonsLoading ? (
-          <LessonsColumnSkeleton />
-        ) : lessonsLoadError ? (
-          <Alert color="red">{lessonsLoadError}</Alert>
-        ) : (
-          <LessonsPanel
-            lessons={lessons}
-            onReorderLessons={onReorderLessons}
-            reorderDisabled={reorderLessonsDisabled}
-            onAddLesson={onAddLesson}
-            addDisabled={addLessonDisabled}
-            error={lessonsActionError}
-          />
-        )}
-      </Box>
-      <Box className={styles.placeholderColumn}>
-        <Box className={styles.placeholder}>
-          <Text c="dimmed">Select a lesson to edit.</Text>
+    <Stack gap="lg">
+      <Flex gap="xl" align="stretch" direction={{ base: "column", md: "row" }}>
+        <Stack gap="lg" className={styles.formColumn}>
+          {formFields}
+        </Stack>
+        <Box className={styles.lessonsColumn}>
+          {lessonsLoading ? (
+            <LessonsColumnSkeleton />
+          ) : lessonsLoadError ? (
+            <Alert color="red">{lessonsLoadError}</Alert>
+          ) : (
+            <LessonsPanel
+              lessons={lessons}
+              onReorderLessons={onReorderLessons}
+              reorderDisabled={reorderLessonsDisabled}
+              onAddLesson={onAddLesson}
+              addDisabled={addLessonDisabled}
+              error={lessonsActionError}
+            />
+          )}
         </Box>
-      </Box>
-    </Flex>
+        <Box className={styles.placeholderColumn}>
+          <Box className={styles.placeholder}>
+            <Text c="dimmed" fz={13}>
+              Select a lesson to edit.
+            </Text>
+          </Box>
+        </Box>
+      </Flex>
+      {footer}
+    </Stack>
   );
 }
 
