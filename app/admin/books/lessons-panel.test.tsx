@@ -2,26 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 
+import { buildLessonFixture } from "./lesson-fixtures";
 import { LessonsPanel } from "./lessons-panel";
 import type { MockLesson } from "./mock-lessons";
 
 const LESSONS: MockLesson[] = [
-  {
+  buildLessonFixture({
     id: "lesson-1",
     title: { ar: "Introduction", en: "" },
-    description: { ar: "", en: "" },
-    type: "text",
     position: 0,
-    isPublished: false,
-  },
-  {
+  }),
+  buildLessonFixture({
     id: "lesson-2",
     title: { ar: "", en: "" },
-    description: { ar: "", en: "" },
-    type: "text",
     position: 1,
-    isPublished: false,
-  },
+  }),
 ];
 
 // dnd-kit's collision detection/keyboard coordinate getter is driven by real
@@ -59,6 +54,9 @@ function renderPanel(
       <LessonsPanel
         lessons={LESSONS}
         onLessonsChange={vi.fn()}
+        onEditLesson={vi.fn()}
+        onDeleteLesson={vi.fn()}
+        onNewLesson={vi.fn()}
         {...overrides}
       />
     </MantineProvider>,
@@ -108,36 +106,49 @@ describe("LessonsPanel", () => {
     expect(screen.queryByText("Introduction")).not.toBeInTheDocument();
   });
 
-  it("exposes no edit or delete actions on any row (selection/editing/deletion out of scope)", () => {
+  it("exposes edit and delete icon actions on every row via ItemList", () => {
     renderPanel();
 
     expect(
-      screen.queryByRole("button", { name: /edit/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Edit Introduction" }),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /delete/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Delete Introduction" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit Lesson 2" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Lesson 2" }),
+    ).toBeInTheDocument();
   });
 
-  it("fires onSelectLesson with the clicked Lesson", () => {
-    const onSelectLesson = vi.fn();
-    renderPanel({ onSelectLesson });
+  it("a single click on a row does not open the Lesson (Edit is the only entry point, ANA-115)", () => {
+    const onEditLesson = vi.fn();
+    renderPanel({ onEditLesson });
 
     fireEvent.click(screen.getByText("Introduction"));
 
-    expect(onSelectLesson).toHaveBeenCalledWith(LESSONS[0]);
+    expect(onEditLesson).not.toHaveBeenCalled();
   });
 
-  it("renders the selected Lesson's row distinguished from the rest", () => {
-    renderPanel({ selectedLessonId: "lesson-2" });
+  it("calls onEditLesson with the clicked lesson's Edit action", () => {
+    const onEditLesson = vi.fn();
+    renderPanel({ onEditLesson });
 
-    expect(screen.getByTestId("list-item-lesson-2")).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
-    expect(screen.getByTestId("list-item-lesson-1")).not.toHaveAttribute(
-      "aria-current",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit Introduction" }));
+
+    expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a double click on a row does not call onEditLesson either (ANA-115 PR review: Edit is the only entry point)", () => {
+    const onEditLesson = vi.fn();
+    renderPanel({ onEditLesson });
+
+    fireEvent.doubleClick(screen.getByText("Introduction"));
+
+    expect(onEditLesson).not.toHaveBeenCalled();
   });
 
   it("reorders via the keyboard and reports the new order through onLessonsChange, without a network request", async () => {
@@ -158,27 +169,61 @@ describe("LessonsPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("adds a new Lesson with position 2 through onLessonsChange when Add lesson is clicked, without a network request", () => {
-    const onLessonsChange = vi.fn();
-    renderPanel({ onLessonsChange, lessons: [] });
+  describe("New Lesson (ANA-115 PR review: local navigation only, no request)", () => {
+    it("calls onNewLesson, not onLessonsChange, when New Lesson is clicked", () => {
+      const onNewLesson = vi.fn();
+      const onLessonsChange = vi.fn();
+      renderPanel({ onNewLesson, onLessonsChange });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
+      fireEvent.click(screen.getByRole("button", { name: "New Lesson" }));
 
-    expect(onLessonsChange).toHaveBeenCalledTimes(1);
-    const [added] = onLessonsChange.mock.calls[0][0] as MockLesson[];
-    expect(added.position).toBe(2);
-    expect(added.id).toEqual(expect.any(String));
-    expect(fetch).not.toHaveBeenCalled();
+      expect(onNewLesson).toHaveBeenCalledWith();
+      expect(onLessonsChange).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
   });
 
-  it("appends the new Lesson after any existing lessons", () => {
-    const onLessonsChange = vi.fn();
-    renderPanel({ onLessonsChange });
+  describe("Delete lesson (ANA-115, frontend-only local removal)", () => {
+    it("shows a confirmation dialog instead of deleting immediately", () => {
+      const onDeleteLesson = vi.fn();
+      renderPanel({ onDeleteLesson });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
 
-    const nextLessons = onLessonsChange.mock.calls[0][0] as MockLesson[];
-    expect(nextLessons).toHaveLength(3);
-    expect(nextLessons.slice(0, 2)).toEqual(LESSONS);
+      expect(
+        screen.getByRole("dialog", { name: "Delete lesson?" }),
+      ).toBeInTheDocument();
+      expect(onDeleteLesson).not.toHaveBeenCalled();
+    });
+
+    it("calls onDeleteLesson once confirmed, with no network request", () => {
+      const onDeleteLesson = vi.fn();
+      renderPanel({ onDeleteLesson });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
+
+      expect(onDeleteLesson).toHaveBeenCalledWith(LESSONS[0]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("makes no call when canceled", () => {
+      const onDeleteLesson = vi.fn();
+      renderPanel({ onDeleteLesson });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onDeleteLesson).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Delete lesson?" }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

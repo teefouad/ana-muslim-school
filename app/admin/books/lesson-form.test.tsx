@@ -3,7 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LessonForm, type LessonFormProps } from "./lesson-form";
-import type { MockLesson } from "./mock-lessons";
+import type { LessonFieldsValues } from "./lesson-fields";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -12,8 +12,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const LESSON: MockLesson = {
-  id: "lesson-1",
+const VALUE: LessonFieldsValues = {
   title: { ar: "المقدمة", en: "" },
   description: { ar: "وصف قصير", en: "" },
   type: "text",
@@ -25,7 +24,7 @@ function renderForm(overrides: Partial<LessonFormProps> = {}) {
   const onChange = vi.fn();
   const utils = render(
     <MantineProvider>
-      <LessonForm lesson={LESSON} onChange={onChange} {...overrides} />
+      <LessonForm value={VALUE} onChange={onChange} {...overrides} />
     </MantineProvider>,
   );
   return { onChange, ...utils };
@@ -51,9 +50,9 @@ describe("LessonForm", () => {
     expect(screen.queryByText(/config/i)).not.toBeInTheDocument();
   });
 
-  it("seeds every field from the given Lesson", () => {
+  it("seeds every field from the given value", () => {
     renderForm({
-      lesson: { ...LESSON, type: "video", isPublished: true, position: 4 },
+      value: { ...VALUE, type: "video", isPublished: true, position: 4 },
     });
 
     expect(screen.getByRole("combobox", { name: "Type" })).toHaveValue("Video");
@@ -71,7 +70,7 @@ describe("LessonForm", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Type" }));
     fireEvent.click(screen.getByRole("option", { name: "Video" }));
 
-    expect(onChange).toHaveBeenCalledWith(LESSON.id, { type: "video" });
+    expect(onChange).toHaveBeenCalledWith({ type: "video" });
   });
 
   it("calls onChange with the updated Title", () => {
@@ -81,7 +80,7 @@ describe("LessonForm", () => {
       target: { value: "عنوان جديد" },
     });
 
-    expect(onChange).toHaveBeenCalledWith(LESSON.id, {
+    expect(onChange).toHaveBeenCalledWith({
       title: { ar: "عنوان جديد", en: "" },
     });
   });
@@ -93,7 +92,7 @@ describe("LessonForm", () => {
       target: { value: "وصف جديد" },
     });
 
-    expect(onChange).toHaveBeenCalledWith(LESSON.id, {
+    expect(onChange).toHaveBeenCalledWith({
       description: { ar: "وصف جديد", en: "" },
     });
   });
@@ -103,7 +102,7 @@ describe("LessonForm", () => {
 
     fireEvent.click(screen.getByRole("switch", { name: "Published" }));
 
-    expect(onChange).toHaveBeenCalledWith(LESSON.id, { isPublished: true });
+    expect(onChange).toHaveBeenCalledWith({ isPublished: true });
   });
 
   it("calls onChange with the selected Position", () => {
@@ -111,7 +110,7 @@ describe("LessonForm", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "4" }));
 
-    expect(onChange).toHaveBeenCalledWith(LESSON.id, { position: 4 });
+    expect(onChange).toHaveBeenCalledWith({ position: 4 });
   });
 
   it("translates Title through the plain, context-free translation endpoint, applying the result to English", async () => {
@@ -138,9 +137,57 @@ describe("LessonForm", () => {
     expect(JSON.parse(init.body as string)).toEqual({ text: "المقدمة" });
 
     await vi.waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(LESSON.id, {
+      expect(onChange).toHaveBeenCalledWith({
         title: { ar: "المقدمة", en: "Introduction" },
       }),
+    );
+  });
+
+  it("reports Title's own Translate busy state through onTitleBusyChange", async () => {
+    let resolveTranslate: (value: Response) => void = () => {};
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => (resolveTranslate = resolve)),
+    );
+    const onTitleBusyChange = vi.fn();
+    renderForm({ onTitleBusyChange });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Translate Title with AI" }),
+    );
+
+    await vi.waitFor(() =>
+      expect(onTitleBusyChange).toHaveBeenCalledWith(true),
+    );
+
+    resolveTranslate(jsonResponse({ data: { text: "Introduction" } }));
+
+    await vi.waitFor(() =>
+      expect(onTitleBusyChange).toHaveBeenCalledWith(false),
+    );
+  });
+
+  it("reports One-line description's own Translate busy state through onDescriptionBusyChange", async () => {
+    let resolveTranslate: (value: Response) => void = () => {};
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => (resolveTranslate = resolve)),
+    );
+    const onDescriptionBusyChange = vi.fn();
+    renderForm({ onDescriptionBusyChange });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Translate One-line description with AI",
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(onDescriptionBusyChange).toHaveBeenCalledWith(true),
+    );
+
+    resolveTranslate(jsonResponse({ data: { text: "Short intro" } }));
+
+    await vi.waitFor(() =>
+      expect(onDescriptionBusyChange).toHaveBeenCalledWith(false),
     );
   });
 

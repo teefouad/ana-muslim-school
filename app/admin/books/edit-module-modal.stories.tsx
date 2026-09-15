@@ -2,8 +2,9 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import type { Book } from "@/lib/books/types";
 import { EditModuleModal } from "./edit-module-modal";
-import type { MockLesson } from "./mock-lessons";
+import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
+import type { MockLesson } from "./mock-lessons";
 
 const FILLED_FIELDS = {
   title: { ar: "المقدمة", en: "Introduction" },
@@ -58,27 +59,21 @@ export const Edit: Story = {
   },
 };
 
-// Edit mode's three-column layout (ANA-111): Module form, Lessons list, and
-// the Lesson editor placeholder -- Lessons here are local/mock data only
-// (real Lesson loading is out of scope, ANA-110), reorderable and
-// appendable via the Lessons list's own Add lesson button.
+// Module mode's two-column layout (ANA-111, polished in ANA-115): Module
+// form and Lessons list, with real Edit/Delete actions on each row --
+// reorderable, and New Lesson opens Lesson mode with a blank draft.
 const SAMPLE_LESSONS: MockLesson[] = [
-  {
+  buildLessonFixture({
     id: "lesson-1",
     title: { ar: "ما هي الصلاة؟", en: "What is Salah?" },
-    description: { ar: "", en: "" },
-    type: "text",
-    position: 0,
     isPublished: true,
-  },
-  {
+  }),
+  buildLessonFixture({
     id: "lesson-2",
     title: { ar: "", en: "The five daily prayers" },
-    description: { ar: "", en: "" },
     type: "video",
     position: 1,
-    isPublished: false,
-  },
+  }),
 ];
 
 export const EditWithLessons: Story = {

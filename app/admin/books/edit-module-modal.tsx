@@ -1,16 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Flex,
-  Group,
-  Modal,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { Alert, Box, Button, Flex, Group, Modal, Stack } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
 import { FormField } from "@/components/ui/form-field";
@@ -22,7 +13,8 @@ import {
   suggestModuleTitle,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
-import { LessonForm } from "./lesson-form";
+import { LessonEditor } from "./lesson-editor";
+import type { LessonFieldsValues } from "./lesson-fields";
 import { LessonsPanel } from "./lessons-panel";
 import type { MockLesson } from "./mock-lessons";
 import {
@@ -43,8 +35,8 @@ function errorMessage(err: unknown): string {
  * persists through the backend instead of only updating local state.
  * `lessons` (ANA-111) is this Module's Lessons list, in display order --
  * optional and local-UI-only, since real Lesson loading/persistence is out
- * of scope for this task (ANA-110); omitted (or empty) shows the Lessons
- * list's own empty state. */
+ * of scope for this task (deferred to ANA-116); omitted (or empty) shows
+ * the Lessons list's own empty state. */
 export type EditModuleModalState =
   | { mode: "create" }
   | {
@@ -95,13 +87,14 @@ export function EditModuleModal({
       opened={state !== null}
       onClose={onClose}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
-      // Edit mode's three-column layout (Module form, Lessons list, Lesson
-      // placeholder, ANA-111) needs materially more width than the
-      // single-column form Create mode still uses -- capped against the
-      // viewport the same way Module Builder's own wide modal is
+      // Edit mode's own fixed 900px width (ANA-115 PR review) -- the same
+      // for both Module mode (Module editor + Lessons list) and Lesson
+      // mode (the Lesson editor takes over that same width), so the modal
+      // never grows/shrinks when switching between them. Capped against
+      // the viewport the same way Module Builder's own wide modal is
       // (import-source-modal.tsx), rather than a fixed size that would
       // overflow a narrow viewport.
-      size={state?.mode === "edit" ? "min(1100px, calc(100vw - 48px))" : "lg"}
+      size={state?.mode === "edit" ? "min(900px, calc(100vw - 48px))" : "lg"}
       centered
     >
       {state && (
@@ -161,40 +154,57 @@ function EditModuleModalBody({
   const [contentBusy, setContentBusy] = useState(false);
   const aiBusy = titleBusy || descriptionBusy || contentBusy;
 
-  // The Lessons list shown in edit mode's middle column (ANA-111) -- local
-  // UI state only, seeded from whatever order the caller provided
-  // (`state.lessons`, itself local/mock data -- real Lesson loading is out
-  // of scope, ANA-110). Reordering and Add Lesson only ever update this
-  // state through LessonsPanel's own `onLessonsChange`; neither makes a
-  // network request, and neither is included in `handlePrimaryAction`'s
-  // save payload below.
+  // The Lessons list shown in Module mode (ANA-111) -- local UI state
+  // only, seeded from whatever order the caller provided (`state.lessons`,
+  // itself local/mock data -- real Lesson loading/persistence is deferred
+  // to ANA-116). Reordering, New Lesson, editing, and deleting all only
+  // ever update this state directly; none of them makes a network
+  // request, and none is included in `handlePrimaryAction`'s Module save
+  // payload below.
   const [lessons, setLessons] = useState<MockLesson[]>(
     state.mode === "edit" ? (state.lessons ?? []) : [],
   );
 
-  // The Lesson currently selected in the Lessons list, if any (ANA-114) --
-  // local UI state only, mirroring `lessons` itself. Rendering its form (or
-  // the placeholder) is derived from this plus `lessons` below rather than
-  // holding a second, potentially-stale copy of the selected Lesson's own
-  // fields; edits from LessonForm are applied back into `lessons` in place
-  // through `handleLessonChange`.
-  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
-  const selectedLesson =
-    lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
+  // Which Lesson editor is open, if any (ANA-115) -- `null` means Module
+  // mode. `{ lessonId: null }` is New Lesson: a blank, id-less draft that
+  // makes no request of its own (see lessons-panel.tsx) -- LessonEditor
+  // itself decides create vs. update purely from whether this id is
+  // present, so no separate temporary Lesson object is tracked here.
+  // `{ lessonId: "..." }` opens an existing Lesson from local state. Edit
+  // Module shows either the Module editor/Lessons list or the open
+  // Lesson's editor, never both (the three-column layout from
+  // ANA-111/ANA-114 is removed).
+  const [lessonEditorTarget, setLessonEditorTarget] = useState<{
+    lessonId: string | null;
+  } | null>(null);
+  const openLesson = lessonEditorTarget?.lessonId
+    ? (lessons.find((lesson) => lesson.id === lessonEditorTarget.lessonId) ??
+      null)
+    : null;
 
-  // Merges a single-field patch onto whichever Lesson `id` currently looks
-  // like in `lessons` (PR review, ANA-114) -- never onto a whole Lesson
-  // object LessonForm itself constructed, which could close over a stale
-  // snapshot from before a still-pending Translate with AI request
-  // resolves. Using the functional `setLessons` form (not `lessons` from
-  // this closure) is what makes this correct even when two patches for the
-  // same Lesson are in flight and resolve out of order -- each always
-  // merges onto the *latest* state, not onto whatever `lessons` looked like
-  // when its own request started.
-  function handleLessonChange(id: string, patch: Partial<MockLesson>) {
+  // Removes the given Lesson from local Lessons UI state only (ANA-115:
+  // frontend-only, no Lesson API/Firestore write -- real Lesson delete is
+  // deferred to ANA-116).
+  function handleDeleteLesson(lesson: MockLesson) {
+    setLessons((prev) =>
+      prev.filter((candidate) => candidate.id !== lesson.id),
+    );
+  }
+
+  // Appends the New Lesson draft as a fresh local Lesson (ANA-115:
+  // frontend-only -- no Lesson document is ever created; real Lesson
+  // create is deferred to ANA-116). `crypto.randomUUID()` mirrors
+  // `createMockLesson`'s own id generation (mock-lessons.ts).
+  function handleCreateLesson(fields: LessonFieldsValues) {
+    setLessons((prev) => [...prev, { id: crypto.randomUUID(), ...fields }]);
+  }
+
+  // Updates the open Lesson in local Lessons UI state only (ANA-115:
+  // frontend-only -- real Lesson update is deferred to ANA-116).
+  function handleUpdateLesson(lessonId: string, fields: LessonFieldsValues) {
     setLessons((prev) =>
       prev.map((lesson) =>
-        lesson.id === id ? { ...lesson, ...patch } : lesson,
+        lesson.id === lessonId ? { id: lessonId, ...fields } : lesson,
       ),
     );
   }
@@ -377,15 +387,26 @@ function EditModuleModalBody({
   );
 
   // Create mode keeps its existing single-column layout unchanged. Edit
-  // mode gains the three-column layout (ANA-111): Module form, Lessons
-  // list, and the selected Lesson's basic-fields form (ANA-114) once one is
-  // selected -- the dashed placeholder otherwise. Configuration and the
-  // Questions section are a later task (ANA-110). `align="stretch"` matches
-  // all three columns to the form's own natural height, the same pattern
-  // the Edit Book page already uses for its own BookForm/ModulesPanel
-  // columns (see `[id]/edit/page.tsx`).
+  // mode shows either the Module editor + Lessons list (Module mode) or
+  // the open Lesson's own editor (Lesson mode, ANA-115) -- never both; the
+  // three-column layout from ANA-111/ANA-114 is removed. `align="stretch"`
+  // matches the two Module-mode columns to the form's own natural height,
+  // the same pattern the Edit Book page already uses for its own
+  // BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`).
   if (state.mode === "create") {
     return moduleForm;
+  }
+
+  if (lessonEditorTarget) {
+    return (
+      <LessonEditor
+        key={openLesson?.id ?? "new"}
+        lesson={openLesson}
+        onCreate={handleCreateLesson}
+        onUpdate={handleUpdateLesson}
+        onBack={() => setLessonEditorTarget(null)}
+      />
+    );
   }
 
   return (
@@ -395,44 +416,12 @@ function EditModuleModalBody({
         <LessonsPanel
           lessons={lessons}
           onLessonsChange={setLessons}
-          selectedLessonId={selectedLessonId}
-          onSelectLesson={(lesson) => setSelectedLessonId(lesson.id)}
+          onEditLesson={(lesson) =>
+            setLessonEditorTarget({ lessonId: lesson.id })
+          }
+          onDeleteLesson={handleDeleteLesson}
+          onNewLesson={() => setLessonEditorTarget({ lessonId: null })}
         />
-      </Box>
-      {/* Wider than a plain `flex: 1` third of the row (ANA-114 PR review)
-          -- the Lesson form's own "One-line description" label is longer
-          than any Module field's label, and at the narrower width a plain
-          even split left it overlapping TranslatableFieldHeader's
-          absolutely-positioned language switcher. A fixed width, matching
-          the Lessons list's own fixed column, guarantees enough room
-          regardless of viewport rather than depending on how the Module
-          form's own flex-basis happens to shake out. */}
-      <Box w={{ base: "100%", md: 300 }} style={{ flexShrink: 0 }}>
-        {selectedLesson ? (
-          <LessonForm
-            key={selectedLesson.id}
-            lesson={selectedLesson}
-            onChange={handleLessonChange}
-          />
-        ) : (
-          <Box
-            style={{
-              height: "100%",
-              minHeight: 280,
-              border: "1px dashed var(--mantine-color-default-border)",
-              borderRadius: "var(--mantine-radius-sm)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              padding: 16,
-            }}
-          >
-            <Text size="sm" c="dimmed">
-              Select a lesson to edit.
-            </Text>
-          </Box>
-        )}
       </Box>
     </Flex>
   );
