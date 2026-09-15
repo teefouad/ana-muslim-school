@@ -548,6 +548,83 @@ describe("EditModuleModal", () => {
         expect(form.getByDisplayValue("Translated")).toBeInTheDocument();
       });
     });
+
+    it("keeps a newer local edit made while Title's translation is still in flight, instead of reverting it once the translation resolves (PR review regression)", async () => {
+      let resolveTranslate: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveTranslate = resolve)),
+      );
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+      const form = within(within(dialog).getByTestId("lesson-form"));
+
+      fireEvent.click(
+        form.getByRole("button", { name: "Translate Title with AI" }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+      // A newer edit lands on two other fields while Title's translation is
+      // still pending -- a handler that reported the whole Lesson object it
+      // closed over at click time (rather than just the translated patch)
+      // would silently revert these once the translation below resolves.
+      fireEvent.click(form.getByRole("switch", { name: "Published" }));
+      fireEvent.click(form.getByRole("radio", { name: "4" }));
+
+      resolveTranslate(jsonResponse({ data: { text: "Introduction (EN)" } }));
+
+      await vi.waitFor(() => {
+        fireEvent.click(form.getAllByRole("radio", { name: "English" })[0]);
+        expect(form.getByDisplayValue("Introduction (EN)")).toBeInTheDocument();
+      });
+      expect(form.getByRole("switch", { name: "Published" })).toBeChecked();
+      expect(
+        form.getByRole("radio", { name: "4", checked: true }),
+      ).toBeInTheDocument();
+    });
+
+    it("applies both Title's and One-line description's translations correctly even when they resolve out of order (PR review regression)", async () => {
+      const resolvers: Array<(value: Response) => void> = [];
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => resolvers.push(resolve)),
+      );
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+      const form = within(within(dialog).getByTestId("lesson-form"));
+
+      fireEvent.click(
+        form.getByRole("button", { name: "Translate Title with AI" }),
+      );
+      fireEvent.click(
+        form.getByRole("button", {
+          name: "Translate One-line description with AI",
+        }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+      // Resolve out of order: One-line description (started second)
+      // resolves before Title (started first). Each must still land on its
+      // own field -- a handler that merged onto a Lesson snapshot closed
+      // over at its own click time would have the later-resolving one
+      // silently discard the earlier one's already-applied result.
+      resolvers[1](jsonResponse({ data: { text: "Short intro (EN)" } }));
+      resolvers[0](jsonResponse({ data: { text: "Introduction (EN)" } }));
+
+      const englishSwitchers = () =>
+        form.getAllByRole("radio", { name: "English" });
+
+      await vi.waitFor(() => {
+        fireEvent.click(englishSwitchers()[0]);
+        expect(form.getByDisplayValue("Introduction (EN)")).toBeInTheDocument();
+      });
+      await vi.waitFor(() => {
+        fireEvent.click(englishSwitchers()[1]);
+        expect(form.getByDisplayValue("Short intro (EN)")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("AI busy is scoped to the active field (ANA-109)", () => {

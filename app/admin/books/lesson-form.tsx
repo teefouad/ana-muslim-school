@@ -23,14 +23,28 @@ const LESSON_POSITIONS = [0, 1, 2, 3, 4];
 
 export interface LessonFormProps {
   /** The selected Lesson (ANA-114). Fully controlled, mirroring BookForm's
-   * own pattern -- this component owns no state of its own, every edit is
-   * reported immediately through `onChange` with the whole updated Lesson.
-   * Frontend-only local state; the caller (edit-module-modal.tsx) is what
-   * actually holds it, alongside the rest of `lessons` -- nothing here is
-   * loaded from or persisted to a backend (ANA-110 covers real Lesson
-   * persistence). */
+   * own pattern -- this component owns no state of its own. Frontend-only
+   * local state; the caller (edit-module-modal.tsx) is what actually holds
+   * it, alongside the rest of `lessons` -- nothing here is loaded from or
+   * persisted to a backend (ANA-110 covers real Lesson persistence). */
   lesson: MockLesson;
-  onChange: (lesson: MockLesson) => void;
+  /** Reports a single-field patch for `lesson.id`, not the whole updated
+   * Lesson (PR review, ANA-114) -- Translate with AI resolves
+   * asynchronously, and each field's own `FormField`/control instance
+   * closes over whatever `lesson` looked like at the moment it was
+   * rendered. If a handler instead built and reported a whole `{
+   * ...lesson, title }` object, a translation that resolves after some
+   * *other* field changed (or after a second, concurrent translation on
+   * this Lesson already resolved) would silently revert that other change
+   * -- it would still be applying its own patch on top of the stale
+   * snapshot it closed over. Reporting only the patch, and merging it
+   * against the Lesson's *current* state in the parent's own functional
+   * `setLessons` update, makes that impossible: every patch merges onto
+   * whatever is actually there when it arrives, regardless of arrival
+   * order. `lesson.id` is included since patches are unaddressed
+   * otherwise -- id itself never changes for a given Lesson, so closing
+   * over it (unlike any of its other fields) is always safe. */
+  onChange: (id: string, patch: Partial<MockLesson>) => void;
 }
 
 // The selected Lesson's basic-fields form (ANA-114), rendered in Edit
@@ -55,7 +69,7 @@ export function LessonForm({ lesson, onChange }: LessonFormProps) {
         }))}
         value={lesson.type}
         onChange={(type) =>
-          type && onChange({ ...lesson, type: type as LessonType })
+          type && onChange(lesson.id, { type: type as LessonType })
         }
         allowDeselect={false}
       />
@@ -64,7 +78,7 @@ export function LessonForm({ lesson, onChange }: LessonFormProps) {
         label="Title"
         translatable
         value={lesson.title}
-        onChange={(title) => onChange({ ...lesson, title })}
+        onChange={(title) => onChange(lesson.id, { title })}
         aiTranslation
         onAiTranslate={({ text }) => translateArabicToEnglish(text)}
       />
@@ -73,7 +87,7 @@ export function LessonForm({ lesson, onChange }: LessonFormProps) {
         label="One-line description"
         translatable
         value={lesson.description}
-        onChange={(description) => onChange({ ...lesson, description })}
+        onChange={(description) => onChange(lesson.id, { description })}
         aiTranslation
         onAiTranslate={({ text }) => translateArabicToEnglish(text)}
       />
@@ -81,7 +95,7 @@ export function LessonForm({ lesson, onChange }: LessonFormProps) {
       <ToggleCard
         label="Published"
         checked={lesson.isPublished}
-        onChange={(isPublished) => onChange({ ...lesson, isPublished })}
+        onChange={(isPublished) => onChange(lesson.id, { isPublished })}
       />
 
       <Stack gap={4}>
@@ -95,7 +109,7 @@ export function LessonForm({ lesson, onChange }: LessonFormProps) {
             label: String(position),
           }))}
           value={lesson.position}
-          onChange={(position) => onChange({ ...lesson, position })}
+          onChange={(position) => onChange(lesson.id, { position })}
         />
       </Stack>
     </Stack>

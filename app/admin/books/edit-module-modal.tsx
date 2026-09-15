@@ -182,9 +182,20 @@ function EditModuleModalBody({
   const selectedLesson =
     lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
 
-  function handleLessonChange(next: MockLesson) {
+  // Merges a single-field patch onto whichever Lesson `id` currently looks
+  // like in `lessons` (PR review, ANA-114) -- never onto a whole Lesson
+  // object LessonForm itself constructed, which could close over a stale
+  // snapshot from before a still-pending Translate with AI request
+  // resolves. Using the functional `setLessons` form (not `lessons` from
+  // this closure) is what makes this correct even when two patches for the
+  // same Lesson are in flight and resolve out of order -- each always
+  // merges onto the *latest* state, not onto whatever `lessons` looked like
+  // when its own request started.
+  function handleLessonChange(id: string, patch: Partial<MockLesson>) {
     setLessons((prev) =>
-      prev.map((lesson) => (lesson.id === next.id ? next : lesson)),
+      prev.map((lesson) =>
+        lesson.id === id ? { ...lesson, ...patch } : lesson,
+      ),
     );
   }
 

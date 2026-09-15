@@ -22,9 +22,9 @@ function LessonFormDemo({ lesson: initialLesson, onChange }: LessonFormProps) {
   return (
     <LessonForm
       lesson={lesson}
-      onChange={(next) => {
-        setLesson(next);
-        onChange(next);
+      onChange={(id, patch) => {
+        setLesson((prev) => (prev.id === id ? { ...prev, ...patch } : prev));
+        onChange(id, patch);
       }}
     />
   );

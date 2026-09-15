@@ -71,7 +71,7 @@ describe("LessonForm", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Type" }));
     fireEvent.click(screen.getByRole("option", { name: "Video" }));
 
-    expect(onChange).toHaveBeenCalledWith({ ...LESSON, type: "video" });
+    expect(onChange).toHaveBeenCalledWith(LESSON.id, { type: "video" });
   });
 
   it("calls onChange with the updated Title", () => {
@@ -81,8 +81,7 @@ describe("LessonForm", () => {
       target: { value: "عنوان جديد" },
     });
 
-    expect(onChange).toHaveBeenCalledWith({
-      ...LESSON,
+    expect(onChange).toHaveBeenCalledWith(LESSON.id, {
       title: { ar: "عنوان جديد", en: "" },
     });
   });
@@ -94,8 +93,7 @@ describe("LessonForm", () => {
       target: { value: "وصف جديد" },
     });
 
-    expect(onChange).toHaveBeenCalledWith({
-      ...LESSON,
+    expect(onChange).toHaveBeenCalledWith(LESSON.id, {
       description: { ar: "وصف جديد", en: "" },
     });
   });
@@ -105,7 +103,7 @@ describe("LessonForm", () => {
 
     fireEvent.click(screen.getByRole("switch", { name: "Published" }));
 
-    expect(onChange).toHaveBeenCalledWith({ ...LESSON, isPublished: true });
+    expect(onChange).toHaveBeenCalledWith(LESSON.id, { isPublished: true });
   });
 
   it("calls onChange with the selected Position", () => {
@@ -113,7 +111,7 @@ describe("LessonForm", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "4" }));
 
-    expect(onChange).toHaveBeenCalledWith({ ...LESSON, position: 4 });
+    expect(onChange).toHaveBeenCalledWith(LESSON.id, { position: 4 });
   });
 
   it("translates Title through the plain, context-free translation endpoint, applying the result to English", async () => {
@@ -140,8 +138,7 @@ describe("LessonForm", () => {
     expect(JSON.parse(init.body as string)).toEqual({ text: "المقدمة" });
 
     await vi.waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith({
-        ...LESSON,
+      expect(onChange).toHaveBeenCalledWith(LESSON.id, {
         title: { ar: "المقدمة", en: "Introduction" },
       }),
     );
