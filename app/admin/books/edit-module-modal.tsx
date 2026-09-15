@@ -379,7 +379,7 @@ function EditModuleModalBody({
 
   return (
     <Flex gap="lg" direction={{ base: "column", md: "row" }} align="stretch">
-      <Box style={{ flex: 2, minWidth: 0 }}>{moduleForm}</Box>
+      <Box style={{ flex: 1, minWidth: 0 }}>{moduleForm}</Box>
       <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
         <LessonsPanel
           lessons={lessons}
@@ -388,7 +388,15 @@ function EditModuleModalBody({
           onSelectLesson={(lesson) => setSelectedLessonId(lesson.id)}
         />
       </Box>
-      <Box style={{ flex: 1, minWidth: 0 }}>
+      {/* Wider than a plain `flex: 1` third of the row (ANA-114 PR review)
+          -- the Lesson form's own "One-line description" label is longer
+          than any Module field's label, and at the narrower width a plain
+          even split left it overlapping TranslatableFieldHeader's
+          absolutely-positioned language switcher. A fixed width, matching
+          the Lessons list's own fixed column, guarantees enough room
+          regardless of viewport rather than depending on how the Module
+          form's own flex-basis happens to shake out. */}
+      <Box w={{ base: "100%", md: 300 }} style={{ flexShrink: 0 }}>
         {selectedLesson ? (
           <LessonForm
             key={selectedLesson.id}
