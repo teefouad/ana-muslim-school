@@ -163,6 +163,15 @@ export function LessonEditor({
         style={{ alignSelf: "flex-start" }}
         leftSection={<ArrowLeft size={16} aria-hidden="true" />}
         onClick={handleBackClick}
+        // Disabled while a Save request is in flight (ANA-116 PR review),
+        // matching the Module editor's own Cancel button
+        // (edit-module-modal.tsx). Without this, backing out (past the
+        // discard confirmation, for a dirty draft) while Save is still
+        // pending unmounts this editor before its request settles -- a
+        // subsequent failure could then no longer show its error or
+        // preserve the draft, exactly the outcome ANA-116 requires on a
+        // failed save.
+        disabled={isSaving}
       >
         Back to Module
       </Button>

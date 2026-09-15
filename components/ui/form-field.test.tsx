@@ -286,6 +286,83 @@ describe("FormField", () => {
     });
   });
 
+  describe("aiAssistanceLanguage pins AI Assistance to one fixed language (ANA-116 PR review)", () => {
+    it("reads from and writes to the pinned language, not the active tab", async () => {
+      const onChange = vi.fn();
+      const onAiAssist = vi.fn().mockResolvedValue("اقتراح");
+
+      renderWithProvider(
+        <FormField
+          label="Title"
+          translatable
+          value={{ ar: "عنوان", en: "Title" }}
+          onChange={onChange}
+          aiAssistance
+          onAiAssist={onAiAssist}
+          aiAssistanceLanguage="ar"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("radio", { name: "English" }));
+      expect(screen.getByLabelText("Title")).toHaveValue("Title");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      expect(onAiAssist).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "عنوان", language: "ar" }),
+      );
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({ ar: "اقتراح", en: "Title" }),
+      );
+      // Never written into the active (English) tab instead.
+      expect(onChange).not.toHaveBeenCalledWith({
+        ar: "عنوان",
+        en: "اقتراح",
+      });
+    });
+
+    it("falls back to the default tab-following behavior when omitted", async () => {
+      const onChange = vi.fn();
+      const onAiAssist = vi.fn().mockResolvedValue("Suggested");
+
+      renderWithProvider(
+        <FormField
+          label="Title"
+          translatable
+          value={{ ar: "عنوان", en: "Title" }}
+          onChange={onChange}
+          aiAssistance
+          onAiAssist={onAiAssist}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("radio", { name: "English" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      expect(onAiAssist).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Title", language: "en" }),
+      );
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({
+          ar: "عنوان",
+          en: "Suggested",
+        }),
+      );
+    });
+  });
+
   describe("Markdown AI Assistance is selection-aware", () => {
     it("sends only the selected Markdown and replaces just that range, when the editor has a selection", async () => {
       const onChange = vi.fn();

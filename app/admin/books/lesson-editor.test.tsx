@@ -222,6 +222,75 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
     });
   });
 
+  describe("Back to Module is disabled while Save is pending (ANA-116 PR review)", () => {
+    it("cannot be clicked past a pending Save, so a failure can still show its error and preserve the draft", async () => {
+      let rejectSave: (err: Error) => void = () => {};
+      const onCreate = vi.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectSave = reject;
+          }),
+      );
+      const { onBack } = renderEditor({ lesson: null, onCreate });
+
+      fireEvent.change(screen.getByLabelText("Title"), {
+        target: { value: "مقدمة جديدة" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Back to Module" }),
+        ).toBeDisabled(),
+      );
+
+      // A disabled native button ignores clicks -- backing out (which would
+      // otherwise show the discard confirmation, since the draft is dirty)
+      // must not be reachable while the save it triggered is still
+      // unresolved.
+      fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
+      expect(onBack).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+
+      rejectSave(new Error("Book not found."));
+
+      expect(await screen.findByText("Book not found.")).toBeInTheDocument();
+      expect(onBack).not.toHaveBeenCalled();
+      expect(screen.getByDisplayValue("مقدمة جديدة")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Back to Module" }),
+      ).not.toBeDisabled();
+    });
+
+    it("re-enables once a pending Save resolves successfully, after already returning to Module mode", async () => {
+      let resolveSave: () => void = () => {};
+      const onUpdate = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSave = resolve;
+          }),
+      );
+      const { onBack } = renderEditor({ onUpdate });
+
+      fireEvent.change(screen.getByLabelText("Title"), {
+        target: { value: "عنوان جديد" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Back to Module" }),
+        ).toBeDisabled(),
+      );
+
+      resolveSave();
+
+      await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
+    });
+  });
+
   it("disables Save while Title's own Translate request is unresolved", async () => {
     let resolveTranslate: (value: Response) => void = () => {};
     (fetch as ReturnType<typeof vi.fn>).mockImplementation(

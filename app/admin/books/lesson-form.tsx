@@ -107,6 +107,13 @@ export function LessonForm({
             moduleContent,
           })
         }
+        // Suggest always generates Arabic (see suggest-lesson-title.ts's
+        // base prompt) -- pinned here so running it while the English tab
+        // is active can never write that Arabic result into `en` (ANA-116
+        // PR review). Translate with AI is unaffected: it already only
+        // ever reads `ar` and writes `en` on its own, regardless of the
+        // active tab.
+        aiAssistanceLanguage="ar"
         onBusyChange={onTitleBusyChange}
       />
 
@@ -127,6 +134,10 @@ export function LessonForm({
             moduleContent,
           })
         }
+        // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
+        // review) -- One-line description's own Suggest is equally
+        // Arabic-only.
+        aiAssistanceLanguage="ar"
         onBusyChange={onDescriptionBusyChange}
       />
 

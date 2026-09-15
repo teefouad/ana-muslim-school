@@ -291,6 +291,80 @@ describe("LessonForm", () => {
       );
     });
 
+    it("writes Title's Suggest result to Arabic even when the English tab is active, without touching English (ANA-116 PR review)", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "اقتراح" } }),
+      );
+      const { onChange } = renderForm();
+
+      const titleSwitcher = screen.getAllByRole("radiogroup", {
+        name: "Language",
+      })[0];
+      fireEvent.click(
+        within(titleSwitcher).getByRole("radio", { name: "English" }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      // Suggest always generates Arabic -- even sourced from and written to
+      // `ar`, never the currently active `en` tab.
+      expect(lastRequestBody()).toMatchObject({
+        field: "lessonTitle",
+        text: "المقدمة",
+      });
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({
+          title: { ar: "اقتراح", en: "" },
+        }),
+      );
+      expect(onChange).not.toHaveBeenCalledWith({
+        title: { ar: "المقدمة", en: "اقتراح" },
+      });
+    });
+
+    it("writes One-line description's Suggest result to Arabic even when the English tab is active, without touching English (ANA-116 PR review)", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "وصف مقترح" } }),
+      );
+      const { onChange } = renderForm();
+
+      const descriptionSwitcher = screen.getAllByRole("radiogroup", {
+        name: "Language",
+      })[1];
+      fireEvent.click(
+        within(descriptionSwitcher).getByRole("radio", { name: "English" }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "AI Assistance for One-line description",
+        }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      expect(lastRequestBody()).toMatchObject({
+        field: "lessonDescription",
+        text: "وصف قصير",
+      });
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({
+          description: { ar: "وصف مقترح", en: "" },
+        }),
+      );
+      expect(onChange).not.toHaveBeenCalledWith({
+        description: { ar: "وصف قصير", en: "وصف مقترح" },
+      });
+    });
+
     it("reports Title's own AI Assistance busy state through onTitleBusyChange", async () => {
       let resolveAssist: (value: Response) => void = () => {};
       (fetch as ReturnType<typeof vi.fn>).mockImplementation(
