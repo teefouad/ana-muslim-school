@@ -22,6 +22,7 @@ import {
   suggestModuleTitle,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
+import { LessonForm } from "./lesson-form";
 import { LessonsPanel } from "./lessons-panel";
 import type { MockLesson } from "./mock-lessons";
 import {
@@ -170,6 +171,22 @@ function EditModuleModalBody({
   const [lessons, setLessons] = useState<MockLesson[]>(
     state.mode === "edit" ? (state.lessons ?? []) : [],
   );
+
+  // The Lesson currently selected in the Lessons list, if any (ANA-114) --
+  // local UI state only, mirroring `lessons` itself. Rendering its form (or
+  // the placeholder) is derived from this plus `lessons` below rather than
+  // holding a second, potentially-stale copy of the selected Lesson's own
+  // fields; edits from LessonForm are applied back into `lessons` in place
+  // through `handleLessonChange`.
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const selectedLesson =
+    lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
+
+  function handleLessonChange(next: MockLesson) {
+    setLessons((prev) =>
+      prev.map((lesson) => (lesson.id === next.id ? next : lesson)),
+    );
+  }
 
   async function handlePrimaryAction() {
     setSaveError(null);
@@ -350,10 +367,12 @@ function EditModuleModalBody({
 
   // Create mode keeps its existing single-column layout unchanged. Edit
   // mode gains the three-column layout (ANA-111): Module form, Lessons
-  // list, and a placeholder for the future Lesson editor (ANA-110) --
-  // `align="stretch"` matches all three columns to the form's own natural
-  // height, the same pattern the Edit Book page already uses for its own
-  // BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`).
+  // list, and the selected Lesson's basic-fields form (ANA-114) once one is
+  // selected -- the dashed placeholder otherwise. Configuration and the
+  // Questions section are a later task (ANA-110). `align="stretch"` matches
+  // all three columns to the form's own natural height, the same pattern
+  // the Edit Book page already uses for its own BookForm/ModulesPanel
+  // columns (see `[id]/edit/page.tsx`).
   if (state.mode === "create") {
     return moduleForm;
   }
@@ -362,26 +381,39 @@ function EditModuleModalBody({
     <Flex gap="lg" direction={{ base: "column", md: "row" }} align="stretch">
       <Box style={{ flex: 2, minWidth: 0 }}>{moduleForm}</Box>
       <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
-        <LessonsPanel lessons={lessons} onLessonsChange={setLessons} />
+        <LessonsPanel
+          lessons={lessons}
+          onLessonsChange={setLessons}
+          selectedLessonId={selectedLessonId}
+          onSelectLesson={(lesson) => setSelectedLessonId(lesson.id)}
+        />
       </Box>
       <Box style={{ flex: 1, minWidth: 0 }}>
-        <Box
-          style={{
-            height: "100%",
-            minHeight: 280,
-            border: "1px dashed var(--mantine-color-default-border)",
-            borderRadius: "var(--mantine-radius-sm)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            padding: 16,
-          }}
-        >
-          <Text size="sm" c="dimmed">
-            Select a lesson to edit.
-          </Text>
-        </Box>
+        {selectedLesson ? (
+          <LessonForm
+            key={selectedLesson.id}
+            lesson={selectedLesson}
+            onChange={handleLessonChange}
+          />
+        ) : (
+          <Box
+            style={{
+              height: "100%",
+              minHeight: 280,
+              border: "1px dashed var(--mantine-color-default-border)",
+              borderRadius: "var(--mantine-radius-sm)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: 16,
+            }}
+          >
+            <Text size="sm" c="dimmed">
+              Select a lesson to edit.
+            </Text>
+          </Box>
+        )}
       </Box>
     </Flex>
   );

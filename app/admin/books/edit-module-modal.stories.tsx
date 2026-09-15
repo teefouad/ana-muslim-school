@@ -63,8 +63,22 @@ export const Edit: Story = {
 // (real Lesson loading is out of scope, ANA-110), reorderable and
 // appendable via the Lessons list's own Add lesson button.
 const SAMPLE_LESSONS: MockLesson[] = [
-  { id: "lesson-1", title: "What is Salah?", position: 0 },
-  { id: "lesson-2", title: "The five daily prayers", position: 1 },
+  {
+    id: "lesson-1",
+    title: { ar: "ما هي الصلاة؟", en: "What is Salah?" },
+    description: { ar: "", en: "" },
+    type: "text",
+    position: 0,
+    isPublished: true,
+  },
+  {
+    id: "lesson-2",
+    title: { ar: "", en: "The five daily prayers" },
+    description: { ar: "", en: "" },
+    type: "video",
+    position: 1,
+    isPublished: false,
+  },
 ];
 
 export const EditWithLessons: Story = {

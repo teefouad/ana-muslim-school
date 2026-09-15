@@ -47,6 +47,11 @@ export interface ItemListProps<T> {
   /** Temporarily suspends dragging without leaving `sortable` mode (e.g.
    * while a previous reorder request is still in flight). */
   reorderDisabled?: boolean;
+  /** The id (per `getItemId`) of the row to render as selected, e.g. a
+   * Lesson currently open for editing alongside this list (ANA-114). Omit
+   * (or `null`) to render no row as selected -- most lists (Modules,
+   * import-source's Source list) have no selection concept at all. */
+  selectedItemId?: string | null;
   /** Fired when a row is clicked, outside of its drag grip and its edit/
    * delete actions. Entirely optional -- a plain click has no required
    * behavior; omit this to leave rows non-interactive. */
@@ -99,6 +104,9 @@ interface RowChromeProps {
   onDoubleClick?: () => void;
   showGrip: boolean;
   isDragging: boolean;
+  /** Renders this row visually distinguished from the rest of the list
+   * (ANA-114) -- e.g. the Lesson currently selected for editing. */
+  selected?: boolean;
   editLabel?: string;
   onEdit?: () => void;
   editDisabled?: boolean;
@@ -127,6 +135,7 @@ function RowChrome({
   onDoubleClick,
   showGrip,
   isDragging,
+  selected = false,
   editLabel,
   onEdit,
   editDisabled,
@@ -155,8 +164,15 @@ function RowChrome({
       component={component as "li"}
       ref={liRef}
       data-testid={testId}
+      aria-current={selected ? "true" : undefined}
       style={style}
-      className={`${styles.row} ${isDragging ? styles.rowDragging : ""}`}
+      className={[
+        styles.row,
+        isDragging && styles.rowDragging,
+        selected && styles.rowSelected,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {showGrip && (
         <span
@@ -280,6 +296,7 @@ export function ItemList<T>({
   sortable,
   onReorder,
   reorderDisabled = false,
+  selectedItemId = null,
   onItemClick,
   onItemDoubleClick,
   onEditItem,
@@ -352,6 +369,7 @@ export function ItemList<T>({
                   : undefined
               }
               reorderDisabled={reorderDisabled}
+              selected={selectedItemId === getItemId(item)}
               editLabel={getEditLabel?.(item, index)}
               onEdit={onEditItem ? () => onEditItem(item, index) : undefined}
               editDisabled={editDisabled}
@@ -381,6 +399,7 @@ export function ItemList<T>({
               }
               showGrip={false}
               isDragging={false}
+              selected={selectedItemId === getItemId(item)}
               editLabel={getEditLabel?.(item, index)}
               onEdit={onEditItem ? () => onEditItem(item, index) : undefined}
               editDisabled={editDisabled}
@@ -428,6 +447,7 @@ function SortableRow({
   onClick,
   onDoubleClick,
   reorderDisabled,
+  selected,
   editLabel,
   onEdit,
   editDisabled,
@@ -442,6 +462,7 @@ function SortableRow({
   onClick?: () => void;
   onDoubleClick?: () => void;
   reorderDisabled: boolean;
+  selected?: boolean;
   editLabel?: string;
   onEdit?: () => void;
   editDisabled?: boolean;
@@ -467,6 +488,7 @@ function SortableRow({
       onDoubleClick={onDoubleClick}
       showGrip
       isDragging={isDragging}
+      selected={selected}
       editLabel={editLabel}
       onEdit={onEdit}
       editDisabled={editDisabled}
