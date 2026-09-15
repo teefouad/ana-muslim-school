@@ -6,8 +6,22 @@ import { LessonsPanel } from "./lessons-panel";
 import type { MockLesson } from "./mock-lessons";
 
 const LESSONS: MockLesson[] = [
-  { id: "lesson-1", title: "Introduction", position: 0 },
-  { id: "lesson-2", title: "", position: 1 },
+  {
+    id: "lesson-1",
+    title: { ar: "Introduction", en: "" },
+    description: { ar: "", en: "" },
+    type: "text",
+    position: 0,
+    isPublished: false,
+  },
+  {
+    id: "lesson-2",
+    title: { ar: "", en: "" },
+    description: { ar: "", en: "" },
+    type: "text",
+    position: 1,
+    isPublished: false,
+  },
 ];
 
 // dnd-kit's collision detection/keyboard coordinate getter is driven by real
@@ -103,6 +117,27 @@ describe("LessonsPanel", () => {
     expect(
       screen.queryByRole("button", { name: /delete/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("fires onSelectLesson with the clicked Lesson", () => {
+    const onSelectLesson = vi.fn();
+    renderPanel({ onSelectLesson });
+
+    fireEvent.click(screen.getByText("Introduction"));
+
+    expect(onSelectLesson).toHaveBeenCalledWith(LESSONS[0]);
+  });
+
+  it("renders the selected Lesson's row distinguished from the rest", () => {
+    renderPanel({ selectedLessonId: "lesson-2" });
+
+    expect(screen.getByTestId("list-item-lesson-2")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByTestId("list-item-lesson-1")).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("reorders via the keyboard and reports the new order through onLessonsChange, without a network request", async () => {

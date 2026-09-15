@@ -242,8 +242,22 @@ describe("EditModuleModal", () => {
 
   describe("Lessons list (ANA-111)", () => {
     const LESSONS = [
-      { id: "lesson-1", title: "Introduction", position: 0 },
-      { id: "lesson-2", title: "Prayer basics", position: 1 },
+      {
+        id: "lesson-1",
+        title: { ar: "Introduction", en: "" },
+        description: { ar: "", en: "" },
+        type: "text" as const,
+        position: 0,
+        isPublished: false,
+      },
+      {
+        id: "lesson-2",
+        title: { ar: "Prayer basics", en: "" },
+        description: { ar: "", en: "" },
+        type: "video" as const,
+        position: 1,
+        isPublished: true,
+      },
     ];
 
     it("renders the three-column layout in edit mode: Module form, Lessons list, Lesson placeholder", async () => {
@@ -361,6 +375,255 @@ describe("EditModuleModal", () => {
 
       expect(within(dialog).getByText("Lesson 3")).toBeInTheDocument();
       expect(fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("selected Lesson form (ANA-114)", () => {
+    const LESSONS = [
+      {
+        id: "lesson-1",
+        title: { ar: "Introduction", en: "" },
+        description: { ar: "Short intro", en: "" },
+        type: "text" as const,
+        position: 0,
+        isPublished: false,
+      },
+      {
+        id: "lesson-2",
+        title: { ar: "Prayer basics", en: "" },
+        description: { ar: "", en: "" },
+        type: "video" as const,
+        position: 3,
+        isPublished: true,
+      },
+    ];
+
+    function renderWithLessons() {
+      return renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: LESSONS,
+        },
+      });
+    }
+
+    it("keeps the placeholder visible until a Lesson is clicked", async () => {
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByText("Select a lesson to edit."),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
+    });
+
+    it("selects a Lesson on click, replacing the placeholder with its form, and marks its row selected", async () => {
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+
+      expect(
+        within(dialog).queryByText("Select a lesson to edit."),
+      ).not.toBeInTheDocument();
+      const form = within(within(dialog).getByTestId("lesson-form"));
+      expect(form.getByDisplayValue("Introduction")).toBeInTheDocument();
+      expect(within(dialog).getByTestId("list-item-lesson-1")).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
+    });
+
+    it("renders only Type, Title, One-line description, Published, and Position -- no Configuration", async () => {
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+
+      const form = within(within(dialog).getByTestId("lesson-form"));
+      expect(form.getByRole("combobox", { name: "Type" })).toBeInTheDocument();
+      expect(form.getByLabelText("Title")).toBeInTheDocument();
+      expect(form.getByLabelText("One-line description")).toBeInTheDocument();
+      expect(
+        form.getByRole("switch", { name: "Published" }),
+      ).toBeInTheDocument();
+      expect(
+        form.getByRole("radiogroup", { name: "Position" }),
+      ).toBeInTheDocument();
+      expect(form.queryByText(/config/i)).not.toBeInTheDocument();
+    });
+
+    it("shows the correct values for each Lesson and switches correctly between them", async () => {
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+
+      let form = within(within(dialog).getByTestId("lesson-form"));
+      expect(form.getByDisplayValue("Introduction")).toBeInTheDocument();
+      expect(form.getByDisplayValue("Short intro")).toBeInTheDocument();
+      expect(form.getByRole("switch", { name: "Published" })).not.toBeChecked();
+      expect(
+        form.getByRole("radio", { name: "0", checked: true }),
+      ).toBeInTheDocument();
+
+      fireEvent.click(within(dialog).getByText("Prayer basics"));
+
+      form = within(within(dialog).getByTestId("lesson-form"));
+      expect(form.getByDisplayValue("Prayer basics")).toBeInTheDocument();
+      expect(form.queryByDisplayValue("Introduction")).not.toBeInTheDocument();
+      expect(form.getByRole("switch", { name: "Published" })).toBeChecked();
+      expect(
+        form.getByRole("radio", { name: "3", checked: true }),
+      ).toBeInTheDocument();
+    });
+
+    it("updates only the edited Lesson's local field when Title/Published/Position change, without any network request", async () => {
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+      const form = within(within(dialog).getByTestId("lesson-form"));
+
+      fireEvent.change(form.getByLabelText("Title"), {
+        target: { value: "Introduction, edited" },
+      });
+      fireEvent.click(form.getByRole("switch", { name: "Published" }));
+      fireEvent.click(form.getByRole("radio", { name: "4" }));
+
+      expect(
+        form.getByDisplayValue("Introduction, edited"),
+      ).toBeInTheDocument();
+      expect(form.getByRole("switch", { name: "Published" })).toBeChecked();
+      expect(
+        form.getByRole("radio", { name: "4", checked: true }),
+      ).toBeInTheDocument();
+      // The other Lesson's own fields stay untouched -- editing lesson-1
+      // never leaks into lesson-2.
+      fireEvent.click(within(dialog).getByText("Prayer basics"));
+      const secondForm = within(within(dialog).getByTestId("lesson-form"));
+      expect(
+        secondForm.getByRole("switch", { name: "Published" }),
+      ).toBeChecked();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("translates Title through the plain translation endpoint only, never a Lesson persistence request", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({ data: { text: "Translated" } }),
+      );
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+      const form = within(within(dialog).getByTestId("lesson-form"));
+
+      fireEvent.click(
+        form.getByRole("button", { name: "Translate Title with AI" }),
+      );
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/ai/translate",
+        expect.objectContaining({ method: "POST" }),
+      );
+      const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+        RequestInit,
+      ];
+      const body = JSON.parse(init.body as string) as Record<string, unknown>;
+      // The plain, context-free translation body -- no `field`/`bookId`
+      // Module-scoped context, unlike Module Title's own translate request.
+      expect(body).toEqual({ text: "Introduction" });
+
+      // Translate with AI always writes the result to English (regardless
+      // of which tab is active) -- switch to it to see the applied result,
+      // same as the Module Title/Description equivalent (book-form.test.tsx).
+      // Title's own switcher is the first of the form's two (Title, then
+      // One-line description).
+      await vi.waitFor(() => {
+        fireEvent.click(form.getAllByRole("radio", { name: "English" })[0]);
+        expect(form.getByDisplayValue("Translated")).toBeInTheDocument();
+      });
+    });
+
+    it("keeps a newer local edit made while Title's translation is still in flight, instead of reverting it once the translation resolves (PR review regression)", async () => {
+      let resolveTranslate: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveTranslate = resolve)),
+      );
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+      const form = within(within(dialog).getByTestId("lesson-form"));
+
+      fireEvent.click(
+        form.getByRole("button", { name: "Translate Title with AI" }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+      // A newer edit lands on two other fields while Title's translation is
+      // still pending -- a handler that reported the whole Lesson object it
+      // closed over at click time (rather than just the translated patch)
+      // would silently revert these once the translation below resolves.
+      fireEvent.click(form.getByRole("switch", { name: "Published" }));
+      fireEvent.click(form.getByRole("radio", { name: "4" }));
+
+      resolveTranslate(jsonResponse({ data: { text: "Introduction (EN)" } }));
+
+      await vi.waitFor(() => {
+        fireEvent.click(form.getAllByRole("radio", { name: "English" })[0]);
+        expect(form.getByDisplayValue("Introduction (EN)")).toBeInTheDocument();
+      });
+      expect(form.getByRole("switch", { name: "Published" })).toBeChecked();
+      expect(
+        form.getByRole("radio", { name: "4", checked: true }),
+      ).toBeInTheDocument();
+    });
+
+    it("applies both Title's and One-line description's translations correctly even when they resolve out of order (PR review regression)", async () => {
+      const resolvers: Array<(value: Response) => void> = [];
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => resolvers.push(resolve)),
+      );
+      renderWithLessons();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByText("Introduction"));
+      const form = within(within(dialog).getByTestId("lesson-form"));
+
+      fireEvent.click(
+        form.getByRole("button", { name: "Translate Title with AI" }),
+      );
+      fireEvent.click(
+        form.getByRole("button", {
+          name: "Translate One-line description with AI",
+        }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+      // Resolve out of order: One-line description (started second)
+      // resolves before Title (started first). Each must still land on its
+      // own field -- a handler that merged onto a Lesson snapshot closed
+      // over at its own click time would have the later-resolving one
+      // silently discard the earlier one's already-applied result.
+      resolvers[1](jsonResponse({ data: { text: "Short intro (EN)" } }));
+      resolvers[0](jsonResponse({ data: { text: "Introduction (EN)" } }));
+
+      const englishSwitchers = () =>
+        form.getAllByRole("radio", { name: "English" });
+
+      await vi.waitFor(() => {
+        fireEvent.click(englishSwitchers()[0]);
+        expect(form.getByDisplayValue("Introduction (EN)")).toBeInTheDocument();
+      });
+      await vi.waitFor(() => {
+        fireEvent.click(englishSwitchers()[1]);
+        expect(form.getByDisplayValue("Short intro (EN)")).toBeInTheDocument();
+      });
     });
   });
 

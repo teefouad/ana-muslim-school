@@ -91,6 +91,39 @@ describe("ItemList", () => {
     expect(screen.getByRole("button", { name: "Add item" })).toBeEnabled();
   });
 
+  test("marks the row matching selectedItemId as selected, and no row when omitted/null (ANA-114)", () => {
+    const { rerender } = renderList({ selectedItemId: "b" });
+
+    expect(screen.getByTestId("list-item-a")).not.toHaveAttribute(
+      "aria-current",
+    );
+    const selectedRow = screen.getByTestId("list-item-b");
+    expect(selectedRow).toHaveAttribute("aria-current", "true");
+    expect(selectedRow.classList.contains(styles.rowSelected)).toBe(true);
+
+    rerender(
+      <MantineProvider>
+        <ItemList
+          title="Demo list"
+          subtitle="2 items"
+          items={items}
+          getItemId={(item) => item.id}
+          renderItem={(item) => item.label}
+          emptyState="Nothing here."
+          sortable
+          addLabel="Add item"
+          onAdd={() => {}}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByTestId("list-item-a")).not.toHaveAttribute(
+      "aria-current",
+    );
+    expect(screen.getByTestId("list-item-b")).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
   test("clicking a row fires onItemClick with the item and its index", () => {
     const onItemClick = vi.fn();
     renderList({ onItemClick });

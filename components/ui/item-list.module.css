@@ -76,6 +76,12 @@
   opacity: 0;
 }
 
+.rowSelected,
+.rowSelected:hover {
+  background-color: rgba(34, 139, 230, 0.16);
+  border-color: var(--mantine-primary-color-filled);
+}
+
 .grip {
   display: inline-flex;
   align-items: center;
