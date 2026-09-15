@@ -33,6 +33,23 @@ export function toLessonFieldsValues(lesson: Lesson): LessonFieldsValues {
 }
 
 /**
+ * Blank field values for New Lesson (ANA-115 PR review): opens the Lesson
+ * editor with no Lesson id and no Firestore write -- this seeds its local
+ * draft only, the same way `createEmptyModuleFieldsValues` seeds a
+ * brand-new Module's draft before Save Module has ever been clicked. No
+ * network request happens until the editor's own Save actually runs.
+ */
+export function createEmptyLessonFieldsValues(): LessonFieldsValues {
+  return {
+    title: {},
+    description: {},
+    type: LESSON_TYPES[0],
+    position: 2,
+    isPublished: false,
+  };
+}
+
+/**
  * Builds a `PATCH /books/{bookId}/modules/{moduleId}/lessons/{lessonId}`
  * body (ANA-115) from the Lesson editor's fields -- deliberately omits
  * Configuration/Questions-only fields (`reward`, `duration`, `videoURL`,
@@ -53,24 +70,28 @@ export function toLessonPatchFields(
 }
 
 /**
- * Default writable fields for a brand-new Lesson (Add lesson, ANA-115) --
- * the create endpoint requires every writable field even though this
- * editor only exposes a subset; Configuration/Questions-only fields get
- * the same canonical empty defaults ANA-110's eventual full editor would
- * otherwise seed a new Lesson with.
+ * Builds a `POST /books/{bookId}/modules/{moduleId}/lessons` body (ANA-115
+ * PR review) from the Lesson editor's fields, once Save is actually clicked
+ * on a no-id (New Lesson) draft -- the create endpoint requires every
+ * writable field even though this editor only exposes a subset;
+ * Configuration/Questions-only fields (`reward`, `duration`, `videoURL`,
+ * `azkar`, `questions`, `isLocked`) get the same canonical empty defaults
+ * ANA-110's eventual full editor would otherwise seed a new Lesson with.
  */
-export function createLessonCreateFields(): LessonWritableFields {
+export function toLessonCreateFields(
+  fields: LessonFieldsValues,
+): LessonWritableFields {
   return {
-    title: { ar: "", en: "" },
-    description: { ar: "", en: "" },
-    type: LESSON_TYPES[0],
-    position: 2,
+    title: toTranslatableString(fields.title),
+    description: toTranslatableString(fields.description),
+    type: fields.type,
+    position: fields.position,
     reward: { coins: 0 },
     duration: 0,
     videoURL: "",
     azkar: [],
     questions: [],
     isLocked: false,
-    isPublished: false,
+    isPublished: fields.isPublished,
   };
 }

@@ -69,18 +69,23 @@ export interface EditModuleModalProps {
    * clicked in edit mode. Same awaited resolve/reject contract as
    * `onCreate`. */
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
-  /** Saves only the given Lesson through the existing Lesson persistence/
-   * API flow (ANA-115) -- the caller is expected to have revalidated its
-   * own Lessons data by the time this resolves. Awaited by LessonEditor;
-   * rejecting keeps Lesson mode open with the draft intact. */
-  onSaveLesson: (lessonId: string, fields: LessonFieldsValues) => Promise<void>;
-  /** Deletes the given Lesson through the existing Lesson DELETE API
-   * (ANA-115), same awaited resolve/reject contract as `onSaveLesson`. */
-  onDeleteLesson: (lesson: Lesson) => Promise<void>;
   /** Creates a new Lesson under this Module through the existing Lesson
-   * create API (ANA-115), same awaited resolve/reject contract as
-   * `onSaveLesson`. */
-  onAddLesson: () => Promise<void>;
+   * create API (ANA-115 PR review) -- called only once Save is clicked on
+   * a no-id (New Lesson) draft, never when New Lesson itself is clicked.
+   * The caller is expected to have revalidated its own Lessons data by the
+   * time this resolves. Awaited by LessonEditor; rejecting keeps Lesson
+   * mode open with the draft intact. */
+  onCreateLesson: (fields: LessonFieldsValues) => Promise<void>;
+  /** Updates the given, already-persisted Lesson through the existing
+   * Lesson update API (ANA-115), same awaited resolve/reject contract as
+   * `onCreateLesson`. */
+  onUpdateLesson: (
+    lessonId: string,
+    fields: LessonFieldsValues,
+  ) => Promise<void>;
+  /** Deletes the given Lesson through the existing Lesson DELETE API
+   * (ANA-115), same awaited resolve/reject contract as `onCreateLesson`. */
+  onDeleteLesson: (lesson: Lesson) => Promise<void>;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
@@ -95,22 +100,23 @@ export function EditModuleModal({
   onClose,
   onCreate,
   onSave,
-  onSaveLesson,
+  onCreateLesson,
+  onUpdateLesson,
   onDeleteLesson,
-  onAddLesson,
 }: EditModuleModalProps) {
   return (
     <Modal
       opened={state !== null}
       onClose={onClose}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
-      // Edit mode (Module editor + Lessons list, or the Lesson editor in
-      // Lesson mode, ANA-115) needs materially more width than the
-      // single-column form Create mode still uses -- capped against the
-      // viewport the same way Module Builder's own wide modal is
+      // Edit mode's own fixed 900px width (ANA-115 PR review) -- the same
+      // for both Module mode (Module editor + Lessons list) and Lesson
+      // mode (the Lesson editor takes over that same width), so the modal
+      // never grows/shrinks when switching between them. Capped against
+      // the viewport the same way Module Builder's own wide modal is
       // (import-source-modal.tsx), rather than a fixed size that would
       // overflow a narrow viewport.
-      size={state?.mode === "edit" ? "min(1100px, calc(100vw - 48px))" : "lg"}
+      size={state?.mode === "edit" ? "min(900px, calc(100vw - 48px))" : "lg"}
       centered
     >
       {state && (
@@ -125,9 +131,9 @@ export function EditModuleModal({
           onClose={onClose}
           onCreate={onCreate}
           onSave={onSave}
-          onSaveLesson={onSaveLesson}
+          onCreateLesson={onCreateLesson}
+          onUpdateLesson={onUpdateLesson}
           onDeleteLesson={onDeleteLesson}
-          onAddLesson={onAddLesson}
         />
       )}
     </Modal>
@@ -140,18 +146,21 @@ function EditModuleModalBody({
   onClose,
   onCreate,
   onSave,
-  onSaveLesson,
+  onCreateLesson,
+  onUpdateLesson,
   onDeleteLesson,
-  onAddLesson,
 }: {
   state: EditModuleModalState;
   book: Book;
   onClose: () => void;
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
-  onSaveLesson: (lessonId: string, fields: LessonFieldsValues) => Promise<void>;
+  onCreateLesson: (fields: LessonFieldsValues) => Promise<void>;
+  onUpdateLesson: (
+    lessonId: string,
+    fields: LessonFieldsValues,
+  ) => Promise<void>;
   onDeleteLesson: (lesson: Lesson) => Promise<void>;
-  onAddLesson: () => Promise<void>;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -209,12 +218,32 @@ function EditModuleModalBody({
 
   const lessons = lessonOrderDraft ?? lessonsProp;
 
-  // The Lesson currently open for editing, if any (ANA-115) -- non-null
-  // means Lesson mode; `null` means Module mode. Edit Module shows either
-  // the Module editor/Lessons list or the selected Lesson's editor, never
-  // both (the three-column layout from ANA-111/ANA-114 is removed).
-  const [openLessonId, setOpenLessonId] = useState<string | null>(null);
-  const openLesson = lessons.find((lesson) => lesson.id === openLessonId);
+  // Which Lesson editor is open, if any (ANA-115, PR review) -- `null`
+  // means Module mode. `{ lessonId: null }` is New Lesson: a blank,
+  // id-less draft that makes no request of its own (see lessons-panel.tsx)
+  // -- LessonEditor itself decides create vs. update purely from whether
+  // this id is present, so no separate temporary Lesson object is tracked
+  // here. `{ lessonId: "..." }` opens an existing, persisted Lesson. Edit
+  // Module shows either the Module editor/Lessons list or the open
+  // Lesson's editor, never both (the three-column layout from
+  // ANA-111/ANA-114 is removed).
+  const [lessonEditorTarget, setLessonEditorTarget] = useState<{
+    lessonId: string | null;
+  } | null>(null);
+  const openLesson = lessonEditorTarget?.lessonId
+    ? (lessons.find((lesson) => lesson.id === lessonEditorTarget.lessonId) ??
+      null)
+    : null;
+
+  // Defensive staleness guard, mirroring `lessonOrderDraft`'s own
+  // render-time correction above: an existing-Lesson target whose id no
+  // longer matches anything in `lessons` (impossible in normal use --
+  // Delete is only ever reachable from Module mode, never while that same
+  // Lesson is open here) falls back to Module mode rather than being
+  // silently mistaken for New Lesson.
+  if (lessonEditorTarget?.lessonId && !openLesson) {
+    setLessonEditorTarget(null);
+  }
 
   // Wraps the caller's own Lesson delete so a pending reorder draft drops
   // just the deleted Lesson's id immediately (PR review pattern from
@@ -228,25 +257,30 @@ function EditModuleModalBody({
     );
   }
 
-  // Wraps the caller's own Lesson create the same way `handleCreateModule`
-  // wraps Module create in `[id]/edit/page.tsx` -- a pending reorder draft
-  // necessarily predates the new Lesson, so it's dropped rather than left
-  // to flash a stale order missing the new row until revalidation lands.
-  async function handleAddLesson() {
-    await onAddLesson();
+  // Creates the open (id-less) Lesson through the caller's own Lesson
+  // create flow (ANA-115 PR review) -- the first point a Firestore Lesson
+  // document is created; New Lesson itself (lessons-panel.tsx) never calls
+  // this. Only runs once Save succeeds, then returns to Module mode,
+  // mirroring `handleCreateModule`'s own "drop any pending reorder draft"
+  // pattern in `[id]/edit/page.tsx` -- it necessarily predates the new
+  // Lesson.
+  async function handleCreateLesson(fields: LessonFieldsValues) {
+    await onCreateLesson(fields);
     setLessonOrderDraft(null);
+    setLessonEditorTarget(null);
   }
 
-  // Saves the open Lesson through the caller's own Lesson save flow
-  // (ANA-115), then returns to Module mode -- only once that save has
-  // actually succeeded. A rejection propagates to LessonEditor's own catch
-  // and this never runs, leaving Lesson mode open with the draft intact.
-  async function handleSaveLesson(
+  // Updates the open, already-persisted Lesson through the caller's own
+  // Lesson update flow (ANA-115), then returns to Module mode -- only once
+  // that save has actually succeeded. A rejection propagates to
+  // LessonEditor's own catch and this never runs, leaving Lesson mode open
+  // with the draft intact.
+  async function handleUpdateLesson(
     lessonId: string,
     fields: LessonFieldsValues,
   ) {
-    await onSaveLesson(lessonId, fields);
-    setOpenLessonId(null);
+    await onUpdateLesson(lessonId, fields);
+    setLessonEditorTarget(null);
   }
 
   async function handlePrimaryAction() {
@@ -437,13 +471,14 @@ function EditModuleModalBody({
     return moduleForm;
   }
 
-  if (openLesson) {
+  if (lessonEditorTarget) {
     return (
       <LessonEditor
-        key={openLesson.id}
+        key={openLesson?.id ?? "new"}
         lesson={openLesson}
-        onSave={handleSaveLesson}
-        onBack={() => setOpenLessonId(null)}
+        onCreate={handleCreateLesson}
+        onUpdate={handleUpdateLesson}
+        onBack={() => setLessonEditorTarget(null)}
       />
     );
   }
@@ -455,9 +490,11 @@ function EditModuleModalBody({
         <LessonsPanel
           lessons={lessons}
           onLessonsChange={setLessonOrderDraft}
-          onEditLesson={(lesson) => setOpenLessonId(lesson.id)}
+          onEditLesson={(lesson) =>
+            setLessonEditorTarget({ lessonId: lesson.id })
+          }
           onDeleteLesson={handleDeleteLesson}
-          onAddLesson={handleAddLesson}
+          onNewLesson={() => setLessonEditorTarget({ lessonId: null })}
         />
       </Box>
     </Flex>

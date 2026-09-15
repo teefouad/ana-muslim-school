@@ -15,8 +15,9 @@ export interface LessonsPanelProps {
   onLessonsChange: (lessons: Lesson[]) => void;
   /** Fired when a row's Edit action is clicked (ANA-115) -- switches Edit
    * Module into Lesson mode for this Lesson; this panel owns no editing UI
-   * itself. Clicking the row itself no longer opens the form (ANA-115) --
-   * Edit is the only entry point into Lesson mode. */
+   * itself. Clicking the row itself no longer opens the form, nor does
+   * double-clicking it (ANA-115 PR review) -- Edit is the only entry point
+   * into Lesson mode. */
   onEditLesson: (lesson: Lesson) => void;
   /** Deletes a real, persisted Lesson through the existing Lesson DELETE
    * API (ANA-115) -- awaited the same way ModulesPanel's own
@@ -24,10 +25,13 @@ export interface LessonsPanelProps {
    * the error; resolving is expected to have already revalidated the
    * caller's own Lessons data. */
   onDeleteLesson: (lesson: Lesson) => Promise<void>;
-  /** Creates a new, real Lesson through the existing Lesson create API
-   * (ANA-115) -- awaited the same way `onDeleteLesson` is; this panel
-   * never inserts a client-generated Lesson into `lessons` itself. */
-  onAddLesson: () => Promise<void>;
+  /** Fired when New Lesson is clicked (ANA-115 PR review) -- switches Edit
+   * Module into Lesson mode with a blank, id-less draft; this panel makes
+   * no request and inserts nothing into `lessons` itself. A Firestore
+   * Lesson document is only ever created once that editor's own Save is
+   * clicked (see lesson-editor.tsx) -- New Lesson itself is a plain,
+   * synchronous navigation, not an API call. */
+  onNewLesson: () => void;
   className?: string;
 }
 
@@ -37,30 +41,33 @@ function getLessonLabel(lesson: Lesson, index: number): string {
 
 // The Lessons list inside the Edit Module modal's Module mode (ANA-111,
 // polished in ANA-115) -- visually and structurally mirrors ModulesPanel
-// (see that file), built on the same reusable ItemList. Add, Edit, and
-// Delete are all real backend operations, matching ModulesPanel's own
-// pattern: Edit switches Edit Module into Lesson mode via `onEditLesson`
-// (never a nested modal), Delete persists through the Lesson DELETE API
-// via `onDeleteLesson` behind the same ConfirmDialog pattern ModulesPanel
-// uses, and Add creates a real Lesson via `onAddLesson`. Reordering only
-// ever updates `lessons` through `onLessonsChange` -- never persisted,
-// matching Modules' own local-draft reorder. Selection/click-to-open
-// (ANA-114) is gone -- Edit is the only entry point into a Lesson's form.
+// (see that file), built on the same reusable ItemList. Edit and Delete
+// are real backend operations, matching ModulesPanel's own pattern: Edit
+// switches Edit Module into Lesson mode via `onEditLesson` (never a nested
+// modal), Delete persists through the Lesson DELETE API via
+// `onDeleteLesson` behind the same ConfirmDialog pattern ModulesPanel
+// uses. New Lesson (ANA-115 PR review) is local navigation only -- it
+// opens Lesson mode with no Lesson id and makes no request; the Lesson
+// editor itself decides create vs. update solely from that id's presence,
+// so there's no separate temporary Lesson object here to create or track.
+// Reordering only ever updates `lessons` through `onLessonsChange` --
+// never persisted, matching Modules' own local-draft reorder.
+// Selection/click-to-open (ANA-114) is gone -- Edit is the only entry
+// point into a Lesson's form.
 export function LessonsPanel({
   lessons,
   onLessonsChange,
   onEditLesson,
   onDeleteLesson,
-  onAddLesson,
+  onNewLesson,
   className,
 }: LessonsPanelProps) {
   const [pendingDelete, setPendingDelete] = useState<Lesson | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function handleDeleteRequest(lesson: Lesson) {
-    setActionError(null);
+    setDeleteError(null);
     setPendingDelete(lesson);
   }
 
@@ -70,13 +77,13 @@ export function LessonsPanel({
     }
 
     setIsDeleting(true);
-    setActionError(null);
+    setDeleteError(null);
 
     try {
       await onDeleteLesson(pendingDelete);
       setPendingDelete(null);
     } catch (err) {
-      setActionError(
+      setDeleteError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
     } finally {
@@ -86,22 +93,7 @@ export function LessonsPanel({
 
   function handleCancelDelete() {
     setPendingDelete(null);
-    setActionError(null);
-  }
-
-  async function handleAdd() {
-    setActionError(null);
-    setIsAdding(true);
-
-    try {
-      await onAddLesson();
-    } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Something went wrong.",
-      );
-    } finally {
-      setIsAdding(false);
-    }
+    setDeleteError(null);
   }
 
   return (
@@ -117,7 +109,6 @@ export function LessonsPanel({
         sortable
         onReorder={onLessonsChange}
         onEditItem={(lesson) => onEditLesson(lesson)}
-        onItemDoubleClick={(lesson) => onEditLesson(lesson)}
         getEditLabel={(lesson, index) =>
           `Edit ${getLessonLabel(lesson, index)}`
         }
@@ -126,10 +117,9 @@ export function LessonsPanel({
           `Delete ${getLessonLabel(lesson, index)}`
         }
         deletingItemId={pendingDelete && isDeleting ? pendingDelete.id : null}
-        error={actionError}
-        addLabel="Add lesson"
-        onAdd={() => void handleAdd()}
-        addDisabled={isAdding}
+        error={deleteError}
+        addLabel="New Lesson"
+        onAdd={() => onNewLesson()}
       />
       {pendingDelete && (
         <ConfirmDialog

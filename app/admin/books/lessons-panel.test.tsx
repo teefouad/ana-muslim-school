@@ -56,7 +56,7 @@ function renderPanel(
         onLessonsChange={vi.fn()}
         onEditLesson={vi.fn()}
         onDeleteLesson={vi.fn().mockResolvedValue(undefined)}
-        onAddLesson={vi.fn().mockResolvedValue(undefined)}
+        onNewLesson={vi.fn()}
         {...overrides}
       />
     </MantineProvider>,
@@ -142,13 +142,13 @@ describe("LessonsPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("calls onEditLesson with the double-clicked lesson", () => {
+  it("a double click on a row does not call onEditLesson either (ANA-115 PR review: Edit is the only entry point)", () => {
     const onEditLesson = vi.fn();
     renderPanel({ onEditLesson });
 
     fireEvent.doubleClick(screen.getByText("Introduction"));
 
-    expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
+    expect(onEditLesson).not.toHaveBeenCalled();
   });
 
   it("reorders via the keyboard and reports the new order through onLessonsChange, without a network request", async () => {
@@ -169,28 +169,17 @@ describe("LessonsPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  describe("Add lesson (ANA-115, real backend create)", () => {
-    it("calls onAddLesson, not onLessonsChange, when Add lesson is clicked", async () => {
-      const onAddLesson = vi.fn().mockResolvedValue(undefined);
+  describe("New Lesson (ANA-115 PR review: local navigation only, no request)", () => {
+    it("calls onNewLesson, not onLessonsChange, when New Lesson is clicked", () => {
+      const onNewLesson = vi.fn();
       const onLessonsChange = vi.fn();
-      renderPanel({ onAddLesson, onLessonsChange });
+      renderPanel({ onNewLesson, onLessonsChange });
 
-      fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
+      fireEvent.click(screen.getByRole("button", { name: "New Lesson" }));
 
-      await vi.waitFor(() => expect(onAddLesson).toHaveBeenCalledWith());
+      expect(onNewLesson).toHaveBeenCalledWith();
       expect(onLessonsChange).not.toHaveBeenCalled();
-    });
-
-    it("shows an error and keeps Add enabled again when creation fails", async () => {
-      const onAddLesson = vi
-        .fn()
-        .mockRejectedValue(new Error("Failed to add."));
-      renderPanel({ onAddLesson });
-
-      fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
-
-      expect(await screen.findByText("Failed to add.")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Add lesson" })).toBeEnabled();
+      expect(fetch).not.toHaveBeenCalled();
     });
   });
 

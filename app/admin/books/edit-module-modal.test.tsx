@@ -82,9 +82,9 @@ function renderModal(overrides: Partial<EditModuleModalProps> = {}) {
         onClose={vi.fn()}
         onCreate={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
-        onSaveLesson={vi.fn().mockResolvedValue(undefined)}
+        onCreateLesson={vi.fn().mockResolvedValue(undefined)}
+        onUpdateLesson={vi.fn().mockResolvedValue(undefined)}
         onDeleteLesson={vi.fn().mockResolvedValue(undefined)}
-        onAddLesson={vi.fn().mockResolvedValue(undefined)}
         {...overrides}
       />
     </MantineProvider>,
@@ -244,6 +244,53 @@ describe("EditModuleModal", () => {
     });
   });
 
+  describe("modal width (ANA-115 PR review)", () => {
+    function modalSizeStyle(): string {
+      const root = document.querySelector(".mantine-Modal-root");
+      return root?.getAttribute("style") ?? "";
+    }
+
+    it("uses a 900px modal width in Module mode", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: [buildLessonFixture({ id: "lesson-1" })],
+        },
+      });
+
+      await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(modalSizeStyle()).toContain("min(900px, calc(100vw - 48px))");
+    });
+
+    it("keeps the same 900px modal width in Lesson mode -- the modal never grows when switching modes", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: [
+            buildLessonFixture({ id: "lesson-1", title: { ar: "أ", en: "" } }),
+          ],
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Edit أ" }));
+
+      await within(dialog).findByTestId("lesson-form");
+      expect(modalSizeStyle()).toContain("min(900px, calc(100vw - 48px))");
+    });
+
+    it("does not use the modal's own default width in create mode", async () => {
+      renderModal({ state: { mode: "create" } });
+
+      await screen.findByRole("dialog", { name: "Add Module" });
+      expect(modalSizeStyle()).not.toContain("900px");
+    });
+  });
+
   describe("Module mode Lessons list (ANA-111/ANA-115)", () => {
     const LESSONS = [
       buildLessonFixture({
@@ -350,16 +397,60 @@ describe("EditModuleModal", () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it("calls onAddLesson (real backend create) when Add lesson is clicked", async () => {
-      const onAddLesson = vi.fn().mockResolvedValue(undefined);
-      renderWithLessons({ onAddLesson });
+    it("New Lesson switches into Lesson mode with a blank, id-less draft and makes no create request (ANA-115 PR review)", async () => {
+      const onCreateLesson = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onCreateLesson });
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       fireEvent.click(
-        within(dialog).getByRole("button", { name: "Add lesson" }),
+        within(dialog).getByRole("button", { name: "New Lesson" }),
       );
 
-      await vi.waitFor(() => expect(onAddLesson).toHaveBeenCalledWith());
+      expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
+      expect(within(dialog).getByLabelText("Title")).toHaveValue("");
+      expect(onCreateLesson).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("backing out of New Lesson without saving makes no create request and returns to the Lessons list", async () => {
+      const onCreateLesson = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onCreateLesson });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "New Lesson" }),
+      );
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Back to Module" }),
+      );
+
+      expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
+      expect(onCreateLesson).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("Saving a New Lesson calls onCreateLesson exactly once and returns to Module mode", async () => {
+      const onCreateLesson = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onCreateLesson });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "New Lesson" }),
+      );
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "New lesson title" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() => expect(onCreateLesson).toHaveBeenCalledTimes(1));
+      expect(onCreateLesson).toHaveBeenCalledWith(
+        expect.objectContaining({ title: { ar: "New lesson title" } }),
+      );
+      await vi.waitFor(() =>
+        expect(within(dialog).getByText("Lessons")).toBeInTheDocument(),
+      );
     });
 
     it("calls onDeleteLesson once Delete is confirmed", async () => {
@@ -527,9 +618,10 @@ describe("EditModuleModal", () => {
       expect(form.getByDisplayValue("Prayer basics")).toBeInTheDocument();
     });
 
-    it("Save lesson sends only this Lesson's fields through onSaveLesson, no Module fields", async () => {
-      const onSaveLesson = vi.fn().mockResolvedValue(undefined);
-      renderWithLessons({ onSaveLesson });
+    it("Save changes sends only this Lesson's fields through onUpdateLesson (not onCreateLesson), no Module fields", async () => {
+      const onCreateLesson = vi.fn().mockResolvedValue(undefined);
+      const onUpdateLesson = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onCreateLesson, onUpdateLesson });
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       const form = within(await openLesson(dialog, "Introduction"));
@@ -537,11 +629,11 @@ describe("EditModuleModal", () => {
         target: { value: "Introduction, edited" },
       });
       fireEvent.click(
-        within(dialog).getByRole("button", { name: "Save lesson" }),
+        within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
       await vi.waitFor(() =>
-        expect(onSaveLesson).toHaveBeenCalledWith(
+        expect(onUpdateLesson).toHaveBeenCalledWith(
           "lesson-1",
           expect.objectContaining({
             title: { ar: "Introduction, edited", en: "" },
@@ -552,6 +644,7 @@ describe("EditModuleModal", () => {
           }),
         ),
       );
+      expect(onCreateLesson).not.toHaveBeenCalled();
     });
 
     it("returns to Module mode once Lesson Save succeeds", async () => {
@@ -560,7 +653,7 @@ describe("EditModuleModal", () => {
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       await openLesson(dialog, "Introduction");
       fireEvent.click(
-        within(dialog).getByRole("button", { name: "Save lesson" }),
+        within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
       await vi.waitFor(() =>
@@ -570,10 +663,10 @@ describe("EditModuleModal", () => {
     });
 
     it("stays in Lesson mode and preserves the draft when Lesson Save fails", async () => {
-      const onSaveLesson = vi
+      const onUpdateLesson = vi
         .fn()
         .mockRejectedValue(new Error("Lesson not found."));
-      renderWithLessons({ onSaveLesson });
+      renderWithLessons({ onUpdateLesson });
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       const form = within(await openLesson(dialog, "Introduction"));
@@ -581,7 +674,7 @@ describe("EditModuleModal", () => {
         target: { value: "Introduction, edited" },
       });
       fireEvent.click(
-        within(dialog).getByRole("button", { name: "Save lesson" }),
+        within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
       expect(
@@ -597,8 +690,8 @@ describe("EditModuleModal", () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Translated" } }),
       );
-      const onSaveLesson = vi.fn().mockResolvedValue(undefined);
-      renderWithLessons({ onSaveLesson });
+      const onUpdateLesson = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onUpdateLesson });
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       const form = within(await openLesson(dialog, "Introduction"));
@@ -620,7 +713,7 @@ describe("EditModuleModal", () => {
       // The plain, context-free translation body -- no `field`/`bookId`
       // Module-scoped context, unlike Module Title's own translate request.
       expect(body).toEqual({ text: "Introduction" });
-      expect(onSaveLesson).not.toHaveBeenCalled();
+      expect(onUpdateLesson).not.toHaveBeenCalled();
     });
   });
 

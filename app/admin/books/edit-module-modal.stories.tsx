@@ -38,9 +38,9 @@ const meta = {
     onClose: () => {},
     onCreate: async () => {},
     onSave: async () => {},
-    onSaveLesson: async () => {},
+    onCreateLesson: async () => {},
+    onUpdateLesson: async () => {},
     onDeleteLesson: async () => {},
-    onAddLesson: async () => {},
   },
 } satisfies Meta<typeof EditModuleModal>;
 
@@ -64,7 +64,7 @@ export const Edit: Story = {
 
 // Module mode's two-column layout (ANA-111, polished in ANA-115): Module
 // form and Lessons list, with real Edit/Delete actions on each row --
-// reorderable and appendable via the Lessons list's own Add lesson button.
+// reorderable, and New Lesson opens Lesson mode with a blank draft.
 const SAMPLE_LESSONS: Lesson[] = [
   buildLessonFixture({
     id: "lesson-1",

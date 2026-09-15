@@ -55,7 +55,7 @@ const meta = {
     onLessonsChange: () => {},
     onEditLesson: () => {},
     onDeleteLesson: async () => {},
-    onAddLesson: async () => {},
+    onNewLesson: () => {},
   },
   render: (args) => (
     <div style={{ width: 280, height: 420 }}>

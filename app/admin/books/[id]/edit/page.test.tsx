@@ -1999,7 +1999,7 @@ describe("EditBookPage", () => {
             within(dialog).getByRole("button", { name: "Edit مقدمة" }),
           );
           fireEvent.click(
-            within(dialog).getByRole("button", { name: "Save lesson" }),
+            within(dialog).getByRole("button", { name: "Save changes" }),
           );
 
           await vi.waitFor(() => expect(patchLessonId).toBe("lesson-1"));
@@ -2064,9 +2064,72 @@ describe("EditBookPage", () => {
           );
         });
 
-        it("Add lesson POSTs a new Lesson under the current Module", async () => {
+        it("New Lesson opens Lesson mode with no Lesson id and makes no request until Save changes is clicked (ANA-115 PR review)", async () => {
+          setupFetch(buildBookFixture(), {
+            modules: [
+              buildModuleFixture({
+                id: "module-1",
+                title: { ar: "أ", en: "" },
+              }),
+            ],
+          });
+          renderPage();
+
+          await screen.findByText("أ");
+          fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+          const dialog = await screen.findByRole("dialog", {
+            name: "Edit Module",
+          });
+          const fetchCallsBefore = (fetch as ReturnType<typeof vi.fn>).mock
+            .calls.length;
+          fireEvent.click(
+            within(dialog).getByRole("button", { name: "New Lesson" }),
+          );
+
+          expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
+          expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+            fetchCallsBefore,
+          );
+        });
+
+        it("Backing out of New Lesson without saving makes no request and leaves no persisted Lesson behind", async () => {
+          setupFetch(buildBookFixture(), {
+            modules: [
+              buildModuleFixture({
+                id: "module-1",
+                title: { ar: "أ", en: "" },
+              }),
+            ],
+          });
+          renderPage();
+
+          await screen.findByText("أ");
+          fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+          const dialog = await screen.findByRole("dialog", {
+            name: "Edit Module",
+          });
+          fireEvent.click(
+            within(dialog).getByRole("button", { name: "New Lesson" }),
+          );
+          fireEvent.click(
+            within(dialog).getByRole("button", { name: "Back to Module" }),
+          );
+
+          expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
+          expect(
+            within(dialog).getByText("This module has no lessons yet."),
+          ).toBeInTheDocument();
+          expect(
+            (fetch as ReturnType<typeof vi.fn>).mock.calls.some(
+              ([, init]) => init?.method === "POST",
+            ),
+          ).toBe(false);
+        });
+
+        it("Saving a New Lesson POSTs exactly once under the current Module and returns to Module mode", async () => {
           let createdModuleId: string | null = null;
           let createBody: unknown = null;
+          let createCallCount = 0;
           setupFetch(buildBookFixture(), {
             modules: [
               buildModuleFixture({
@@ -2075,11 +2138,17 @@ describe("EditBookPage", () => {
               }),
             ],
             onCreateLesson: (moduleId, body) => {
+              createCallCount += 1;
               createdModuleId = moduleId;
               createBody = body;
               return {
                 status: 201,
-                body: { data: buildLessonFixture({ id: "lesson-new" }) },
+                body: {
+                  data: buildLessonFixture({
+                    id: "lesson-new",
+                    title: { ar: "مقدمة", en: "" },
+                  }),
+                },
               };
             },
           });
@@ -2091,16 +2160,26 @@ describe("EditBookPage", () => {
             name: "Edit Module",
           });
           fireEvent.click(
-            within(dialog).getByRole("button", { name: "Add lesson" }),
+            within(dialog).getByRole("button", { name: "New Lesson" }),
+          );
+          fireEvent.change(within(dialog).getByLabelText("Title"), {
+            target: { value: "مقدمة" },
+          });
+          fireEvent.click(
+            within(dialog).getByRole("button", { name: "Save changes" }),
           );
 
-          await vi.waitFor(() => expect(createdModuleId).toBe("module-1"));
+          await vi.waitFor(() => expect(createCallCount).toBe(1));
+          expect(createdModuleId).toBe("module-1");
           expect(createBody).toMatchObject({
-            title: { ar: "", en: "" },
+            title: { ar: "مقدمة" },
             type: "text",
             position: 2,
             isPublished: false,
           });
+          await vi.waitFor(() =>
+            expect(within(dialog).getByText("Lessons")).toBeInTheDocument(),
+          );
         });
       });
     });

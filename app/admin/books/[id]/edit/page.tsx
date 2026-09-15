@@ -37,7 +37,7 @@ import {
   updateModule,
 } from "../../import-source/modules-client";
 import {
-  createLessonCreateFields,
+  toLessonCreateFields,
   toLessonPatchFields,
   type LessonFieldsValues,
 } from "../../lesson-fields";
@@ -447,13 +447,29 @@ export default function EditBookPage() {
     );
   }
 
-  // Saves only the given Lesson through the real Lesson PATCH API (ANA-115)
-  // -- Edit Module's own Lesson editor awaits this and stays in Lesson mode
-  // showing the error on rejection; Module fields are never part of this
-  // request. Revalidates this page's own Lessons SWR data on success so the
-  // Lessons list and a freshly-reopened Lesson editor both reflect the
-  // saved values.
-  async function handleSaveLesson(
+  // Creates a new Lesson under the currently open Module via the Lesson
+  // create API (ANA-115 PR review) -- called only once Save is clicked on
+  // a no-id (New Lesson) draft; New Lesson itself never reaches this (see
+  // lessons-panel.tsx/lesson-editor.tsx). Every writable field this editor
+  // has no UI for gets its canonical empty default (see
+  // `toLessonCreateFields`). Revalidates this page's own Lessons SWR data
+  // on success so the new row shows up without a page reload.
+  async function handleCreateLesson(fields: LessonFieldsValues) {
+    if (!book || modalTarget?.mode !== "edit") {
+      return;
+    }
+
+    await createLesson(book.id, modalTarget.id, toLessonCreateFields(fields));
+    await mutateLessons();
+  }
+
+  // Updates an existing, already-persisted Lesson through the real Lesson
+  // PATCH API (ANA-115) -- Edit Module's own Lesson editor awaits this and
+  // stays in Lesson mode showing the error on rejection; Module fields are
+  // never part of this request. Revalidates this page's own Lessons SWR
+  // data on success so the Lessons list and a freshly-reopened Lesson
+  // editor both reflect the saved values.
+  async function handleUpdateLesson(
     lessonId: string,
     fields: LessonFieldsValues,
   ) {
@@ -480,20 +496,6 @@ export default function EditBookPage() {
     }
 
     await deleteLesson(book.id, modalTarget.id, lesson.id);
-    await mutateLessons();
-  }
-
-  // Creates a new Lesson under the currently open Module via the Lesson
-  // create API (ANA-115) -- every writable field this editor has no UI for
-  // gets its canonical empty default (see `createLessonCreateFields`).
-  // Revalidates this page's own Lessons SWR data on success so the new row
-  // shows up without a page reload.
-  async function handleAddLesson() {
-    if (!book || modalTarget?.mode !== "edit") {
-      return;
-    }
-
-    await createLesson(book.id, modalTarget.id, createLessonCreateFields());
     await mutateLessons();
   }
 
@@ -679,9 +681,9 @@ export default function EditBookPage() {
           onClose={() => setModalTarget(null)}
           onCreate={handleCreateModule}
           onSave={handleSaveModule}
-          onSaveLesson={handleSaveLesson}
+          onCreateLesson={handleCreateLesson}
+          onUpdateLesson={handleUpdateLesson}
           onDeleteLesson={handleDeleteLesson}
-          onAddLesson={handleAddLesson}
         />
       )}
 
