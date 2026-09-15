@@ -7,17 +7,16 @@ import { ColorField } from "@/components/ui/color-field";
 import { FormField } from "@/components/ui/form-field";
 import type { TranslatedValue } from "@/components/ui/translatable-value";
 import type { Book } from "@/lib/books/types";
-import type { Lesson } from "@/lib/lessons/types";
-import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import {
   assistLearningMaterial,
   suggestModuleDescription,
   suggestModuleTitle,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
-import type { LessonFieldsValues } from "./lesson-fields";
 import { LessonEditor } from "./lesson-editor";
+import type { LessonFieldsValues } from "./lesson-fields";
 import { LessonsPanel } from "./lessons-panel";
+import type { MockLesson } from "./mock-lessons";
 import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
@@ -34,18 +33,17 @@ function errorMessage(err: unknown): string {
  * `"edit"` seeds it from an existing, real Module's current fields, primary
  * action Save changes -- unchanged from ANA-91 except that saving now
  * persists through the backend instead of only updating local state.
- * `lessons` (ANA-111, real/API-backed as of ANA-115) is this Module's
- * Lessons list, in display order -- loaded by the caller (`[id]/edit/
- * page.tsx`) through the existing Lesson list API; optional, defaulting to
- * empty, so a caller that hasn't finished loading them yet doesn't need a
- * placeholder array. */
+ * `lessons` (ANA-111) is this Module's Lessons list, in display order --
+ * optional and local-UI-only, since real Lesson loading/persistence is out
+ * of scope for this task (deferred to ANA-116); omitted (or empty) shows
+ * the Lessons list's own empty state. */
 export type EditModuleModalState =
   | { mode: "create" }
   | {
       mode: "edit";
       id: string;
       fields: ModuleFieldsValues;
-      lessons?: Lesson[];
+      lessons?: MockLesson[];
     };
 
 export interface EditModuleModalProps {
@@ -69,23 +67,6 @@ export interface EditModuleModalProps {
    * clicked in edit mode. Same awaited resolve/reject contract as
    * `onCreate`. */
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
-  /** Creates a new Lesson under this Module through the existing Lesson
-   * create API (ANA-115 PR review) -- called only once Save is clicked on
-   * a no-id (New Lesson) draft, never when New Lesson itself is clicked.
-   * The caller is expected to have revalidated its own Lessons data by the
-   * time this resolves. Awaited by LessonEditor; rejecting keeps Lesson
-   * mode open with the draft intact. */
-  onCreateLesson: (fields: LessonFieldsValues) => Promise<void>;
-  /** Updates the given, already-persisted Lesson through the existing
-   * Lesson update API (ANA-115), same awaited resolve/reject contract as
-   * `onCreateLesson`. */
-  onUpdateLesson: (
-    lessonId: string,
-    fields: LessonFieldsValues,
-  ) => Promise<void>;
-  /** Deletes the given Lesson through the existing Lesson DELETE API
-   * (ANA-115), same awaited resolve/reject contract as `onCreateLesson`. */
-  onDeleteLesson: (lesson: Lesson) => Promise<void>;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
@@ -100,9 +81,6 @@ export function EditModuleModal({
   onClose,
   onCreate,
   onSave,
-  onCreateLesson,
-  onUpdateLesson,
-  onDeleteLesson,
 }: EditModuleModalProps) {
   return (
     <Modal
@@ -131,9 +109,6 @@ export function EditModuleModal({
           onClose={onClose}
           onCreate={onCreate}
           onSave={onSave}
-          onCreateLesson={onCreateLesson}
-          onUpdateLesson={onUpdateLesson}
-          onDeleteLesson={onDeleteLesson}
         />
       )}
     </Modal>
@@ -146,21 +121,12 @@ function EditModuleModalBody({
   onClose,
   onCreate,
   onSave,
-  onCreateLesson,
-  onUpdateLesson,
-  onDeleteLesson,
 }: {
   state: EditModuleModalState;
   book: Book;
   onClose: () => void;
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
-  onCreateLesson: (fields: LessonFieldsValues) => Promise<void>;
-  onUpdateLesson: (
-    lessonId: string,
-    fields: LessonFieldsValues,
-  ) => Promise<void>;
-  onDeleteLesson: (lesson: Lesson) => Promise<void>;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -188,42 +154,23 @@ function EditModuleModalBody({
   const [contentBusy, setContentBusy] = useState(false);
   const aiBusy = titleBusy || descriptionBusy || contentBusy;
 
-  // This Module's Lessons, as last provided by the caller (ANA-115, real/
-  // API-backed) -- `lessonOrderDraft` below is a pending, unpersisted
-  // reorder of them, mirroring `moduleOrderDraft`'s exact pattern in
-  // `[id]/edit/page.tsx`. Falls back to `[]` in create mode/while the
-  // caller hasn't provided any yet.
-  const lessonsProp = state.mode === "edit" ? (state.lessons ?? []) : [];
-
-  // A pending drag-and-drop reorder, not yet (and never) persisted --
-  // ANA-111's original local-draft-only behavior, preserved by ANA-115.
-  // Reset during render (not an effect -- see `moduleOrderDraft`'s
-  // identical comment in `[id]/edit/page.tsx`) whenever `lessonsProp`'s own
-  // id set no longer matches the draft's, e.g. after Add/Delete Lesson
-  // revalidates the caller's data -- otherwise the draft could go on
-  // reordering ids that no longer exist, or hide a newly added/removed one.
-  const [lessonOrderDraft, setLessonOrderDraft] = useState<Lesson[] | null>(
-    null,
+  // The Lessons list shown in Module mode (ANA-111) -- local UI state
+  // only, seeded from whatever order the caller provided (`state.lessons`,
+  // itself local/mock data -- real Lesson loading/persistence is deferred
+  // to ANA-116). Reordering, New Lesson, editing, and deleting all only
+  // ever update this state directly; none of them makes a network
+  // request, and none is included in `handlePrimaryAction`'s Module save
+  // payload below.
+  const [lessons, setLessons] = useState<MockLesson[]>(
+    state.mode === "edit" ? (state.lessons ?? []) : [],
   );
 
-  if (
-    lessonOrderDraft &&
-    !isValidReorder(
-      lessonOrderDraft.map((lesson) => lesson.id),
-      lessonsProp.map((lesson) => lesson.id),
-    )
-  ) {
-    setLessonOrderDraft(null);
-  }
-
-  const lessons = lessonOrderDraft ?? lessonsProp;
-
-  // Which Lesson editor is open, if any (ANA-115, PR review) -- `null`
-  // means Module mode. `{ lessonId: null }` is New Lesson: a blank,
-  // id-less draft that makes no request of its own (see lessons-panel.tsx)
-  // -- LessonEditor itself decides create vs. update purely from whether
-  // this id is present, so no separate temporary Lesson object is tracked
-  // here. `{ lessonId: "..." }` opens an existing, persisted Lesson. Edit
+  // Which Lesson editor is open, if any (ANA-115) -- `null` means Module
+  // mode. `{ lessonId: null }` is New Lesson: a blank, id-less draft that
+  // makes no request of its own (see lessons-panel.tsx) -- LessonEditor
+  // itself decides create vs. update purely from whether this id is
+  // present, so no separate temporary Lesson object is tracked here.
+  // `{ lessonId: "..." }` opens an existing Lesson from local state. Edit
   // Module shows either the Module editor/Lessons list or the open
   // Lesson's editor, never both (the three-column layout from
   // ANA-111/ANA-114 is removed).
@@ -235,52 +182,31 @@ function EditModuleModalBody({
       null)
     : null;
 
-  // Defensive staleness guard, mirroring `lessonOrderDraft`'s own
-  // render-time correction above: an existing-Lesson target whose id no
-  // longer matches anything in `lessons` (impossible in normal use --
-  // Delete is only ever reachable from Module mode, never while that same
-  // Lesson is open here) falls back to Module mode rather than being
-  // silently mistaken for New Lesson.
-  if (lessonEditorTarget?.lessonId && !openLesson) {
-    setLessonEditorTarget(null);
-  }
-
-  // Wraps the caller's own Lesson delete so a pending reorder draft drops
-  // just the deleted Lesson's id immediately (PR review pattern from
-  // `handleDeleteModule` in `[id]/edit/page.tsx`) -- otherwise the deleted
-  // row would keep showing in a stale draft order until the caller's own
-  // revalidation lands and the staleness check above resets it.
-  async function handleDeleteLesson(lesson: Lesson) {
-    await onDeleteLesson(lesson);
-    setLessonOrderDraft((draft) =>
-      draft ? draft.filter((candidate) => candidate.id !== lesson.id) : draft,
+  // Removes the given Lesson from local Lessons UI state only (ANA-115:
+  // frontend-only, no Lesson API/Firestore write -- real Lesson delete is
+  // deferred to ANA-116).
+  function handleDeleteLesson(lesson: MockLesson) {
+    setLessons((prev) =>
+      prev.filter((candidate) => candidate.id !== lesson.id),
     );
   }
 
-  // Creates the open (id-less) Lesson through the caller's own Lesson
-  // create flow (ANA-115 PR review) -- the first point a Firestore Lesson
-  // document is created; New Lesson itself (lessons-panel.tsx) never calls
-  // this. Only runs once Save succeeds, then returns to Module mode,
-  // mirroring `handleCreateModule`'s own "drop any pending reorder draft"
-  // pattern in `[id]/edit/page.tsx` -- it necessarily predates the new
-  // Lesson.
-  async function handleCreateLesson(fields: LessonFieldsValues) {
-    await onCreateLesson(fields);
-    setLessonOrderDraft(null);
-    setLessonEditorTarget(null);
+  // Appends the New Lesson draft as a fresh local Lesson (ANA-115:
+  // frontend-only -- no Lesson document is ever created; real Lesson
+  // create is deferred to ANA-116). `crypto.randomUUID()` mirrors
+  // `createMockLesson`'s own id generation (mock-lessons.ts).
+  function handleCreateLesson(fields: LessonFieldsValues) {
+    setLessons((prev) => [...prev, { id: crypto.randomUUID(), ...fields }]);
   }
 
-  // Updates the open, already-persisted Lesson through the caller's own
-  // Lesson update flow (ANA-115), then returns to Module mode -- only once
-  // that save has actually succeeded. A rejection propagates to
-  // LessonEditor's own catch and this never runs, leaving Lesson mode open
-  // with the draft intact.
-  async function handleUpdateLesson(
-    lessonId: string,
-    fields: LessonFieldsValues,
-  ) {
-    await onUpdateLesson(lessonId, fields);
-    setLessonEditorTarget(null);
+  // Updates the open Lesson in local Lessons UI state only (ANA-115:
+  // frontend-only -- real Lesson update is deferred to ANA-116).
+  function handleUpdateLesson(lessonId: string, fields: LessonFieldsValues) {
+    setLessons((prev) =>
+      prev.map((lesson) =>
+        lesson.id === lessonId ? { id: lessonId, ...fields } : lesson,
+      ),
+    );
   }
 
   async function handlePrimaryAction() {
@@ -489,7 +415,7 @@ function EditModuleModalBody({
       <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
         <LessonsPanel
           lessons={lessons}
-          onLessonsChange={setLessonOrderDraft}
+          onLessonsChange={setLessons}
           onEditLesson={(lesson) =>
             setLessonEditorTarget({ lessonId: lesson.id })
           }

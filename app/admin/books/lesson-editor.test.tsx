@@ -19,8 +19,8 @@ const LESSON = buildLessonFixture({
 });
 
 function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
-  const onCreate = vi.fn().mockResolvedValue(undefined);
-  const onUpdate = vi.fn().mockResolvedValue(undefined);
+  const onCreate = vi.fn();
+  const onUpdate = vi.fn();
   const onBack = vi.fn();
   const utils = render(
     <MantineProvider>
@@ -36,7 +36,7 @@ function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
   return { onCreate, onUpdate, onBack, ...utils };
 }
 
-describe("LessonEditor (ANA-115)", () => {
+describe("LessonEditor (ANA-115, frontend-only)", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -93,49 +93,25 @@ describe("LessonEditor (ANA-115)", () => {
   });
 
   describe("existing Lesson (update)", () => {
-    it("calls onUpdate (not onCreate) with only this Lesson's id and fields when Save changes is clicked", async () => {
-      const { onCreate, onUpdate } = renderEditor();
+    it("calls onUpdate (not onCreate) with only this Lesson's id and fields, then returns to Module mode", () => {
+      const { onCreate, onUpdate, onBack } = renderEditor();
 
       fireEvent.change(screen.getByLabelText("Title"), {
         target: { value: "عنوان جديد" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-      await vi.waitFor(() =>
-        expect(onUpdate).toHaveBeenCalledWith("lesson-1", {
-          title: { ar: "عنوان جديد", en: "" },
-          description: { ar: "وصف قصير", en: "" },
-          type: "text",
-          position: 0,
-          isPublished: false,
-        }),
-      );
+      expect(onUpdate).toHaveBeenCalledWith("lesson-1", {
+        title: { ar: "عنوان جديد", en: "" },
+        description: { ar: "وصف قصير", en: "" },
+        type: "text",
+        position: 0,
+        isPublished: false,
+      });
       expect(onCreate).not.toHaveBeenCalled();
-    });
-
-    it("does not call onBack itself once the save resolves -- the caller owns returning to Module mode", async () => {
-      const { onUpdate, onBack } = renderEditor();
-
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-      await vi.waitFor(() => expect(onUpdate).toHaveBeenCalled());
-      expect(onBack).not.toHaveBeenCalled();
-    });
-
-    it("shows the error and keeps the draft when the update fails, without calling onBack", async () => {
-      const onUpdate = vi
-        .fn()
-        .mockRejectedValue(new Error("Lesson not found."));
-      const { onBack } = renderEditor({ onUpdate });
-
-      fireEvent.change(screen.getByLabelText("Title"), {
-        target: { value: "عنوان جديد" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-      expect(await screen.findByText("Lesson not found.")).toBeInTheDocument();
-      expect(onBack).not.toHaveBeenCalled();
-      expect(screen.getByDisplayValue("عنوان جديد")).toBeInTheDocument();
+      expect(onBack).toHaveBeenCalled();
+      // Frontend-only (ANA-115) -- Save never issues a network request.
+      expect(fetch).not.toHaveBeenCalled();
     });
   });
 
@@ -159,7 +135,7 @@ describe("LessonEditor (ANA-115)", () => {
       ).toBeInTheDocument();
     });
 
-    it("goes back with no confirmation and no request when untouched (backing out leaves nothing persisted)", () => {
+    it("goes back with no confirmation and no request when untouched (backing out leaves nothing added)", () => {
       const { onCreate, onBack } = renderNewLessonEditor();
 
       fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
@@ -178,47 +154,29 @@ describe("LessonEditor (ANA-115)", () => {
       expect(onCreate).not.toHaveBeenCalled();
     });
 
-    it("calls onCreate (not onUpdate) exactly once when Save changes is clicked", async () => {
-      const { onCreate, onUpdate } = renderNewLessonEditor();
+    it("calls onCreate (not onUpdate) exactly once and returns to Module mode when Save changes is clicked", () => {
+      const { onCreate, onUpdate, onBack } = renderNewLessonEditor();
 
       fireEvent.change(screen.getByLabelText("Title"), {
         target: { value: "مقدمة جديدة" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-      await vi.waitFor(() =>
-        expect(onCreate).toHaveBeenCalledWith({
-          title: { ar: "مقدمة جديدة" },
-          description: {},
-          type: "text",
-          position: 2,
-          isPublished: false,
-        }),
-      );
+      expect(onCreate).toHaveBeenCalledWith({
+        title: { ar: "مقدمة جديدة" },
+        description: {},
+        type: "text",
+        position: 2,
+        isPublished: false,
+      });
       expect(onCreate).toHaveBeenCalledTimes(1);
       expect(onUpdate).not.toHaveBeenCalled();
-    });
-
-    it("shows the error and keeps the draft when creation fails, without calling onBack", async () => {
-      const onCreate = vi
-        .fn()
-        .mockRejectedValue(new Error("Something went wrong."));
-      const { onBack } = renderNewLessonEditor({ onCreate });
-
-      fireEvent.change(screen.getByLabelText("Title"), {
-        target: { value: "مقدمة جديدة" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-      expect(
-        await screen.findByText("Something went wrong."),
-      ).toBeInTheDocument();
-      expect(onBack).not.toHaveBeenCalled();
-      expect(screen.getByDisplayValue("مقدمة جديدة")).toBeInTheDocument();
+      expect(onBack).toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
     });
   });
 
-  it("disables Save while Title's own Translate request is unresolved", async () => {
+  it("disables Save while Title's own Translate request is unresolved (translation remains the only network behavior)", async () => {
     let resolveTranslate: (value: Response) => void = () => {};
     (fetch as ReturnType<typeof vi.fn>).mockImplementation(
       () => new Promise((resolve) => (resolveTranslate = resolve)),
