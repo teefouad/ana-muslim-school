@@ -1,30 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Flex,
-  Group,
-  Modal,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { Alert, Box, Button, Flex, Group, Modal, Stack } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
 import { FormField } from "@/components/ui/form-field";
 import type { TranslatedValue } from "@/components/ui/translatable-value";
 import type { Book } from "@/lib/books/types";
+import type { Lesson } from "@/lib/lessons/types";
+import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import {
   assistLearningMaterial,
   suggestModuleDescription,
   suggestModuleTitle,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
-import { LessonForm } from "./lesson-form";
+import type { LessonFieldsValues } from "./lesson-fields";
+import { LessonEditor } from "./lesson-editor";
 import { LessonsPanel } from "./lessons-panel";
-import type { MockLesson } from "./mock-lessons";
 import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
@@ -41,17 +34,18 @@ function errorMessage(err: unknown): string {
  * `"edit"` seeds it from an existing, real Module's current fields, primary
  * action Save changes -- unchanged from ANA-91 except that saving now
  * persists through the backend instead of only updating local state.
- * `lessons` (ANA-111) is this Module's Lessons list, in display order --
- * optional and local-UI-only, since real Lesson loading/persistence is out
- * of scope for this task (ANA-110); omitted (or empty) shows the Lessons
- * list's own empty state. */
+ * `lessons` (ANA-111, real/API-backed as of ANA-115) is this Module's
+ * Lessons list, in display order -- loaded by the caller (`[id]/edit/
+ * page.tsx`) through the existing Lesson list API; optional, defaulting to
+ * empty, so a caller that hasn't finished loading them yet doesn't need a
+ * placeholder array. */
 export type EditModuleModalState =
   | { mode: "create" }
   | {
       mode: "edit";
       id: string;
       fields: ModuleFieldsValues;
-      lessons?: MockLesson[];
+      lessons?: Lesson[];
     };
 
 export interface EditModuleModalProps {
@@ -75,6 +69,18 @@ export interface EditModuleModalProps {
    * clicked in edit mode. Same awaited resolve/reject contract as
    * `onCreate`. */
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+  /** Saves only the given Lesson through the existing Lesson persistence/
+   * API flow (ANA-115) -- the caller is expected to have revalidated its
+   * own Lessons data by the time this resolves. Awaited by LessonEditor;
+   * rejecting keeps Lesson mode open with the draft intact. */
+  onSaveLesson: (lessonId: string, fields: LessonFieldsValues) => Promise<void>;
+  /** Deletes the given Lesson through the existing Lesson DELETE API
+   * (ANA-115), same awaited resolve/reject contract as `onSaveLesson`. */
+  onDeleteLesson: (lesson: Lesson) => Promise<void>;
+  /** Creates a new Lesson under this Module through the existing Lesson
+   * create API (ANA-115), same awaited resolve/reject contract as
+   * `onSaveLesson`. */
+  onAddLesson: () => Promise<void>;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
@@ -89,14 +95,17 @@ export function EditModuleModal({
   onClose,
   onCreate,
   onSave,
+  onSaveLesson,
+  onDeleteLesson,
+  onAddLesson,
 }: EditModuleModalProps) {
   return (
     <Modal
       opened={state !== null}
       onClose={onClose}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
-      // Edit mode's three-column layout (Module form, Lessons list, Lesson
-      // placeholder, ANA-111) needs materially more width than the
+      // Edit mode (Module editor + Lessons list, or the Lesson editor in
+      // Lesson mode, ANA-115) needs materially more width than the
       // single-column form Create mode still uses -- capped against the
       // viewport the same way Module Builder's own wide modal is
       // (import-source-modal.tsx), rather than a fixed size that would
@@ -116,6 +125,9 @@ export function EditModuleModal({
           onClose={onClose}
           onCreate={onCreate}
           onSave={onSave}
+          onSaveLesson={onSaveLesson}
+          onDeleteLesson={onDeleteLesson}
+          onAddLesson={onAddLesson}
         />
       )}
     </Modal>
@@ -128,12 +140,18 @@ function EditModuleModalBody({
   onClose,
   onCreate,
   onSave,
+  onSaveLesson,
+  onDeleteLesson,
+  onAddLesson,
 }: {
   state: EditModuleModalState;
   book: Book;
   onClose: () => void;
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+  onSaveLesson: (lessonId: string, fields: LessonFieldsValues) => Promise<void>;
+  onDeleteLesson: (lesson: Lesson) => Promise<void>;
+  onAddLesson: () => Promise<void>;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -161,42 +179,74 @@ function EditModuleModalBody({
   const [contentBusy, setContentBusy] = useState(false);
   const aiBusy = titleBusy || descriptionBusy || contentBusy;
 
-  // The Lessons list shown in edit mode's middle column (ANA-111) -- local
-  // UI state only, seeded from whatever order the caller provided
-  // (`state.lessons`, itself local/mock data -- real Lesson loading is out
-  // of scope, ANA-110). Reordering and Add Lesson only ever update this
-  // state through LessonsPanel's own `onLessonsChange`; neither makes a
-  // network request, and neither is included in `handlePrimaryAction`'s
-  // save payload below.
-  const [lessons, setLessons] = useState<MockLesson[]>(
-    state.mode === "edit" ? (state.lessons ?? []) : [],
+  // This Module's Lessons, as last provided by the caller (ANA-115, real/
+  // API-backed) -- `lessonOrderDraft` below is a pending, unpersisted
+  // reorder of them, mirroring `moduleOrderDraft`'s exact pattern in
+  // `[id]/edit/page.tsx`. Falls back to `[]` in create mode/while the
+  // caller hasn't provided any yet.
+  const lessonsProp = state.mode === "edit" ? (state.lessons ?? []) : [];
+
+  // A pending drag-and-drop reorder, not yet (and never) persisted --
+  // ANA-111's original local-draft-only behavior, preserved by ANA-115.
+  // Reset during render (not an effect -- see `moduleOrderDraft`'s
+  // identical comment in `[id]/edit/page.tsx`) whenever `lessonsProp`'s own
+  // id set no longer matches the draft's, e.g. after Add/Delete Lesson
+  // revalidates the caller's data -- otherwise the draft could go on
+  // reordering ids that no longer exist, or hide a newly added/removed one.
+  const [lessonOrderDraft, setLessonOrderDraft] = useState<Lesson[] | null>(
+    null,
   );
 
-  // The Lesson currently selected in the Lessons list, if any (ANA-114) --
-  // local UI state only, mirroring `lessons` itself. Rendering its form (or
-  // the placeholder) is derived from this plus `lessons` below rather than
-  // holding a second, potentially-stale copy of the selected Lesson's own
-  // fields; edits from LessonForm are applied back into `lessons` in place
-  // through `handleLessonChange`.
-  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
-  const selectedLesson =
-    lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
+  if (
+    lessonOrderDraft &&
+    !isValidReorder(
+      lessonOrderDraft.map((lesson) => lesson.id),
+      lessonsProp.map((lesson) => lesson.id),
+    )
+  ) {
+    setLessonOrderDraft(null);
+  }
 
-  // Merges a single-field patch onto whichever Lesson `id` currently looks
-  // like in `lessons` (PR review, ANA-114) -- never onto a whole Lesson
-  // object LessonForm itself constructed, which could close over a stale
-  // snapshot from before a still-pending Translate with AI request
-  // resolves. Using the functional `setLessons` form (not `lessons` from
-  // this closure) is what makes this correct even when two patches for the
-  // same Lesson are in flight and resolve out of order -- each always
-  // merges onto the *latest* state, not onto whatever `lessons` looked like
-  // when its own request started.
-  function handleLessonChange(id: string, patch: Partial<MockLesson>) {
-    setLessons((prev) =>
-      prev.map((lesson) =>
-        lesson.id === id ? { ...lesson, ...patch } : lesson,
-      ),
+  const lessons = lessonOrderDraft ?? lessonsProp;
+
+  // The Lesson currently open for editing, if any (ANA-115) -- non-null
+  // means Lesson mode; `null` means Module mode. Edit Module shows either
+  // the Module editor/Lessons list or the selected Lesson's editor, never
+  // both (the three-column layout from ANA-111/ANA-114 is removed).
+  const [openLessonId, setOpenLessonId] = useState<string | null>(null);
+  const openLesson = lessons.find((lesson) => lesson.id === openLessonId);
+
+  // Wraps the caller's own Lesson delete so a pending reorder draft drops
+  // just the deleted Lesson's id immediately (PR review pattern from
+  // `handleDeleteModule` in `[id]/edit/page.tsx`) -- otherwise the deleted
+  // row would keep showing in a stale draft order until the caller's own
+  // revalidation lands and the staleness check above resets it.
+  async function handleDeleteLesson(lesson: Lesson) {
+    await onDeleteLesson(lesson);
+    setLessonOrderDraft((draft) =>
+      draft ? draft.filter((candidate) => candidate.id !== lesson.id) : draft,
     );
+  }
+
+  // Wraps the caller's own Lesson create the same way `handleCreateModule`
+  // wraps Module create in `[id]/edit/page.tsx` -- a pending reorder draft
+  // necessarily predates the new Lesson, so it's dropped rather than left
+  // to flash a stale order missing the new row until revalidation lands.
+  async function handleAddLesson() {
+    await onAddLesson();
+    setLessonOrderDraft(null);
+  }
+
+  // Saves the open Lesson through the caller's own Lesson save flow
+  // (ANA-115), then returns to Module mode -- only once that save has
+  // actually succeeded. A rejection propagates to LessonEditor's own catch
+  // and this never runs, leaving Lesson mode open with the draft intact.
+  async function handleSaveLesson(
+    lessonId: string,
+    fields: LessonFieldsValues,
+  ) {
+    await onSaveLesson(lessonId, fields);
+    setOpenLessonId(null);
   }
 
   async function handlePrimaryAction() {
@@ -377,15 +427,25 @@ function EditModuleModalBody({
   );
 
   // Create mode keeps its existing single-column layout unchanged. Edit
-  // mode gains the three-column layout (ANA-111): Module form, Lessons
-  // list, and the selected Lesson's basic-fields form (ANA-114) once one is
-  // selected -- the dashed placeholder otherwise. Configuration and the
-  // Questions section are a later task (ANA-110). `align="stretch"` matches
-  // all three columns to the form's own natural height, the same pattern
-  // the Edit Book page already uses for its own BookForm/ModulesPanel
-  // columns (see `[id]/edit/page.tsx`).
+  // mode shows either the Module editor + Lessons list (Module mode) or
+  // the open Lesson's own editor (Lesson mode, ANA-115) -- never both; the
+  // three-column layout from ANA-111/ANA-114 is removed. `align="stretch"`
+  // matches the two Module-mode columns to the form's own natural height,
+  // the same pattern the Edit Book page already uses for its own
+  // BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`).
   if (state.mode === "create") {
     return moduleForm;
+  }
+
+  if (openLesson) {
+    return (
+      <LessonEditor
+        key={openLesson.id}
+        lesson={openLesson}
+        onSave={handleSaveLesson}
+        onBack={() => setOpenLessonId(null)}
+      />
+    );
   }
 
   return (
@@ -394,45 +454,11 @@ function EditModuleModalBody({
       <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
         <LessonsPanel
           lessons={lessons}
-          onLessonsChange={setLessons}
-          selectedLessonId={selectedLessonId}
-          onSelectLesson={(lesson) => setSelectedLessonId(lesson.id)}
+          onLessonsChange={setLessonOrderDraft}
+          onEditLesson={(lesson) => setOpenLessonId(lesson.id)}
+          onDeleteLesson={handleDeleteLesson}
+          onAddLesson={handleAddLesson}
         />
-      </Box>
-      {/* Wider than a plain `flex: 1` third of the row (ANA-114 PR review)
-          -- the Lesson form's own "One-line description" label is longer
-          than any Module field's label, and at the narrower width a plain
-          even split left it overlapping TranslatableFieldHeader's
-          absolutely-positioned language switcher. A fixed width, matching
-          the Lessons list's own fixed column, guarantees enough room
-          regardless of viewport rather than depending on how the Module
-          form's own flex-basis happens to shake out. */}
-      <Box w={{ base: "100%", md: 300 }} style={{ flexShrink: 0 }}>
-        {selectedLesson ? (
-          <LessonForm
-            key={selectedLesson.id}
-            lesson={selectedLesson}
-            onChange={handleLessonChange}
-          />
-        ) : (
-          <Box
-            style={{
-              height: "100%",
-              minHeight: 280,
-              border: "1px dashed var(--mantine-color-default-border)",
-              borderRadius: "var(--mantine-radius-sm)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              padding: 16,
-            }}
-          >
-            <Text size="sm" c="dimmed">
-              Select a lesson to edit.
-            </Text>
-          </Box>
-        )}
       </Box>
     </Flex>
   );

@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import type { Book } from "@/lib/books/types";
+import type { Lesson } from "@/lib/lessons/types";
 import { EditModuleModal } from "./edit-module-modal";
-import type { MockLesson } from "./mock-lessons";
+import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 
 const FILLED_FIELDS = {
@@ -37,6 +38,9 @@ const meta = {
     onClose: () => {},
     onCreate: async () => {},
     onSave: async () => {},
+    onSaveLesson: async () => {},
+    onDeleteLesson: async () => {},
+    onAddLesson: async () => {},
   },
 } satisfies Meta<typeof EditModuleModal>;
 
@@ -58,27 +62,21 @@ export const Edit: Story = {
   },
 };
 
-// Edit mode's three-column layout (ANA-111): Module form, Lessons list, and
-// the Lesson editor placeholder -- Lessons here are local/mock data only
-// (real Lesson loading is out of scope, ANA-110), reorderable and
-// appendable via the Lessons list's own Add lesson button.
-const SAMPLE_LESSONS: MockLesson[] = [
-  {
+// Module mode's two-column layout (ANA-111, polished in ANA-115): Module
+// form and Lessons list, with real Edit/Delete actions on each row --
+// reorderable and appendable via the Lessons list's own Add lesson button.
+const SAMPLE_LESSONS: Lesson[] = [
+  buildLessonFixture({
     id: "lesson-1",
     title: { ar: "ما هي الصلاة؟", en: "What is Salah?" },
-    description: { ar: "", en: "" },
-    type: "text",
-    position: 0,
     isPublished: true,
-  },
-  {
+  }),
+  buildLessonFixture({
     id: "lesson-2",
     title: { ar: "", en: "The five daily prayers" },
-    description: { ar: "", en: "" },
     type: "video",
     position: 1,
-    isPublished: false,
-  },
+  }),
 ];
 
 export const EditWithLessons: Story = {

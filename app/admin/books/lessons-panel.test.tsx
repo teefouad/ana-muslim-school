@@ -2,26 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 
+import type { Lesson } from "@/lib/lessons/types";
+import { buildLessonFixture } from "./lesson-fixtures";
 import { LessonsPanel } from "./lessons-panel";
-import type { MockLesson } from "./mock-lessons";
 
-const LESSONS: MockLesson[] = [
-  {
+const LESSONS: Lesson[] = [
+  buildLessonFixture({
     id: "lesson-1",
     title: { ar: "Introduction", en: "" },
-    description: { ar: "", en: "" },
-    type: "text",
     position: 0,
-    isPublished: false,
-  },
-  {
+  }),
+  buildLessonFixture({
     id: "lesson-2",
     title: { ar: "", en: "" },
-    description: { ar: "", en: "" },
-    type: "text",
     position: 1,
-    isPublished: false,
-  },
+  }),
 ];
 
 // dnd-kit's collision detection/keyboard coordinate getter is driven by real
@@ -59,6 +54,9 @@ function renderPanel(
       <LessonsPanel
         lessons={LESSONS}
         onLessonsChange={vi.fn()}
+        onEditLesson={vi.fn()}
+        onDeleteLesson={vi.fn().mockResolvedValue(undefined)}
+        onAddLesson={vi.fn().mockResolvedValue(undefined)}
         {...overrides}
       />
     </MantineProvider>,
@@ -108,36 +106,49 @@ describe("LessonsPanel", () => {
     expect(screen.queryByText("Introduction")).not.toBeInTheDocument();
   });
 
-  it("exposes no edit or delete actions on any row (selection/editing/deletion out of scope)", () => {
+  it("exposes edit and delete icon actions on every row via ItemList", () => {
     renderPanel();
 
     expect(
-      screen.queryByRole("button", { name: /edit/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Edit Introduction" }),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /delete/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Delete Introduction" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit Lesson 2" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Lesson 2" }),
+    ).toBeInTheDocument();
   });
 
-  it("fires onSelectLesson with the clicked Lesson", () => {
-    const onSelectLesson = vi.fn();
-    renderPanel({ onSelectLesson });
+  it("a single click on a row does not open the Lesson (Edit is the only entry point, ANA-115)", () => {
+    const onEditLesson = vi.fn();
+    renderPanel({ onEditLesson });
 
     fireEvent.click(screen.getByText("Introduction"));
 
-    expect(onSelectLesson).toHaveBeenCalledWith(LESSONS[0]);
+    expect(onEditLesson).not.toHaveBeenCalled();
   });
 
-  it("renders the selected Lesson's row distinguished from the rest", () => {
-    renderPanel({ selectedLessonId: "lesson-2" });
+  it("calls onEditLesson with the clicked lesson's Edit action", () => {
+    const onEditLesson = vi.fn();
+    renderPanel({ onEditLesson });
 
-    expect(screen.getByTestId("list-item-lesson-2")).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
-    expect(screen.getByTestId("list-item-lesson-1")).not.toHaveAttribute(
-      "aria-current",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit Introduction" }));
+
+    expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("calls onEditLesson with the double-clicked lesson", () => {
+    const onEditLesson = vi.fn();
+    renderPanel({ onEditLesson });
+
+    fireEvent.doubleClick(screen.getByText("Introduction"));
+
+    expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
   });
 
   it("reorders via the keyboard and reports the new order through onLessonsChange, without a network request", async () => {
@@ -158,27 +169,88 @@ describe("LessonsPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("adds a new Lesson with position 2 through onLessonsChange when Add lesson is clicked, without a network request", () => {
-    const onLessonsChange = vi.fn();
-    renderPanel({ onLessonsChange, lessons: [] });
+  describe("Add lesson (ANA-115, real backend create)", () => {
+    it("calls onAddLesson, not onLessonsChange, when Add lesson is clicked", async () => {
+      const onAddLesson = vi.fn().mockResolvedValue(undefined);
+      const onLessonsChange = vi.fn();
+      renderPanel({ onAddLesson, onLessonsChange });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
 
-    expect(onLessonsChange).toHaveBeenCalledTimes(1);
-    const [added] = onLessonsChange.mock.calls[0][0] as MockLesson[];
-    expect(added.position).toBe(2);
-    expect(added.id).toEqual(expect.any(String));
-    expect(fetch).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(onAddLesson).toHaveBeenCalledWith());
+      expect(onLessonsChange).not.toHaveBeenCalled();
+    });
+
+    it("shows an error and keeps Add enabled again when creation fails", async () => {
+      const onAddLesson = vi
+        .fn()
+        .mockRejectedValue(new Error("Failed to add."));
+      renderPanel({ onAddLesson });
+
+      fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
+
+      expect(await screen.findByText("Failed to add.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add lesson" })).toBeEnabled();
+    });
   });
 
-  it("appends the new Lesson after any existing lessons", () => {
-    const onLessonsChange = vi.fn();
-    renderPanel({ onLessonsChange });
+  describe("Delete lesson (ANA-115, real backend delete)", () => {
+    it("shows a confirmation dialog instead of deleting immediately", () => {
+      const onDeleteLesson = vi.fn();
+      renderPanel({ onDeleteLesson });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add lesson" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
 
-    const nextLessons = onLessonsChange.mock.calls[0][0] as MockLesson[];
-    expect(nextLessons).toHaveLength(3);
-    expect(nextLessons.slice(0, 2)).toEqual(LESSONS);
+      expect(
+        screen.getByRole("dialog", { name: "Delete lesson?" }),
+      ).toBeInTheDocument();
+      expect(onDeleteLesson).not.toHaveBeenCalled();
+    });
+
+    it("calls onDeleteLesson once confirmed", async () => {
+      const onDeleteLesson = vi.fn().mockResolvedValue(undefined);
+      renderPanel({ onDeleteLesson });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
+
+      await vi.waitFor(() =>
+        expect(onDeleteLesson).toHaveBeenCalledWith(LESSONS[0]),
+      );
+    });
+
+    it("makes no call when canceled", () => {
+      const onDeleteLesson = vi.fn();
+      renderPanel({ onDeleteLesson });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onDeleteLesson).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Delete lesson?" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps the row and shows an error when the delete request fails", async () => {
+      const onDeleteLesson = vi
+        .fn()
+        .mockRejectedValue(new Error("Lesson not found."));
+      renderPanel({ onDeleteLesson });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
+
+      expect(await screen.findByText("Lesson not found.")).toBeInTheDocument();
+      expect(screen.getByText("Introduction")).toBeInTheDocument();
+    });
   });
 });

@@ -36,6 +36,12 @@ import {
   deleteModule,
   updateModule,
 } from "../../import-source/modules-client";
+import {
+  createLessonCreateFields,
+  toLessonPatchFields,
+  type LessonFieldsValues,
+} from "../../lesson-fields";
+import { createLesson, deleteLesson, updateLesson } from "../../lessons-client";
 import type { MockModule } from "../../mock-modules";
 import {
   createEmptyModuleFieldsValues,
@@ -48,6 +54,7 @@ import {
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
+import type { Lesson } from "@/lib/lessons/types";
 import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 import type { Source } from "@/lib/sources/types";
@@ -214,6 +221,21 @@ export default function EditBookPage() {
   );
   const [modalTarget, setModalTarget] = useState<ModuleModalTarget | null>(
     null,
+  );
+  // This Module's real, API-backed Lessons (ANA-115) -- conditional on the
+  // Edit Module modal actually being open in edit mode, since Lessons are
+  // scoped to a single Module and there's no point fetching them before
+  // that Module is known. Re-keys (and refetches) whenever a different
+  // Module is opened; Add/Save/Delete Lesson below all revalidate this
+  // same hook on success so Edit Module's Lessons list and its own Lesson
+  // editor stay in sync with the backend, matching the exact pattern
+  // Modules/Materials already use here.
+  const { data: lessonsData, mutate: mutateLessons } = useSWR(
+    book && modalTarget?.mode === "edit"
+      ? `/api/v1/books/${book.id}/modules/${modalTarget.id}/lessons`
+      : null,
+    (url) =>
+      fetchJson<{ data: Lesson[] }>(url).then((response) => response.data),
   );
   // Retry-safety for Create Module's two-step Module-then-Material create
   // (ANA-94 PR review): once the Module itself has been created, its real
@@ -425,6 +447,56 @@ export default function EditBookPage() {
     );
   }
 
+  // Saves only the given Lesson through the real Lesson PATCH API (ANA-115)
+  // -- Edit Module's own Lesson editor awaits this and stays in Lesson mode
+  // showing the error on rejection; Module fields are never part of this
+  // request. Revalidates this page's own Lessons SWR data on success so the
+  // Lessons list and a freshly-reopened Lesson editor both reflect the
+  // saved values.
+  async function handleSaveLesson(
+    lessonId: string,
+    fields: LessonFieldsValues,
+  ) {
+    if (!book || modalTarget?.mode !== "edit") {
+      return;
+    }
+
+    await updateLesson(
+      book.id,
+      modalTarget.id,
+      lessonId,
+      toLessonPatchFields(fields),
+    );
+    await mutateLessons();
+  }
+
+  // Deletes a real, persisted Lesson via the Lesson DELETE API (ANA-115) --
+  // revalidates this page's own Lessons SWR data on success so the row
+  // disappears without a page reload; a rejection propagates to
+  // LessonsPanel, which keeps the row visible and shows the error.
+  async function handleDeleteLesson(lesson: Lesson) {
+    if (!book || modalTarget?.mode !== "edit") {
+      return;
+    }
+
+    await deleteLesson(book.id, modalTarget.id, lesson.id);
+    await mutateLessons();
+  }
+
+  // Creates a new Lesson under the currently open Module via the Lesson
+  // create API (ANA-115) -- every writable field this editor has no UI for
+  // gets its canonical empty default (see `createLessonCreateFields`).
+  // Revalidates this page's own Lessons SWR data on success so the new row
+  // shows up without a page reload.
+  async function handleAddLesson() {
+    if (!book || modalTarget?.mode !== "edit") {
+      return;
+    }
+
+    await createLesson(book.id, modalTarget.id, createLessonCreateFields());
+    await mutateLessons();
+  }
+
   async function handleSubmit(values: BookFormValues) {
     setSubmitError(null);
     setIsSubmitting(true);
@@ -600,12 +672,16 @@ export default function EditBookPage() {
                     mode: "edit",
                     id: modalTarget.id,
                     fields: getModuleFields(modalTarget.id),
+                    lessons: lessonsData ?? [],
                   }
           }
           book={book}
           onClose={() => setModalTarget(null)}
           onCreate={handleCreateModule}
           onSave={handleSaveModule}
+          onSaveLesson={handleSaveLesson}
+          onDeleteLesson={handleDeleteLesson}
+          onAddLesson={handleAddLesson}
         />
       )}
 
