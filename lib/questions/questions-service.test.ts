@@ -8,6 +8,9 @@ const {
   getQuestionByIdFromRepoMock,
   listQuestionsFromRepoMock,
   updateQuestionByIdMock,
+  addQuestionToBookCacheMock,
+  updateQuestionInBookCacheMock,
+  removeQuestionFromBookCacheMock,
 } = vi.hoisted(() => ({
   validateModulePathMock: vi.fn(),
   isQuestionReferencedByAnyLessonMock: vi.fn(),
@@ -16,6 +19,9 @@ const {
   getQuestionByIdFromRepoMock: vi.fn(),
   listQuestionsFromRepoMock: vi.fn(),
   updateQuestionByIdMock: vi.fn(),
+  addQuestionToBookCacheMock: vi.fn(),
+  updateQuestionInBookCacheMock: vi.fn(),
+  removeQuestionFromBookCacheMock: vi.fn(),
 }));
 
 vi.mock("@/lib/modules/modules-service", () => ({
@@ -24,6 +30,12 @@ vi.mock("@/lib/modules/modules-service", () => ({
 
 vi.mock("@/lib/lessons/lessons-repository", () => ({
   isQuestionReferencedByAnyLesson: isQuestionReferencedByAnyLessonMock,
+}));
+
+vi.mock("./book-questions-cache", () => ({
+  addQuestionToBookCache: addQuestionToBookCacheMock,
+  updateQuestionInBookCache: updateQuestionInBookCacheMock,
+  removeQuestionFromBookCache: removeQuestionFromBookCacheMock,
 }));
 
 vi.mock("./questions-repository", () => ({
@@ -102,7 +114,7 @@ describe("createQuestionService", () => {
     expect(createQuestionInRepoMock).not.toHaveBeenCalled();
   });
 
-  it("creates the question on valid input", async () => {
+  it("creates the question on valid input and adds it to the book's cache", async () => {
     validateModulePathMock.mockResolvedValueOnce(validPath);
     createQuestionInRepoMock.mockResolvedValueOnce(validQuestion);
 
@@ -118,6 +130,11 @@ describe("createQuestionService", () => {
     );
 
     expect(result).toEqual({ ok: true, value: validQuestion });
+    expect(addQuestionToBookCacheMock).toHaveBeenCalledWith(
+      "book-1",
+      "module-1",
+      validQuestion,
+    );
   });
 });
 
@@ -175,9 +192,10 @@ describe("updateQuestionService", () => {
       ok: false,
       error: expect.objectContaining({ code: "not-found" }),
     });
+    expect(updateQuestionInBookCacheMock).not.toHaveBeenCalled();
   });
 
-  it("returns the updated Question on success", async () => {
+  it("returns the updated Question on success and updates the book's cache", async () => {
     validateModulePathMock.mockResolvedValueOnce(validPath);
     updateQuestionByIdMock.mockResolvedValueOnce(validQuestion);
 
@@ -190,6 +208,11 @@ describe("updateQuestionService", () => {
     );
 
     expect(result).toEqual({ ok: true, value: validQuestion });
+    expect(updateQuestionInBookCacheMock).toHaveBeenCalledWith(
+      "book-1",
+      "module-1",
+      validQuestion,
+    );
   });
 });
 
@@ -209,9 +232,10 @@ describe("deleteQuestionService", () => {
       error: expect.objectContaining({ code: "conflict" }),
     });
     expect(deleteQuestionByIdMock).not.toHaveBeenCalled();
+    expect(removeQuestionFromBookCacheMock).not.toHaveBeenCalled();
   });
 
-  it("deletes the question when no Lesson references it", async () => {
+  it("deletes the question when no Lesson references it and removes it from the book's cache", async () => {
     validateModulePathMock.mockResolvedValueOnce(validPath);
     isQuestionReferencedByAnyLessonMock.mockResolvedValueOnce(false);
     deleteQuestionByIdMock.mockResolvedValueOnce(true);
@@ -227,6 +251,29 @@ describe("deleteQuestionService", () => {
       "module-1",
       "question-1",
     );
+    expect(removeQuestionFromBookCacheMock).toHaveBeenCalledWith(
+      "book-1",
+      "module-1",
+      "question-1",
+    );
     expect(result).toEqual({ ok: true, value: undefined });
+  });
+
+  it("does not touch the cache when the question no longer exists", async () => {
+    validateModulePathMock.mockResolvedValueOnce(validPath);
+    isQuestionReferencedByAnyLessonMock.mockResolvedValueOnce(false);
+    deleteQuestionByIdMock.mockResolvedValueOnce(false);
+
+    const result = await deleteQuestionService(
+      "book-1",
+      "module-1",
+      "question-1",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "not-found" }),
+    });
+    expect(removeQuestionFromBookCacheMock).not.toHaveBeenCalled();
   });
 });

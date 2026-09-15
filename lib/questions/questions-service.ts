@@ -5,6 +5,11 @@ import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { isQuestionReferencedByAnyLesson } from "@/lib/lessons/lessons-repository";
 import { validateModulePath } from "@/lib/modules/modules-service";
 import {
+  addQuestionToBookCache,
+  removeQuestionFromBookCache,
+  updateQuestionInBookCache,
+} from "./book-questions-cache";
+import {
   createQuestion as createQuestionInRepo,
   deleteQuestionById,
   getQuestionById as getQuestionByIdFromRepo,
@@ -54,6 +59,8 @@ export async function createQuestionService(
     parsed.value,
     actorEmail,
   );
+
+  addQuestionToBookCache(bookId, moduleId, question);
 
   return ok(question);
 }
@@ -109,7 +116,13 @@ export async function updateQuestionService(
     actorEmail,
   });
 
-  return updated ? ok(updated) : fail("not-found", "Question not found.");
+  if (!updated) {
+    return fail("not-found", "Question not found.");
+  }
+
+  updateQuestionInBookCache(bookId, moduleId, updated);
+
+  return ok(updated);
 }
 
 /** Fails with `409` while any Lesson in the Module still references this Question (see ANA-62). */
@@ -134,5 +147,11 @@ export async function deleteQuestionService(
 
   const deleted = await deleteQuestionById(bookId, moduleId, questionId);
 
-  return deleted ? ok(undefined) : fail("not-found", "Question not found.");
+  if (!deleted) {
+    return fail("not-found", "Question not found.");
+  }
+
+  removeQuestionFromBookCache(bookId, moduleId, questionId);
+
+  return ok(undefined);
 }

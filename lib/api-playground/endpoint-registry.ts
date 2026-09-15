@@ -339,6 +339,17 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     description: "Delete a Lesson; referenced Questions are untouched.",
   },
   {
+    id: "questions.listByBook",
+    method: "GET",
+    path: "/api/v1/books/:bookId/questions",
+    pathParams: ["bookId"],
+    queryParams: ["refresh", "invalidate"],
+    acceptsBody: false,
+    authRequired: true,
+    description:
+      "List a Book's Questions grouped by Module, from an in-memory cache. Pass `refresh` or `invalidate` to bypass it.",
+  },
+  {
     id: "questions.list",
     method: "GET",
     path: "/api/v1/books/:bookId/modules/:moduleId/questions",
