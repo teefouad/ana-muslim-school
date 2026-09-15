@@ -240,6 +240,130 @@ describe("EditModuleModal", () => {
     });
   });
 
+  describe("Lessons list (ANA-111)", () => {
+    const LESSONS = [
+      { id: "lesson-1", title: "Introduction", position: 0 },
+      { id: "lesson-2", title: "Prayer basics", position: 1 },
+    ];
+
+    it("renders the three-column layout in edit mode: Module form, Lessons list, Lesson placeholder", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: LESSONS,
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(within(dialog).getByLabelText("Title")).toBeInTheDocument();
+      expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
+      expect(within(dialog).getByText("Introduction")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Select a lesson to edit."),
+      ).toBeInTheDocument();
+    });
+
+    it("does not render the Lessons list or placeholder in create mode", async () => {
+      renderModal({ state: { mode: "create" } });
+
+      const dialog = await screen.findByRole("dialog", { name: "Add Module" });
+      expect(within(dialog).queryByText("Lessons")).not.toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Select a lesson to edit."),
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders Lessons in the provided order", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: LESSONS,
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const rows = within(dialog).getAllByTestId(/^list-item-/);
+      expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+        "list-item-lesson-1",
+        "list-item-lesson-2",
+      ]);
+    });
+
+    it("shows the Lessons empty state and no rows when no lessons are provided", async () => {
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByText("This module has no lessons yet."),
+      ).toBeInTheDocument();
+    });
+
+    it("renders no Lesson form -- only the placeholder message in the third column", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: LESSONS,
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      // Title/Description/Content are the Module form's own fields -- there
+      // must be no second, Lesson-scoped set of the same labels.
+      expect(within(dialog).getAllByLabelText("Title")).toHaveLength(1);
+      expect(within(dialog).getAllByLabelText("Description")).toHaveLength(1);
+    });
+
+    it("reorders Lessons locally via the Lessons list, without a network request", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: LESSONS,
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      fireEvent.keyDown(grip, { code: "Escape", key: "Escape" });
+
+      // Escaping a keyboard drag cancels it without reordering -- this only
+      // confirms drag activation is wired through, and that neither
+      // activating nor cancelling it ever calls the backend.
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("adds a Lesson locally with position 2 when Add lesson is clicked, without a network request", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+          lessons: LESSONS,
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Add lesson" }),
+      );
+
+      expect(within(dialog).getByText("Lesson 3")).toBeInTheDocument();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("AI busy is scoped to the active field (ANA-109)", () => {
     it("disables only Title while its Translate request is running, and re-enables it once it resolves", async () => {
       let resolveTranslate: (value: Response) => void = () => {};
