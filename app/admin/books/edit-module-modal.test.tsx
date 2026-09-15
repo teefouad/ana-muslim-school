@@ -7,6 +7,7 @@ import {
   EditModuleModal,
   type EditModuleModalProps,
 } from "./edit-module-modal";
+import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
 import type { Book } from "@/lib/books/types";
@@ -16,6 +17,32 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// Same rect-stubbing approach as item-list.test.tsx/sortable-list.test.tsx --
+// dnd-kit's keyboard coordinate math needs real-ish rects.
+function stubItemRects(order: string[], itemHeight = 60) {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const container = this.closest('[data-testid^="list-item-"]');
+      const id = container
+        ?.getAttribute("data-testid")
+        ?.replace("list-item-", "");
+      const index = id ? order.indexOf(id) : -1;
+      const top = index === -1 ? 0 : index * itemHeight;
+      return {
+        top,
+        bottom: top + itemHeight,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: itemHeight,
+        x: 0,
+        y: top,
+        toJSON() {},
+      } as DOMRect;
+    },
+  );
 }
 
 // Selects the first `length` characters of the editor's first text node
@@ -855,6 +882,164 @@ describe("EditModuleModal", () => {
         screen.queryByRole("dialog", { name: "Translate with AI" }),
       ).not.toBeInTheDocument();
       expect(lastRequestBody()).not.toHaveProperty("additionalInstructions");
+    });
+  });
+
+  describe("Lessons (ANA-111)", () => {
+    it("renders no Lessons column, and no placeholder, in create mode", async () => {
+      renderModal({ state: { mode: "create" } });
+
+      const dialog = await screen.findByRole("dialog", { name: "Add Module" });
+      expect(within(dialog).queryByText("Lessons")).not.toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Select a lesson to edit."),
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the Lessons list and the dashed placeholder in edit mode", async () => {
+      renderModal({
+        lessons: [
+          buildLessonFixture({
+            id: "lesson-1",
+            title: { ar: "", en: "First" },
+          }),
+        ],
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
+      expect(within(dialog).getByText("First")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Select a lesson to edit."),
+      ).toBeInTheDocument();
+    });
+
+    it("renders lessons in the given order", async () => {
+      renderModal({
+        lessons: [
+          buildLessonFixture({
+            id: "lesson-1",
+            title: { ar: "", en: "First" },
+          }),
+          buildLessonFixture({
+            id: "lesson-2",
+            title: { ar: "", en: "Second" },
+          }),
+        ],
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog)
+          .getAllByTestId(/^list-item-/)
+          .map((el) => el.getAttribute("data-testid")),
+      ).toEqual(["list-item-lesson-1", "list-item-lesson-2"]);
+    });
+
+    it("shows a loading skeleton while lessonsLoading is true, not the list", async () => {
+      renderModal({ lessonsLoading: true });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("status", { name: "Loading lessons" }),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole("button", { name: "Add lesson" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows lessonsLoadError as a blocking alert instead of the list", async () => {
+      renderModal({ lessonsLoadError: "Couldn't load lessons." });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByText("Couldn't load lessons."),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole("button", { name: "Add lesson" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("calls onAddLesson when Add lesson is clicked", async () => {
+      const onAddLesson = vi.fn();
+      renderModal({ onAddLesson });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Add lesson" }),
+      );
+
+      expect(onAddLesson).toHaveBeenCalledWith();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("disables Add lesson while addLessonDisabled is true", async () => {
+      renderModal({ addLessonDisabled: true });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("button", { name: "Add lesson" }),
+      ).toBeDisabled();
+    });
+
+    it("reorders via the keyboard and reports the new order through onReorderLessons", async () => {
+      const onReorderLessons = vi.fn();
+      const lessons = [
+        buildLessonFixture({ id: "lesson-1", title: { ar: "", en: "First" } }),
+        buildLessonFixture({
+          id: "lesson-2",
+          title: { ar: "", en: "Second" },
+        }),
+      ];
+      renderModal({ lessons, onReorderLessons });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      within(dialog).getByText("First");
+      stubItemRects(["lesson-1", "lesson-2"]);
+
+      const grip = document.querySelector(
+        '[data-testid="list-item-lesson-2"] [aria-hidden="true"]',
+      ) as HTMLElement;
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      expect(onReorderLessons).toHaveBeenCalledWith([lessons[1], lessons[0]]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("suspends dragging while reorderLessonsDisabled is true, without removing the grip", async () => {
+      renderModal({
+        lessons: [buildLessonFixture({ id: "lesson-1" })],
+        reorderLessonsDisabled: true,
+      });
+
+      await screen.findByRole("dialog", { name: "Edit Module" });
+      const grip = document.querySelector(
+        '[data-testid="list-item-lesson-1"] [aria-hidden="true"]',
+      );
+      expect(grip).toBeInTheDocument();
+      expect(grip).not.toHaveAttribute("tabindex");
+    });
+
+    it("shows lessonsActionError inline, alongside the still-visible list", async () => {
+      renderModal({
+        lessons: [
+          buildLessonFixture({
+            id: "lesson-1",
+            title: { ar: "", en: "First" },
+          }),
+        ],
+        lessonsActionError: "Something went wrong.",
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(within(dialog).getByText("First")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Something went wrong."),
+      ).toBeInTheDocument();
     });
   });
 });

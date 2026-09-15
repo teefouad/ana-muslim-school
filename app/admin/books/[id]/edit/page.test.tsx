@@ -18,8 +18,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { buildBookFixture } from "../../book-fixtures";
+import { buildLessonFixture } from "../../lesson-fixtures";
 import EditBookPage from "./page";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
+import type { Lesson } from "@/lib/lessons/types";
 import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 
@@ -57,6 +59,32 @@ function buildMaterialFixture(overrides: Partial<Material> = {}): Material {
   };
 }
 
+// Same rect-stubbing approach as item-list.test.tsx/sortable-list.test.tsx --
+// dnd-kit's keyboard coordinate math needs real-ish rects (ANA-111).
+function stubItemRects(order: string[], itemHeight = 60) {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const container = this.closest('[data-testid^="list-item-"]');
+      const id = container
+        ?.getAttribute("data-testid")
+        ?.replace("list-item-", "");
+      const index = id ? order.indexOf(id) : -1;
+      const top = index === -1 ? 0 : index * itemHeight;
+      return {
+        top,
+        bottom: top + itemHeight,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: itemHeight,
+        x: 0,
+        y: top,
+        toJSON() {},
+      } as DOMRect;
+    },
+  );
+}
+
 /** Routes the globally-stubbed `fetch` by method + URL, matching every real
  * request this page makes: `GET` the Book, `GET` its Modules (only once the
  * Book has loaded -- see page.tsx's conditional SWR key), `GET` its
@@ -85,6 +113,18 @@ function setupFetch(
       materialId: string,
       body: unknown,
     ) => { status: number; body: unknown };
+    /** This Module's Lessons (ANA-111) -- keyed by whichever moduleId a test
+     * opens the Edit Module modal for; only ever fetched once that modal is
+     * open in edit mode (see page.tsx's `editModuleId`-gated SWR key). */
+    lessons?: Record<string, Lesson[]>;
+    onCreateLesson?: (
+      moduleId: string,
+      body: unknown,
+    ) => { status: number; body: unknown };
+    onReorderLessons?: (
+      moduleId: string,
+      body: unknown,
+    ) => { status: number; body: unknown };
   } = {},
 ) {
   const {
@@ -99,6 +139,9 @@ function setupFetch(
     onDeleteModule,
     onCreateMaterial,
     onUpdateMaterial,
+    lessons = {},
+    onCreateLesson,
+    onReorderLessons,
   } = options;
 
   (fetch as ReturnType<typeof vi.fn>).mockImplementation(
@@ -148,7 +191,39 @@ function setupFetch(
         return Promise.resolve(jsonResponse(body, status));
       }
 
-      const moduleMatch = /^\/api\/v1\/books\/book-1\/modules\/(.+)$/.exec(url);
+      const lessonsMatch =
+        /^\/api\/v1\/books\/book-1\/modules\/([^/]+)\/lessons$/.exec(url);
+
+      if (method === "GET" && lessonsMatch) {
+        return Promise.resolve(
+          jsonResponse({ data: lessons[lessonsMatch[1]] ?? [] }),
+        );
+      }
+
+      if (method === "POST" && lessonsMatch && onCreateLesson) {
+        const { status, body } = onCreateLesson(
+          lessonsMatch[1],
+          JSON.parse(init?.body as string),
+        );
+        return Promise.resolve(jsonResponse(body, status));
+      }
+
+      const moduleMatch = /^\/api\/v1\/books\/book-1\/modules\/([^/]+)$/.exec(
+        url,
+      );
+
+      // Reorder Lessons (ANA-111) shares the same `PATCH .../modules/
+      // {moduleId}` endpoint as an ordinary Module field patch -- the two
+      // are told apart by body shape (`{ lessons: [...] }` vs. Module
+      // fields), matching the real endpoint's own contract
+      // (lib/modules/validation.ts).
+      if (method === "PATCH" && moduleMatch && onReorderLessons) {
+        const parsedBody = JSON.parse(init?.body as string);
+        if ("lessons" in parsedBody) {
+          const { status, body } = onReorderLessons(moduleMatch[1], parsedBody);
+          return Promise.resolve(jsonResponse(body, status));
+        }
+      }
 
       if (method === "PATCH" && moduleMatch && onUpdateModule) {
         const { status, body } = onUpdateModule(
@@ -1865,6 +1940,320 @@ describe("EditBookPage", () => {
             ([, init]) => init?.method === "PATCH",
           ),
         ).toBe(false);
+      });
+    });
+
+    describe("Lessons (ANA-111)", () => {
+      it("loads and renders this Module's Lessons in their persisted order once the modal opens", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: {
+            "module-1": [
+              buildLessonFixture({
+                id: "lesson-1",
+                title: { ar: "", en: "First" },
+              }),
+              buildLessonFixture({
+                id: "lesson-2",
+                title: { ar: "", en: "Second" },
+              }),
+            ],
+          },
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(await within(dialog).findByText("First")).toBeInTheDocument();
+        expect(within(dialog).getByText("Second")).toBeInTheDocument();
+        expect(
+          within(dialog)
+            .getAllByTestId(/^list-item-/)
+            .map((el) => el.getAttribute("data-testid")),
+        ).toEqual(["list-item-lesson-1", "list-item-lesson-2"]);
+      });
+
+      it("shows the dashed 'Select a lesson to edit.' placeholder, and never a Lesson form", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: { "module-1": [buildLessonFixture()] },
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        expect(
+          await within(dialog).findByText("Select a lesson to edit."),
+        ).toBeInTheDocument();
+      });
+
+      it("persists a drag reorder through PATCH .../modules/{moduleId} with the new lesson order", async () => {
+        const onReorderLessons = vi.fn((moduleId: string, body: unknown) => ({
+          status: 200,
+          body: {
+            data: buildModuleFixture({
+              id: moduleId,
+              lessons: (body as { lessons: string[] }).lessons,
+            }),
+          },
+        }));
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: {
+            "module-1": [
+              buildLessonFixture({
+                id: "lesson-1",
+                title: { ar: "", en: "First" },
+              }),
+              buildLessonFixture({
+                id: "lesson-2",
+                title: { ar: "", en: "Second" },
+              }),
+            ],
+          },
+          onReorderLessons,
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        await within(dialog).findByText("First");
+        stubItemRects(["lesson-1", "lesson-2"]);
+
+        const grip = document.querySelector(
+          '[data-testid="list-item-lesson-2"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+        await vi.waitFor(() =>
+          expect(onReorderLessons).toHaveBeenCalledWith("module-1", {
+            lessons: ["lesson-2", "lesson-1"],
+          }),
+        );
+      });
+
+      it("shows an error and restores the previous order when a reorder request fails", async () => {
+        const onReorderLessons = vi.fn(() => ({
+          status: 400,
+          body: { error: "Reorder failed." },
+        }));
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: {
+            "module-1": [
+              buildLessonFixture({
+                id: "lesson-1",
+                title: { ar: "", en: "First" },
+              }),
+              buildLessonFixture({
+                id: "lesson-2",
+                title: { ar: "", en: "Second" },
+              }),
+            ],
+          },
+          onReorderLessons,
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        await within(dialog).findByText("First");
+        stubItemRects(["lesson-1", "lesson-2"]);
+
+        const grip = document.querySelector(
+          '[data-testid="list-item-lesson-2"] [aria-hidden="true"]',
+        ) as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+        expect(
+          await within(dialog).findByText("Reorder failed."),
+        ).toBeInTheDocument();
+        await vi.waitFor(() => {
+          expect(
+            within(dialog)
+              .getAllByTestId(/^list-item-/)
+              .map((el) => el.getAttribute("data-testid")),
+          ).toEqual(["list-item-lesson-1", "list-item-lesson-2"]);
+        });
+      });
+
+      it("creates a Lesson with the existing/default Lesson values when Add lesson is clicked", async () => {
+        const onCreateLesson = vi.fn(() => ({
+          status: 201,
+          body: { data: buildLessonFixture({ id: "lesson-new" }) },
+        }));
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: { "module-1": [] },
+          onCreateLesson,
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.click(
+          await within(dialog).findByRole("button", { name: "Add lesson" }),
+        );
+
+        await vi.waitFor(() =>
+          expect(onCreateLesson).toHaveBeenCalledWith(
+            "module-1",
+            expect.objectContaining({
+              title: { ar: "", en: "" },
+              type: "text",
+              position: 2,
+              isLocked: false,
+              isPublished: false,
+            }),
+          ),
+        );
+      });
+
+      it("only shows the new Lesson in the list after creation succeeds", async () => {
+        // A bespoke fetch mock rather than `setupFetch` -- that helper's
+        // `lessons` option is destructured once at setup time, so it can't
+        // reflect a Lesson created mid-test the way this test needs
+        // (`lessonsSnapshot` below is read fresh on every GET instead).
+        let lessonsSnapshot: Lesson[] = [];
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+          (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+
+            if (method === "GET" && url === "/api/v1/books/book-1") {
+              return Promise.resolve(
+                jsonResponse({ data: buildBookFixture() }),
+              );
+            }
+            if (method === "GET" && url === "/api/v1/books/book-1/modules") {
+              return Promise.resolve(
+                jsonResponse({
+                  data: [
+                    buildModuleFixture({
+                      id: "module-1",
+                      title: { ar: "أ", en: "" },
+                    }),
+                  ],
+                }),
+              );
+            }
+            if (method === "GET" && url === "/api/v1/materials?bookId=book-1") {
+              return Promise.resolve(jsonResponse({ data: [] }));
+            }
+            if (method === "GET" && url === "/api/v1/sources?bookId=book-1") {
+              return Promise.resolve(jsonResponse({ data: [] }));
+            }
+            if (
+              method === "GET" &&
+              url === "/api/v1/books/book-1/modules/module-1/lessons"
+            ) {
+              return Promise.resolve(jsonResponse({ data: lessonsSnapshot }));
+            }
+            if (
+              method === "POST" &&
+              url === "/api/v1/books/book-1/modules/module-1/lessons"
+            ) {
+              const created = buildLessonFixture({
+                id: "lesson-new",
+                title: { ar: "", en: "New lesson" },
+              });
+              lessonsSnapshot = [created];
+              return Promise.resolve(jsonResponse({ data: created }, 201));
+            }
+
+            throw new Error(`Unhandled fetch: ${method} ${url}`);
+          },
+        );
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        const addButton = await within(dialog).findByRole("button", {
+          name: "Add lesson",
+        });
+        expect(
+          within(dialog).queryByText("New lesson"),
+        ).not.toBeInTheDocument();
+
+        fireEvent.click(addButton);
+
+        expect(
+          await within(dialog).findByText("New lesson"),
+        ).toBeInTheDocument();
+      });
+
+      it("does not insert a Lesson into the list when creation fails", async () => {
+        const onCreateLesson = vi.fn(() => ({
+          status: 500,
+          body: { error: "Something went wrong." },
+        }));
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: { "module-1": [] },
+          onCreateLesson,
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.click(
+          await within(dialog).findByRole("button", { name: "Add lesson" }),
+        );
+
+        expect(
+          await within(dialog).findByText("Something went wrong."),
+        ).toBeInTheDocument();
+        expect(
+          within(dialog).getByText("This module has no lessons yet."),
+        ).toBeInTheDocument();
       });
     });
   });

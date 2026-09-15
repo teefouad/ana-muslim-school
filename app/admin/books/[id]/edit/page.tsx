@@ -36,6 +36,7 @@ import {
   deleteModule,
   updateModule,
 } from "../../import-source/modules-client";
+import { createLesson, reorderLessons } from "../../lessons-client";
 import type { MockModule } from "../../mock-modules";
 import {
   createEmptyModuleFieldsValues,
@@ -48,6 +49,7 @@ import {
 import { ModulesPanel } from "../../modules-panel";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
+import type { Lesson } from "@/lib/lessons/types";
 import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 import type { Source } from "@/lib/sources/types";
@@ -213,6 +215,30 @@ export default function EditBookPage() {
     null,
   );
   const [modalTarget, setModalTarget] = useState<ModuleModalTarget | null>(
+    null,
+  );
+  // This Module's Lessons, loaded only while the Edit Module modal has a
+  // real Module open (ANA-111) -- a create-mode/closed modal has no real
+  // Module id yet to attach Lessons to, so a `null` key tells SWR to skip
+  // the fetch (matching this page's own Modules/Materials fetches, which are
+  // similarly conditional on `book`).
+  const editModuleId = modalTarget?.mode === "edit" ? modalTarget.id : null;
+  const {
+    data: lessonsData,
+    error: lessonsError,
+    isLoading: lessonsLoading,
+    mutate: mutateLessons,
+  } = useSWR(
+    book && editModuleId
+      ? `/api/v1/books/${book.id}/modules/${editModuleId}/lessons`
+      : null,
+    (url) =>
+      fetchJson<{ data: Lesson[] }>(url).then((response) => response.data),
+  );
+  const lessons = lessonsData ?? [];
+  const [isReorderingLessons, setIsReorderingLessons] = useState(false);
+  const [isAddingLesson, setIsAddingLesson] = useState(false);
+  const [lessonsActionError, setLessonsActionError] = useState<string | null>(
     null,
   );
   // Retry-safety for Create Module's two-step Module-then-Material create
@@ -425,6 +451,75 @@ export default function EditBookPage() {
     );
   }
 
+  // Persists a drag reorder of the currently-open Module's Lessons
+  // immediately (ANA-111) -- unlike the Modules panel's own reorder, which
+  // is a local draft only saved by this page's own Save changes, there's no
+  // larger form/save action here to bundle a Lesson reorder into.
+  // Optimistically applies it to the Lessons SWR cache (without
+  // revalidating) so the row settles into place instantly instead of
+  // snapping back until the request resolves, then reconciles with the
+  // server response; a failure rolls the cache back to the pre-drag order
+  // and surfaces the error rather than leaving a reorder displayed that was
+  // never actually persisted.
+  async function handleReorderLessons(reordered: Lesson[]) {
+    if (
+      !book ||
+      !editModuleId ||
+      !isValidReorder(
+        reordered.map((lesson) => lesson.id),
+        lessons.map((lesson) => lesson.id),
+      )
+    ) {
+      return;
+    }
+
+    const previousLessons = lessonsData;
+    setLessonsActionError(null);
+    setIsReorderingLessons(true);
+    await mutateLessons(reordered, { revalidate: false });
+
+    try {
+      await reorderLessons(
+        book.id,
+        editModuleId,
+        reordered.map((lesson) => lesson.id),
+      );
+      await mutateLessons();
+    } catch (err) {
+      await mutateLessons(previousLessons, { revalidate: false });
+      setLessonsActionError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setIsReorderingLessons(false);
+    }
+  }
+
+  // Creates a new Lesson under the currently-open Module using the existing/
+  // default Lesson fields (ANA-111) -- there's no Lesson form yet to collect
+  // fields from, so Add lesson never inserts a client-generated row itself;
+  // it only appears once `createLesson` actually succeeds and the Lessons
+  // SWR data is revalidated.
+  async function handleAddLesson() {
+    if (!book || !editModuleId) {
+      return;
+    }
+
+    setLessonsActionError(null);
+    setIsAddingLesson(true);
+
+    try {
+      await createLesson(book.id, editModuleId);
+      await mutateLessons();
+    } catch (err) {
+      setLessonsActionError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setIsAddingLesson(false);
+    }
+  }
+
   async function handleSubmit(values: BookFormValues) {
     setSubmitError(null);
     setIsSubmitting(true);
@@ -571,9 +666,13 @@ export default function EditBookPage() {
                 modules={modules}
                 onModulesChange={handleReorderModules}
                 onDeleteModule={handleDeleteModule}
-                onEditModule={(module) =>
-                  setModalTarget({ mode: "edit", id: module.id })
-                }
+                onEditModule={(module) => {
+                  // A freshly-opened target's Lessons column must not show
+                  // an error left over from a previous target's failed
+                  // reorder/create (ANA-111).
+                  setLessonsActionError(null);
+                  setModalTarget({ mode: "edit", id: module.id });
+                }}
                 onAddModule={() => {
                   // A genuinely new create session -- forget any Module id
                   // left over from a previous, abandoned create attempt
@@ -606,6 +705,18 @@ export default function EditBookPage() {
           onClose={() => setModalTarget(null)}
           onCreate={handleCreateModule}
           onSave={handleSaveModule}
+          // Lessons (ANA-111): only meaningful in edit mode -- `lessons`/
+          // `lessonsLoading`/`lessonsLoadError` are only ever non-default
+          // while `editModuleId` is set (the SWR key above is `null`
+          // otherwise, so `lessonsData`/`lessonsError` stay `undefined`).
+          lessons={lessons}
+          lessonsLoading={lessonsLoading}
+          lessonsLoadError={lessonsError?.message ?? null}
+          onReorderLessons={handleReorderLessons}
+          reorderLessonsDisabled={isReorderingLessons}
+          onAddLesson={handleAddLesson}
+          addLessonDisabled={isAddingLesson}
+          lessonsActionError={lessonsActionError}
         />
       )}
 

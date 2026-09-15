@@ -1,6 +1,21 @@
+.formColumn {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
+
+.lessonsColumn {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+.placeholderColumn {
+  flex: 1 1 320px;
+  min-width: 240px;
+}
+
 .placeholder {
   height: 100%;
-  min-height: 400px;
+  min-height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;

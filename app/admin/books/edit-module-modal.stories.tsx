@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import type { Book } from "@/lib/books/types";
 import { EditModuleModal } from "./edit-module-modal";
+import { LESSON_FIXTURES } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 
 const FILLED_FIELDS = {
@@ -51,14 +52,18 @@ export const Create: Story = {
   },
 };
 
+// The Lessons column beside the form (ANA-111) -- only rendered in edit
+// mode, since a Module being created has no real id yet to attach Lessons
+// to.
 export const Edit: Story = {
   args: {
     state: { mode: "edit", id: "module-1", fields: FILLED_FIELDS },
+    lessons: LESSON_FIXTURES,
   },
 };
 
 // A freshly-Added Module's fields, shown standalone (every field starts
-// blank/default).
+// blank/default) -- no Lessons yet either.
 export const EditWithBlankFields: Story = {
   args: {
     state: {
@@ -66,6 +71,21 @@ export const EditWithBlankFields: Story = {
       id: "module-1",
       fields: createEmptyModuleFieldsValues(),
     },
+    lessons: [],
+  },
+};
+
+export const EditLessonsLoading: Story = {
+  args: {
+    state: { mode: "edit", id: "module-1", fields: FILLED_FIELDS },
+    lessonsLoading: true,
+  },
+};
+
+export const EditLessonsLoadError: Story = {
+  args: {
+    state: { mode: "edit", id: "module-1", fields: FILLED_FIELDS },
+    lessonsLoadError: "Couldn't load this module's lessons.",
   },
 };
 

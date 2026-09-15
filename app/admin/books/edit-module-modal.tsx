@@ -1,18 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Group, Modal, Stack } from "@mantine/core";
+import {
+  Alert,
+  Box,
+  Button,
+  Flex,
+  Group,
+  Modal,
+  Skeleton,
+  Stack,
+  Text,
+} from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 
 import { ColorField } from "@/components/ui/color-field";
 import { FormField } from "@/components/ui/form-field";
 import type { TranslatedValue } from "@/components/ui/translatable-value";
 import type { Book } from "@/lib/books/types";
+import type { Lesson } from "@/lib/lessons/types";
+import styles from "./edit-module-modal.module.css";
 import {
   assistLearningMaterial,
   suggestModuleDescription,
   suggestModuleTitle,
 } from "./import-source/ai-assist-client";
 import { translateModuleField } from "./import-source/translate-client";
+import { LessonsPanel } from "./lessons-panel";
 import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
@@ -53,6 +67,31 @@ export interface EditModuleModalProps {
    * clicked in edit mode. Same awaited resolve/reject contract as
    * `onCreate`. */
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+  /** This Module's Lessons, in their persisted order (ANA-111) -- only
+   * rendered in edit mode, since a Module being created has no real id yet
+   * to attach Lessons to. The owning Edit Book page loads these (keyed off
+   * whichever Module this modal currently has open); this modal owns no
+   * fetching of its own, matching how `fields`/`book` already arrive fully
+   * loaded from the caller. */
+  lessons?: Lesson[];
+  lessonsLoading?: boolean;
+  /** Set when the Lessons lookup itself failed -- blocks the Lessons column
+   * with an error instead of rendering a list that might be missing rows. */
+  lessonsLoadError?: string | null;
+  /** Fired with the full reordered array once a drag actually changes the
+   * order. The owning page persists this through the existing Lesson/Module
+   * reorder flow. */
+  onReorderLessons?: (lessons: Lesson[]) => void;
+  reorderLessonsDisabled?: boolean;
+  /** Fired when Add lesson is clicked -- the owning page creates a real
+   * Lesson from the existing/default Lesson fields; this modal never
+   * inserts a client-generated Lesson into `lessons` itself. */
+  onAddLesson?: () => void;
+  addLessonDisabled?: boolean;
+  /** A failed reorder/create request, surfaced inline in the Lessons column
+   * (via LessonsPanel's own `error` slot) -- unlike `lessonsLoadError`, this
+   * never blocks the list itself. */
+  lessonsActionError?: string | null;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
@@ -60,20 +99,43 @@ export interface EditModuleModalProps {
 // (ImportSourceModal). Reused for both Add Module (create mode) and the
 // pencil action (edit mode) rather than duplicating the form (ANA-94) --
 // only the title, primary action label, and which callback Save invokes
-// differ between the two.
+// differ between the two. Edit mode also grows a Lessons column beside the
+// form (ANA-111) -- widened close to Module Builder's own near-full-width
+// treatment so the form and the Lessons list both keep comfortable room;
+// create mode keeps its original, narrower `size="lg"` since it has nothing
+// else to show yet.
 export function EditModuleModal({
   state,
   book,
   onClose,
   onCreate,
   onSave,
+  lessons = [],
+  lessonsLoading = false,
+  lessonsLoadError = null,
+  onReorderLessons = () => {},
+  reorderLessonsDisabled = false,
+  onAddLesson = () => {},
+  addLessonDisabled = false,
+  lessonsActionError = null,
 }: EditModuleModalProps) {
+  const isMobile = useMediaQuery("(max-width: 768px)", false);
+  const isEditWithLessons = state?.mode === "edit";
+
   return (
     <Modal
       opened={state !== null}
       onClose={onClose}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
-      size="lg"
+      size={
+        !isEditWithLessons
+          ? "lg"
+          : isMobile
+            ? "100%"
+            : "min(1400px, calc(100vw - 48px))"
+      }
+      xOffset={isEditWithLessons && !isMobile ? "24px" : undefined}
+      fullScreen={isEditWithLessons && isMobile}
       centered
     >
       {state && (
@@ -88,6 +150,14 @@ export function EditModuleModal({
           onClose={onClose}
           onCreate={onCreate}
           onSave={onSave}
+          lessons={lessons}
+          lessonsLoading={lessonsLoading}
+          lessonsLoadError={lessonsLoadError}
+          onReorderLessons={onReorderLessons}
+          reorderLessonsDisabled={reorderLessonsDisabled}
+          onAddLesson={onAddLesson}
+          addLessonDisabled={addLessonDisabled}
+          lessonsActionError={lessonsActionError}
         />
       )}
     </Modal>
@@ -100,12 +170,28 @@ function EditModuleModalBody({
   onClose,
   onCreate,
   onSave,
+  lessons,
+  lessonsLoading,
+  lessonsLoadError,
+  onReorderLessons,
+  reorderLessonsDisabled,
+  onAddLesson,
+  addLessonDisabled,
+  lessonsActionError,
 }: {
   state: EditModuleModalState;
   book: Book;
   onClose: () => void;
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+  lessons: Lesson[];
+  lessonsLoading: boolean;
+  lessonsLoadError: string | null;
+  onReorderLessons: (lessons: Lesson[]) => void;
+  reorderLessonsDisabled: boolean;
+  onAddLesson: () => void;
+  addLessonDisabled: boolean;
+  lessonsActionError: string | null;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -154,8 +240,10 @@ function EditModuleModalBody({
     }
   }
 
-  return (
-    <Stack gap="lg">
+  const isEditWithLessons = state.mode === "edit";
+
+  const formFields = (
+    <>
       {/* Title (ANA-98/ANA-99): AI Assistance and Translate with AI are both
           grounded in this Module's own Arabic Learning Material plus the
           Book's title/description/longDescription -- naming this Module,
@@ -307,6 +395,88 @@ function EditModuleModalBody({
           {state.mode === "create" ? "Save Module" : "Save changes"}
         </Button>
       </Group>
-    </Stack>
+    </>
+  );
+
+  // Edit mode grows a Lessons column beside the form, plus a placeholder
+  // reserving space for the future Lesson editor (ANA-111) -- create mode
+  // has no real Module id yet to attach Lessons to, so it keeps the
+  // original single-column layout untouched.
+  if (!isEditWithLessons) {
+    return <Stack gap="lg">{formFields}</Stack>;
+  }
+
+  return (
+    <Flex gap="xl" align="stretch" direction={{ base: "column", md: "row" }}>
+      <Stack gap="lg" className={styles.formColumn}>
+        {formFields}
+      </Stack>
+      <Box className={styles.lessonsColumn}>
+        {lessonsLoading ? (
+          <LessonsColumnSkeleton />
+        ) : lessonsLoadError ? (
+          <Alert color="red">{lessonsLoadError}</Alert>
+        ) : (
+          <LessonsPanel
+            lessons={lessons}
+            onReorderLessons={onReorderLessons}
+            reorderDisabled={reorderLessonsDisabled}
+            onAddLesson={onAddLesson}
+            addDisabled={addLessonDisabled}
+            error={lessonsActionError}
+          />
+        )}
+      </Box>
+      <Box className={styles.placeholderColumn}>
+        <Box className={styles.placeholder}>
+          <Text c="dimmed">Select a lesson to edit.</Text>
+        </Box>
+      </Box>
+    </Flex>
+  );
+}
+
+// Approximates LessonsPanel/ItemList's own card chrome while the owning page's
+// Lessons SWR fetch is in flight, matching ModulesPanelSkeleton's approach on
+// Edit Book (ANA-104) -- keeps the modal from jumping once the real list
+// arrives.
+function LessonsColumnSkeleton() {
+  return (
+    <Box
+      role="status"
+      aria-label="Loading lessons"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        border: "1px solid var(--mantine-color-default-border)",
+        borderRadius: 12,
+      }}
+    >
+      <Box
+        p="md"
+        style={{
+          borderBottom: "1px solid var(--mantine-color-default-border)",
+        }}
+        aria-hidden="true"
+      >
+        <Skeleton height={14} width={70} />
+        <Skeleton height={11} width={90} mt={6} />
+      </Box>
+      <Stack gap="xs" p="md" style={{ flex: 1 }} aria-hidden="true">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} height={40} radius={12} />
+        ))}
+      </Stack>
+      <Box
+        p="md"
+        style={{
+          borderTop: "1px solid var(--mantine-color-default-border)",
+        }}
+        aria-hidden="true"
+      >
+        <Skeleton height={36} radius={8} />
+      </Box>
+    </Box>
   );
 }
