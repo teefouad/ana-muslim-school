@@ -5,6 +5,10 @@ import { SegmentedControl, Select, Stack, Text } from "@mantine/core";
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { LESSON_TYPES, type LessonType } from "@/lib/lessons/types";
+import {
+  suggestLessonDescription,
+  suggestLessonTitle,
+} from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
 import type { LessonFieldsValues } from "./lesson-fields";
 
@@ -34,11 +38,21 @@ export interface LessonFormProps {
    * (lesson-editor.tsx) holds the actual draft state; this form only ever
    * describes what changed. */
   onChange: (patch: Partial<LessonFieldsValues>) => void;
-  /** Mirrors Title's/Description's own Translate with AI request's
-   * in-flight state (ANA-109), so the caller can keep Save disabled while
-   * either is unresolved -- saving now would persist the pre-translation
-   * value, and the AI result would be lost once it lands after the editor
-   * has already returned to Module mode. */
+  /** The owning Module's own current Arabic Title/Description/Learning
+   * Material (ANA-116) -- read directly from the Edit Module modal's own
+   * state, including any unsaved edits, never a fresh reload. Grounds both
+   * Title's and One-line description's AI Assistance suggestions (never
+   * Translate with AI, which stays the plain, context-free conversion it
+   * already was). */
+  moduleTitle: string;
+  moduleDescription: string;
+  moduleContent: string;
+  /** Mirrors Title's/Description's own Translate with AI and AI
+   * Assistance request in-flight state (ANA-109/ANA-116), so the caller can
+   * keep Save disabled while either is unresolved -- saving now would
+   * persist the pre-translation/pre-suggestion value, and the AI result
+   * would be lost once it lands after the editor has already returned to
+   * Module mode. */
   onTitleBusyChange?: (busy: boolean) => void;
   onDescriptionBusyChange?: (busy: boolean) => void;
 }
@@ -48,14 +62,18 @@ export interface LessonFormProps {
 // (ANA-115). Deliberately limited to Type/Title/One-line description/
 // Published/Position -- Configuration and the Questions section are a
 // later task (ANA-110). Title and One-line description reuse FormField's
-// existing translatable-field behavior, with only Translate with AI wired
-// (no AI Assistance, per the card) through the same plain, context-free
-// `translateArabicToEnglish` boundary Book's own Title field already uses
-// (book-form.tsx) -- translation is the only network request this form is
-// allowed to make; every other edit here only ever calls `onChange`.
+// existing translatable-field behavior: Translate with AI runs through the
+// same plain, context-free `translateArabicToEnglish` boundary Book's own
+// Title field already uses (book-form.tsx), while AI Assistance (ANA-116)
+// runs through `suggestLessonTitle`/`suggestLessonDescription`, grounded in
+// the owning Module's current Title/Description/Learning Material -- every
+// other edit here only ever calls `onChange`, no network request.
 export function LessonForm({
   value,
   onChange,
+  moduleTitle,
+  moduleDescription,
+  moduleContent,
   onTitleBusyChange,
   onDescriptionBusyChange,
 }: LessonFormProps) {
@@ -79,6 +97,23 @@ export function LessonForm({
         onChange={(title) => onChange({ title })}
         aiTranslation
         onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+        aiAssistance
+        onAiAssist={({ text, instructions }) =>
+          suggestLessonTitle({
+            text,
+            additionalInstructions: instructions,
+            moduleTitle,
+            moduleDescription,
+            moduleContent,
+          })
+        }
+        // Suggest always generates Arabic (see suggest-lesson-title.ts's
+        // base prompt) -- pinned here so running it while the English tab
+        // is active can never write that Arabic result into `en` (ANA-116
+        // PR review). Translate with AI is unaffected: it already only
+        // ever reads `ar` and writes `en` on its own, regardless of the
+        // active tab.
+        aiAssistanceLanguage="ar"
         onBusyChange={onTitleBusyChange}
       />
 
@@ -89,6 +124,20 @@ export function LessonForm({
         onChange={(description) => onChange({ description })}
         aiTranslation
         onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+        aiAssistance
+        onAiAssist={({ text, instructions }) =>
+          suggestLessonDescription({
+            text,
+            additionalInstructions: instructions,
+            moduleTitle,
+            moduleDescription,
+            moduleContent,
+          })
+        }
+        // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
+        // review) -- One-line description's own Suggest is equally
+        // Arabic-only.
+        aiAssistanceLanguage="ar"
         onBusyChange={onDescriptionBusyChange}
       />
 

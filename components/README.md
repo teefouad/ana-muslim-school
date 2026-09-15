@@ -80,9 +80,22 @@ AI Assistance there can never overwrite the Arabic value (PR review, ANA-100
 -- see suggest-book-description.ts's/suggest-book-long-description.ts's
 language-parameterized base prompt, and book-form.tsx's `onAiAssist`, which
 builds this context inline rather than through `getAIAssistanceContext`
-since only `onAiAssist`'s own args carry `language`). `FormField` itself
-stays language-agnostic in both cases (it doesn't enforce either contract),
-so which one applies is each caller's responsibility.
+since only `onAiAssist`'s own args carry `language`).
+
+A third shape exists for a translatable field whose AI Assistance always
+generates one fixed language regardless of which tab is active -- e.g. a
+Lesson Title/Description Suggest, which always returns Arabic even though
+the field itself stays translatable so English can still be filled in
+separately via Translate with AI (ANA-116 PR review). Unlike the two
+contracts above, this one _is_ enforced by `FormField` itself, via the
+`aiAssistanceLanguage` prop: when set, AI Assistance's whole-field (non-
+selection) source text and apply target are pinned to that language,
+overriding the default tab-following `activeSlug`, so running it from the
+English tab can never write the fixed language's output into `en` (see
+lesson-form.tsx's Title/One-line description wiring). Omit
+`aiAssistanceLanguage` for either of the two contracts above -- `FormField`
+otherwise stays language-agnostic, so which one applies is each caller's
+responsibility.
 Both actions share the same busy/disabled/error handling, scoped to that one
 field: `FormField` combines its own `disabled` prop with its own
 translate/assist loading state into a local `fieldBusy` that only ever

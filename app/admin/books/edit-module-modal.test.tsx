@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
+import { SWRConfig } from "swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,6 +12,7 @@ import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
 import type { Book } from "@/lib/books/types";
+import type { Lesson } from "@/lib/lessons/types";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -39,6 +41,95 @@ function lastRequestBody(): Record<string, unknown> {
   const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
   const [, init] = calls[calls.length - 1] as [string, RequestInit];
   return JSON.parse(init.body as string) as Record<string, unknown>;
+}
+
+/** Every fetch call other than the automatic Lessons GET every `edit`-mode
+ * render fires on mount (ANA-116) -- what most of these tests actually
+ * want to assert on (a single AI request, a single Lesson mutation). */
+function mutationCalls(): [string, RequestInit][] {
+  return (
+    (fetch as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit?][]
+  ).filter(
+    ([url, init]) =>
+      !(
+        typeof url === "string" &&
+        url.endsWith("/lessons") &&
+        (init?.method ?? "GET").toUpperCase() === "GET"
+      ),
+  ) as [string, RequestInit][];
+}
+
+/** Routes every fetch call in these tests (ANA-116): a `GET .../lessons`
+ * request -- fired automatically on every `edit`-mode render, independent
+ * of whatever a given test is actually exercising, and again by every
+ * `mutateLessons(..., { revalidate: true })` background refetch -- always
+ * resolves from an in-memory `current` list seeded from `lessons`; every
+ * other call (an AI request, a Lesson create/update/delete) resolves with
+ * `other`/`otherStatus`. A *successful* (2xx) Lesson create/update/delete
+ * also updates `current` from `other`'s own `{ data: Lesson }` shape (or,
+ * for delete, just drops the id) -- so the background revalidation a
+ * mutation triggers reflects the same change the mutation itself just
+ * made, instead of the revalidate GET's static response reverting it. */
+function mockFetch({
+  lessons = [],
+  other,
+  otherStatus = 200,
+}: {
+  lessons?: Lesson[];
+  other?: unknown;
+  otherStatus?: number;
+} = {}) {
+  let current: Lesson[] = [...lessons];
+
+  (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+    (url: RequestInfo | URL, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const urlStr = typeof url === "string" ? url : String(url);
+      const isLessonsList = urlStr.endsWith("/lessons");
+      const lessonMatch = urlStr.match(/\/lessons\/([^/]+)$/);
+
+      if (isLessonsList && method === "GET") {
+        return Promise.resolve(jsonResponse({ data: current }));
+      }
+
+      const isLessonMutation =
+        (isLessonsList && method === "POST") ||
+        (lessonMatch !== null && (method === "PATCH" || method === "DELETE"));
+
+      if (isLessonMutation) {
+        if (other === undefined) {
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        }
+
+        if (otherStatus >= 200 && otherStatus < 300) {
+          const body = other as { data?: Lesson };
+          if (isLessonsList && method === "POST" && body.data) {
+            current = [...current, body.data];
+          } else if (lessonMatch && method === "PATCH" && body.data) {
+            const id = lessonMatch[1];
+            current = current.map((lesson) =>
+              lesson.id === id ? (body.data as Lesson) : lesson,
+            );
+          } else if (lessonMatch && method === "DELETE") {
+            const id = lessonMatch[1];
+            current = current.filter((lesson) => lesson.id !== id);
+          }
+        }
+
+        return Promise.resolve(jsonResponse(other, otherStatus));
+      }
+
+      if (other !== undefined) {
+        return Promise.resolve(jsonResponse(other, otherStatus));
+      }
+
+      return Promise.resolve(
+        jsonResponse({ error: "Unhandled fetch in test." }, 500),
+      );
+    },
+  );
 }
 
 // Title and Description are plain text inputs (also role "textbox"); the
@@ -76,14 +167,19 @@ const EDIT_FIELDS = {
 function renderModal(overrides: Partial<EditModuleModalProps> = {}) {
   return render(
     <MantineProvider>
-      <EditModuleModal
-        state={{ mode: "edit", id: "module-1", fields: EDIT_FIELDS }}
-        book={BOOK}
-        onClose={vi.fn()}
-        onCreate={vi.fn().mockResolvedValue(undefined)}
-        onSave={vi.fn().mockResolvedValue(undefined)}
-        {...overrides}
-      />
+      {/* A fresh SWR cache per render -- otherwise SWR's module-level cache
+          would leak fixture Lessons data (and in-flight requests) across
+          test cases keyed by the same `/lessons` URL (see AGENTS.md). */}
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <EditModuleModal
+          state={{ mode: "edit", id: "module-1", fields: EDIT_FIELDS }}
+          book={BOOK}
+          onClose={vi.fn()}
+          onCreate={vi.fn().mockResolvedValue(undefined)}
+          onSave={vi.fn().mockResolvedValue(undefined)}
+          {...overrides}
+        />
+      </SWRConfig>
     </MantineProvider>,
   );
 }
@@ -91,6 +187,7 @@ function renderModal(overrides: Partial<EditModuleModalProps> = {}) {
 describe("EditModuleModal", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
+    mockFetch();
   });
 
   it("renders nothing when state is null", () => {
@@ -248,33 +345,25 @@ describe("EditModuleModal", () => {
     }
 
     it("uses a 900px modal width in Module mode", async () => {
-      renderModal({
-        state: {
-          mode: "edit",
-          id: "module-1",
-          fields: EDIT_FIELDS,
-          lessons: [buildLessonFixture({ id: "lesson-1" })],
-        },
-      });
+      mockFetch({ lessons: [buildLessonFixture({ id: "lesson-1" })] });
+      renderModal();
 
       await screen.findByRole("dialog", { name: "Edit Module" });
       expect(modalSizeStyle()).toContain("min(900px, calc(100vw - 48px))");
     });
 
     it("keeps the same 900px modal width in Lesson mode -- the modal never grows when switching modes", async () => {
-      renderModal({
-        state: {
-          mode: "edit",
-          id: "module-1",
-          fields: EDIT_FIELDS,
-          lessons: [
-            buildLessonFixture({ id: "lesson-1", title: { ar: "أ", en: "" } }),
-          ],
-        },
+      mockFetch({
+        lessons: [
+          buildLessonFixture({ id: "lesson-1", title: { ar: "أ", en: "" } }),
+        ],
       });
+      renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Edit أ" }));
+      fireEvent.click(
+        await within(dialog).findByRole("button", { name: "Edit أ" }),
+      );
 
       await within(dialog).findByTestId("lesson-form");
       expect(modalSizeStyle()).toContain("min(900px, calc(100vw - 48px))");
@@ -288,8 +377,94 @@ describe("EditModuleModal", () => {
     });
   });
 
-  describe("Module mode Lessons list (ANA-111/ANA-115)", () => {
-    const LESSONS = [
+  describe("Lessons loading (ANA-116)", () => {
+    it("loads Lessons from the existing Lesson list API for the selected Module", async () => {
+      mockFetch({
+        lessons: [
+          buildLessonFixture({
+            id: "lesson-1",
+            title: { ar: "Introduction", en: "" },
+          }),
+        ],
+      });
+      renderModal();
+
+      await screen.findByText("Introduction");
+
+      const getCalls = (
+        (fetch as ReturnType<typeof vi.fn>).mock.calls as [
+          string,
+          RequestInit?,
+        ][]
+      ).filter(
+        ([url, init]) =>
+          url === "/api/v1/books/book-1/modules/module-1/lessons" &&
+          (init?.method ?? "GET").toUpperCase() === "GET",
+      );
+      expect(getCalls).toHaveLength(1);
+    });
+
+    it("shows a loading state while Lessons are loading", async () => {
+      let resolveLessons: (value: Response) => void = () => {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const method = (init?.method ?? "GET").toUpperCase();
+          if (
+            typeof url === "string" &&
+            url.endsWith("/lessons") &&
+            method === "GET"
+          ) {
+            return new Promise((resolve) => (resolveLessons = resolve));
+          }
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        },
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("status", { name: "Loading lessons" }),
+      ).toBeInTheDocument();
+
+      resolveLessons(jsonResponse({ data: [] }));
+
+      await within(dialog).findByText("This module has no lessons yet.");
+    });
+
+    it("shows an explicit error state if Lesson loading fails, without blocking the rest of the modal", async () => {
+      mockFetch({ other: {}, otherStatus: 200 });
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const method = (init?.method ?? "GET").toUpperCase();
+          if (
+            typeof url === "string" &&
+            url.endsWith("/lessons") &&
+            method === "GET"
+          ) {
+            return Promise.resolve(
+              jsonResponse({ error: "Something went wrong." }, 500),
+            );
+          }
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        },
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        await within(dialog).findByText("Something went wrong."),
+      ).toBeInTheDocument();
+      // The Module editor itself is unaffected by a Lessons load failure.
+      expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
+    });
+  });
+
+  describe("Module mode Lessons list (ANA-111/ANA-115/ANA-116)", () => {
+    const LESSONS: Lesson[] = [
       buildLessonFixture({
         id: "lesson-1",
         title: { ar: "Introduction", en: "" },
@@ -304,15 +479,8 @@ describe("EditModuleModal", () => {
     ];
 
     function renderWithLessons(overrides: Partial<EditModuleModalProps> = {}) {
-      return renderModal({
-        state: {
-          mode: "edit",
-          id: "module-1",
-          fields: EDIT_FIELDS,
-          lessons: LESSONS,
-        },
-        ...overrides,
-      });
+      mockFetch({ lessons: LESSONS });
+      return renderModal(overrides);
     }
 
     it("shows the Module editor and Lessons list together (never a third, simultaneous Lesson editor)", async () => {
@@ -321,7 +489,9 @@ describe("EditModuleModal", () => {
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       expect(within(dialog).getByLabelText("Title")).toBeInTheDocument();
       expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
-      expect(within(dialog).getByText("Introduction")).toBeInTheDocument();
+      expect(
+        await within(dialog).findByText("Introduction"),
+      ).toBeInTheDocument();
       expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
       expect(
         within(dialog).queryByRole("button", { name: "Back to Module" }),
@@ -335,10 +505,11 @@ describe("EditModuleModal", () => {
       expect(within(dialog).queryByText("Lessons")).not.toBeInTheDocument();
     });
 
-    it("renders Lessons in the provided order", async () => {
+    it("renders Lessons in the loaded order", async () => {
       renderWithLessons();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
       const rows = within(dialog).getAllByTestId(/^list-item-/);
       expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
         "list-item-lesson-1",
@@ -346,12 +517,13 @@ describe("EditModuleModal", () => {
       ]);
     });
 
-    it("shows the Lessons empty state and no rows when no lessons are provided", async () => {
+    it("shows the Lessons empty state and no rows when the Module has no Lessons", async () => {
+      mockFetch({ lessons: [] });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       expect(
-        within(dialog).getByText("This module has no lessons yet."),
+        await within(dialog).findByText("This module has no lessons yet."),
       ).toBeInTheDocument();
     });
 
@@ -360,7 +532,9 @@ describe("EditModuleModal", () => {
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       expect(
-        within(dialog).getByRole("button", { name: "Edit Introduction" }),
+        await within(dialog).findByRole("button", {
+          name: "Edit Introduction",
+        }),
       ).toBeInTheDocument();
       expect(
         within(dialog).getByRole("button", { name: "Delete Introduction" }),
@@ -371,46 +545,57 @@ describe("EditModuleModal", () => {
       renderWithLessons();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
       fireEvent.click(within(dialog).getByText("Introduction"));
 
       expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
     });
 
-    it("reorders Lessons locally via the Lessons list, without a network request", async () => {
+    it("reorders Lessons locally via the Lessons list, without a persistence request", async () => {
       renderWithLessons();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
       const grip = within(dialog)
         .getByTestId("list-item-lesson-2")
         .querySelector("[aria-hidden='true']") as HTMLElement;
 
       grip.focus();
       fireEvent.keyDown(grip, { code: "Space", key: " " });
-      fireEvent.keyDown(grip, { code: "Escape", key: "Escape" });
-
       // Escaping a keyboard drag cancels it without reordering -- this only
       // confirms drag activation is wired through, and that neither
       // activating nor cancelling it ever calls the backend.
-      expect(fetch).not.toHaveBeenCalled();
+      fireEvent.keyDown(grip, { code: "Escape", key: "Escape" });
+
+      expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+        callsBefore,
+      );
     });
 
-    it("New Lesson switches into Lesson mode with a blank, id-less draft and makes no network request (ANA-115, frontend-only)", async () => {
+    it("New Lesson switches into Lesson mode with a blank, id-less draft and makes no create request", async () => {
       renderWithLessons();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
       fireEvent.click(
         within(dialog).getByRole("button", { name: "New Lesson" }),
       );
 
       expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
       expect(within(dialog).getByLabelText("Title")).toHaveValue("");
-      expect(fetch).not.toHaveBeenCalled();
+      expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+        callsBefore,
+      );
     });
 
     it("backing out of New Lesson without saving adds nothing to the Lessons list and makes no request", async () => {
       renderWithLessons();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
       fireEvent.click(
         within(dialog).getByRole("button", { name: "New Lesson" }),
       );
@@ -420,13 +605,25 @@ describe("EditModuleModal", () => {
 
       expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
       expect(within(dialog).getByText("2 lessons")).toBeInTheDocument();
-      expect(fetch).not.toHaveBeenCalled();
+      expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+        callsBefore,
+      );
     });
 
-    it("Saving a New Lesson adds it to the local Lessons list and returns to Module mode, with no network request", async () => {
-      renderWithLessons();
+    it("Saving a New Lesson POSTs exactly once with the visible fields plus the temporary hidden defaults, then returns to Module mode showing it (ANA-116)", async () => {
+      const created = buildLessonFixture({
+        id: "lesson-3",
+        title: { ar: "New lesson title", en: "" },
+      });
+      mockFetch({
+        lessons: LESSONS,
+        other: { data: created },
+        otherStatus: 201,
+      });
+      renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "New Lesson" }),
       );
@@ -437,16 +634,93 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
-      expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
-      expect(within(dialog).getByText("3 lessons")).toBeInTheDocument();
+      await within(dialog).findByText("3 lessons");
       expect(within(dialog).getByText("New lesson title")).toBeInTheDocument();
-      expect(fetch).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
+
+      const posts = mutationCalls().filter(
+        ([, init]) => init?.method === "POST",
+      );
+      expect(posts).toHaveLength(1);
+      expect(posts[0][0]).toBe("/api/v1/books/book-1/modules/module-1/lessons");
+      const body = JSON.parse(posts[0][1].body as string);
+      expect(body).toEqual({
+        title: { ar: "New lesson title", en: "" },
+        description: { ar: "", en: "" },
+        type: "text",
+        position: 2,
+        isPublished: false,
+        reward: { coins: 0 },
+        duration: 0,
+        videoURL: "",
+        azkar: [],
+        questions: [],
+        isLocked: false,
+      });
     });
 
-    it("Delete removes only the selected Lesson from local UI state once confirmed, with no network request", async () => {
-      renderWithLessons();
+    it("a successful create still shows the new Lesson even when the follow-up list revalidation fails (ANA-116)", async () => {
+      const created = buildLessonFixture({
+        id: "lesson-3",
+        title: { ar: "New lesson title", en: "" },
+      });
+      let lessonsGetCount = 0;
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const method = (init?.method ?? "GET").toUpperCase();
+          if (
+            typeof url === "string" &&
+            url.endsWith("/lessons") &&
+            method === "GET"
+          ) {
+            lessonsGetCount += 1;
+            return lessonsGetCount === 1
+              ? Promise.resolve(jsonResponse({ data: LESSONS }))
+              : Promise.resolve(
+                  jsonResponse({ error: "Refresh failed." }, 500),
+                );
+          }
+          if (
+            typeof url === "string" &&
+            url.endsWith("/lessons") &&
+            method === "POST"
+          ) {
+            return Promise.resolve(jsonResponse({ data: created }, 201));
+          }
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        },
+      );
+      renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "New Lesson" }),
+      );
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "New lesson title" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      // The write succeeded and is reflected immediately -- a background
+      // revalidation failure that happens afterward must never retroactively
+      // make it look like the write itself failed.
+      expect(
+        await within(dialog).findByText("New lesson title"),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText("3 lessons")).toBeInTheDocument();
+    });
+
+    it("Delete removes only the selected Lesson after confirmation, calling DELETE exactly once (ANA-116)", async () => {
+      mockFetch({ lessons: LESSONS, other: { ok: true } });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Delete Introduction" }),
       );
@@ -455,18 +729,45 @@ describe("EditModuleModal", () => {
       // lessons-panel.test.tsx's identical interaction.
       fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
 
+      await within(dialog).findByText("1 lesson");
       expect(
         within(dialog).queryByText("Introduction"),
       ).not.toBeInTheDocument();
       expect(within(dialog).getByText("Prayer basics")).toBeInTheDocument();
-      expect(within(dialog).getByText("1 lesson")).toBeInTheDocument();
-      expect(fetch).not.toHaveBeenCalled();
+
+      const deletes = mutationCalls().filter(
+        ([, init]) => init?.method === "DELETE",
+      );
+      expect(deletes).toHaveLength(1);
+      expect(deletes[0][0]).toBe(
+        "/api/v1/books/book-1/modules/module-1/lessons/lesson-1",
+      );
     });
 
-    it("Cancel on the delete confirmation leaves the Lesson in the list", async () => {
+    it("keeps the Lesson visible and shows the error when Delete fails", async () => {
+      mockFetch({
+        lessons: LESSONS,
+        other: { error: "Lesson not found." },
+        otherStatus: 404,
+      });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Delete Introduction" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }));
+
+      expect(await screen.findByText("Lesson not found.")).toBeInTheDocument();
+      expect(within(dialog).getByText("Introduction")).toBeInTheDocument();
+    });
+
+    it("Cancel on the delete confirmation leaves the Lesson in the list, with no DELETE call", async () => {
       renderWithLessons();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Delete Introduction" }),
       );
@@ -479,11 +780,14 @@ describe("EditModuleModal", () => {
 
       expect(within(dialog).getByText("Introduction")).toBeInTheDocument();
       expect(within(dialog).getByText("2 lessons")).toBeInTheDocument();
+      expect(
+        mutationCalls().filter(([, init]) => init?.method === "DELETE"),
+      ).toHaveLength(0);
     });
   });
 
-  describe("Lesson mode (ANA-115)", () => {
-    const LESSONS = [
+  describe("Lesson mode (ANA-115, wired to the real backend in ANA-116)", () => {
+    const LESSONS: Lesson[] = [
       buildLessonFixture({
         id: "lesson-1",
         title: { ar: "Introduction", en: "" },
@@ -499,20 +803,13 @@ describe("EditModuleModal", () => {
     ];
 
     function renderWithLessons(overrides: Partial<EditModuleModalProps> = {}) {
-      return renderModal({
-        state: {
-          mode: "edit",
-          id: "module-1",
-          fields: EDIT_FIELDS,
-          lessons: LESSONS,
-        },
-        ...overrides,
-      });
+      mockFetch({ lessons: LESSONS });
+      return renderModal(overrides);
     }
 
     async function openLesson(dialog: HTMLElement, label: string) {
       fireEvent.click(
-        within(dialog).getByRole("button", { name: `Edit ${label}` }),
+        await within(dialog).findByRole("button", { name: `Edit ${label}` }),
       );
       return within(dialog).getByTestId("lesson-form");
     }
@@ -610,8 +907,13 @@ describe("EditModuleModal", () => {
       expect(form.getByDisplayValue("Prayer basics")).toBeInTheDocument();
     });
 
-    it("Save changes updates only this Lesson's fields in local UI state, no Module fields, and returns to Module mode", async () => {
-      renderWithLessons();
+    it("Save changes PATCHes only this Lesson's five visible fields (never the hidden ones), then returns to Module mode with the update reflected (ANA-116)", async () => {
+      const updated = {
+        ...LESSONS[0],
+        title: { ar: "Introduction, edited", en: "" },
+      };
+      mockFetch({ lessons: LESSONS, other: { data: updated } });
+      renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       const form = within(await openLesson(dialog, "Introduction"));
@@ -622,18 +924,41 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
-      expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
+      await within(dialog).findByText("Introduction, edited");
       expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
-      expect(
-        within(dialog).getByText("Introduction, edited"),
-      ).toBeInTheDocument();
       // The Module form's own Title is untouched by the Lesson save.
       expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
-      expect(fetch).not.toHaveBeenCalled();
+
+      const patches = mutationCalls().filter(
+        ([, init]) => init?.method === "PATCH",
+      );
+      expect(patches).toHaveLength(1);
+      expect(patches[0][0]).toBe(
+        "/api/v1/books/book-1/modules/module-1/lessons/lesson-1",
+      );
+      const body = JSON.parse(patches[0][1].body as string);
+      expect(body).toEqual({
+        title: { ar: "Introduction, edited", en: "" },
+        description: { ar: "Short intro", en: "" },
+        type: "text",
+        position: 0,
+        isPublished: false,
+      });
+      expect(body).not.toHaveProperty("reward");
+      expect(body).not.toHaveProperty("duration");
+      expect(body).not.toHaveProperty("videoURL");
+      expect(body).not.toHaveProperty("azkar");
+      expect(body).not.toHaveProperty("questions");
+      expect(body).not.toHaveProperty("isLocked");
     });
 
     it("editing one Lesson never affects the other Lesson's saved fields", async () => {
-      renderWithLessons();
+      const updated = {
+        ...LESSONS[0],
+        title: { ar: "Introduction, edited", en: "" },
+      };
+      mockFetch({ lessons: LESSONS, other: { data: updated } });
+      renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       const form = within(await openLesson(dialog, "Introduction"));
@@ -645,16 +970,17 @@ describe("EditModuleModal", () => {
       );
 
       expect(
-        within(dialog).getByText("Introduction, edited"),
+        await within(dialog).findByText("Introduction, edited"),
       ).toBeInTheDocument();
       expect(within(dialog).getByText("Prayer basics")).toBeInTheDocument();
     });
 
     it("translates Title through the plain translation endpoint only, never a Lesson persistence request", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Translated" } }),
-      );
-      renderWithLessons();
+      mockFetch({
+        lessons: LESSONS,
+        other: { data: { text: "Translated" } },
+      });
+      renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       const form = within(await openLesson(dialog, "Introduction"));
@@ -663,19 +989,187 @@ describe("EditModuleModal", () => {
         form.getByRole("button", { name: "Translate Title with AI" }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-      expect(fetch).toHaveBeenCalledWith(
-        "/api/v1/ai/translate",
-        expect.objectContaining({ method: "POST" }),
-      );
-      const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+      await vi.waitFor(() => expect(mutationCalls()).toHaveLength(1));
+      const [url, init] = mutationCalls()[0];
+      expect(url).toBe("/api/v1/ai/translate");
+      expect(init.method).toBe("POST");
       const body = JSON.parse(init.body as string) as Record<string, unknown>;
       // The plain, context-free translation body -- no `field`/`bookId`
       // Module-scoped context, unlike Module Title's own translate request.
       expect(body).toEqual({ text: "Introduction" });
+    });
+  });
+
+  describe("Lesson AI Suggest context reflects the live, unsaved Module draft (ANA-116)", () => {
+    const LESSONS: Lesson[] = [
+      buildLessonFixture({
+        id: "lesson-1",
+        title: { ar: "Introduction", en: "" },
+        description: { ar: "Short intro", en: "" },
+      }),
+    ];
+
+    async function openLesson(dialog: HTMLElement, label: string) {
+      fireEvent.click(
+        await within(dialog).findByRole("button", { name: `Edit ${label}` }),
+      );
+      return within(dialog).getByTestId("lesson-form");
+    }
+
+    it("Lesson Title exposes both Translate and AI Assistance", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const form = within(await openLesson(dialog, "Introduction"));
+
+      expect(
+        form.getByRole("button", { name: "Translate Title with AI" }),
+      ).toBeInTheDocument();
+      expect(
+        form.getByRole("button", { name: "AI Assistance for Title" }),
+      ).toBeInTheDocument();
+    });
+
+    it("Lesson One-line description exposes both Translate and AI Assistance", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const form = within(await openLesson(dialog, "Introduction"));
+
+      expect(
+        form.getByRole("button", {
+          name: "Translate One-line description with AI",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        form.getByRole("button", {
+          name: "AI Assistance for One-line description",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("grounds Lesson Title's AI Assistance in unsaved Module Title/Description/Content edits, not the last-saved values", async () => {
+      mockFetch({ lessons: LESSONS, other: { data: { text: "اقتراح" } } });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "وحدة معدلة" },
+      });
+      fireEvent.change(within(dialog).getByLabelText("Description"), {
+        target: { value: "وصف معدل" },
+      });
+
+      const form = within(await openLesson(dialog, "Introduction"));
+      fireEvent.click(
+        form.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
+      expect(lastRequestBody()).toMatchObject({
+        field: "lessonTitle",
+        text: "Introduction",
+        moduleTitle: "وحدة معدلة",
+        moduleDescription: "وصف معدل",
+        moduleContent: "محتوى",
+      });
+    });
+
+    it("grounds Lesson One-line description's AI Assistance in the same live Module context", async () => {
+      mockFetch({ lessons: LESSONS, other: { data: { text: "اقتراح" } } });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const form = within(await openLesson(dialog, "Introduction"));
+      fireEvent.click(
+        form.getByRole("button", {
+          name: "AI Assistance for One-line description",
+        }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
+      expect(lastRequestBody()).toMatchObject({
+        field: "lessonDescription",
+        text: "Short intro",
+        moduleTitle: "المقدمة",
+        moduleDescription: "وصف",
+        moduleContent: "محتوى",
+      });
+    });
+
+    it("applies a Title suggestion only to Title, never Description (concurrent AI responses can't overwrite unrelated fields)", async () => {
+      mockFetch({
+        lessons: LESSONS,
+        other: { data: { text: "اقتراح للعنوان" } },
+      });
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const form = within(await openLesson(dialog, "Introduction"));
+      fireEvent.click(
+        form.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      expect(
+        await form.findByDisplayValue("اقتراح للعنوان"),
+      ).toBeInTheDocument();
+      expect(form.getByDisplayValue("Short intro")).toBeInTheDocument();
+    });
+
+    it("keeps Save disabled while a Lesson suggestion request is pending", async () => {
+      mockFetch({ lessons: LESSONS });
+      let resolveAssist: (value: Response) => void = () => {};
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const form = within(await openLesson(dialog, "Introduction"));
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise((resolve) => (resolveAssist = resolve)),
+      );
+
+      fireEvent.click(
+        form.getByRole("button", { name: "AI Assistance for Title" }),
+      );
+      const suggestDialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(
+        within(suggestDialog).getByRole("button", { name: "Generate" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).toBeDisabled(),
+      );
+
+      resolveAssist(jsonResponse({ data: { text: "اقتراح" } }));
+
+      await vi.waitFor(() =>
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toBeDisabled(),
+      );
     });
   });
 
@@ -863,9 +1357,10 @@ describe("EditModuleModal", () => {
     });
 
     it("re-enables Title even when its Translate request fails, leaving other fields untouched throughout", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ error: "Something went wrong." }, 500),
-      );
+      mockFetch({
+        other: { error: "Something went wrong." },
+        otherStatus: 500,
+      });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -881,9 +1376,10 @@ describe("EditModuleModal", () => {
     });
 
     it("re-enables Title even when its AI Assistance request fails", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ error: "Something went wrong." }, 500),
-      );
+      mockFetch({
+        other: { error: "Something went wrong." },
+        otherStatus: 500,
+      });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -906,9 +1402,7 @@ describe("EditModuleModal", () => {
 
   describe("AI Assistance opens Additional Instructions; Translate with AI runs directly (ANA-98)", () => {
     it("never calls fetch until Generate is clicked, for AI Assistance", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Result" } }),
-      );
+      mockFetch({ other: { data: { text: "Result" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -919,13 +1413,11 @@ describe("EditModuleModal", () => {
         }),
       );
       await screen.findByRole("dialog", { name: "AI Assistance" });
-      expect(fetch).not.toHaveBeenCalled();
+      expect(mutationCalls()).toHaveLength(0);
     });
 
     it("calls fetch immediately for Translate with AI, without ever showing Additional Instructions", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Result" } }),
-      );
+      mockFetch({ other: { data: { text: "Result" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -936,7 +1428,7 @@ describe("EditModuleModal", () => {
         }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(
         screen.queryByRole("dialog", { name: "Translate with AI" }),
       ).not.toBeInTheDocument();
@@ -945,9 +1437,7 @@ describe("EditModuleModal", () => {
 
   describe("Module Title AI context (ANA-98)", () => {
     it("sends Module Content plus Book title/description/longDescription for AI Assistance", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Suggested title" } }),
-      );
+      mockFetch({ other: { data: { text: "Suggested title" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -961,7 +1451,7 @@ describe("EditModuleModal", () => {
         within(suggestDialog).getByRole("button", { name: "Generate" }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(fetch).toHaveBeenCalledWith(
         "/api/v1/ai/assist",
         expect.objectContaining({ method: "POST" }),
@@ -975,9 +1465,7 @@ describe("EditModuleModal", () => {
     });
 
     it("sends Module Content for Translate with AI", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Introduction" } }),
-      );
+      mockFetch({ other: { data: { text: "Introduction" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -986,7 +1474,7 @@ describe("EditModuleModal", () => {
           name: "Translate Title with AI",
         }),
       );
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
         field: "title",
@@ -996,9 +1484,7 @@ describe("EditModuleModal", () => {
     });
 
     it("applies the AI Assistance result to the active Title language", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Suggested title" } }),
-      );
+      mockFetch({ other: { data: { text: "Suggested title" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1020,9 +1506,7 @@ describe("EditModuleModal", () => {
 
   describe("Module Description AI context (ANA-98)", () => {
     it("sends Module Title, Module Content, and Book context for AI Assistance", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف محسّن" } }),
-      );
+      mockFetch({ other: { data: { text: "وصف محسّن" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1038,7 +1522,7 @@ describe("EditModuleModal", () => {
         within(suggestDialog).getByRole("button", { name: "Generate" }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
         field: "description",
@@ -1049,9 +1533,7 @@ describe("EditModuleModal", () => {
     });
 
     it("sends Module Title and Module Content for Translate with AI", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Description" } }),
-      );
+      mockFetch({ other: { data: { text: "Description" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1060,7 +1542,7 @@ describe("EditModuleModal", () => {
           name: "Translate Description with AI",
         }),
       );
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
         field: "description",
@@ -1071,9 +1553,7 @@ describe("EditModuleModal", () => {
     });
 
     it("applies the AI Assistance result to the active Description language", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف محسّن" } }),
-      );
+      mockFetch({ other: { data: { text: "وصف محسّن" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1113,9 +1593,7 @@ describe("EditModuleModal", () => {
     });
 
     it("sends Module Title, Module Description, and Book context for AI Assistance", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "محتوى محسّن" } }),
-      );
+      mockFetch({ other: { data: { text: "محتوى محسّن" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1131,7 +1609,7 @@ describe("EditModuleModal", () => {
         within(suggestDialog).getByRole("button", { name: "Generate" }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       // assistLearningMaterial (the existing ANA-85 client fn, reused here
       // unchanged for backward compatibility -- see ai-assist-client.ts)
       // never sends an explicit `field` key; the server treats an omitted
@@ -1149,9 +1627,7 @@ describe("EditModuleModal", () => {
     });
 
     it("sends the full Content field as fullMaterial context, separate from the selected target, when AI Assistance runs on a Markdown selection (ANA-99)", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "جزء محسّن" } }),
-      );
+      mockFetch({ other: { data: { text: "جزء محسّن" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1191,7 +1667,7 @@ describe("EditModuleModal", () => {
         within(suggestDialog).getByRole("button", { name: "Generate" }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
         fullMaterial: "محتوى",
@@ -1200,9 +1676,7 @@ describe("EditModuleModal", () => {
     });
 
     it("sends Module Title and Module Description for Translate with AI", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Content" } }),
-      );
+      mockFetch({ other: { data: { text: "Content" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1211,7 +1685,7 @@ describe("EditModuleModal", () => {
           name: "Translate Content with AI",
         }),
       );
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(lastRequestBody()).toMatchObject({
         bookId: "book-1",
         field: "content",
@@ -1222,9 +1696,7 @@ describe("EditModuleModal", () => {
     });
 
     it("applies the AI Assistance result to the active Content language", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "محتوى محسّن" } }),
-      );
+      mockFetch({ other: { data: { text: "محتوى محسّن" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1248,9 +1720,7 @@ describe("EditModuleModal", () => {
 
   describe("Additional Instructions (ANA-98)", () => {
     it("includes the trimmed Additional Instructions text in the AI Assistance request", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Suggested title" } }),
-      );
+      mockFetch({ other: { data: { text: "Suggested title" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1270,16 +1740,14 @@ describe("EditModuleModal", () => {
         within(suggestDialog).getByRole("button", { name: "Generate" }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(lastRequestBody()).toMatchObject({
         additionalInstructions: "Keep it short",
       });
     });
 
     it("never opens Additional Instructions for Translate with AI, and never sends additionalInstructions", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Introduction" } }),
-      );
+      mockFetch({ other: { data: { text: "Introduction" } } });
       renderModal();
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
@@ -1289,7 +1757,7 @@ describe("EditModuleModal", () => {
         }),
       );
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+      await vi.waitFor(() => expect(mutationCalls().length).toBeGreaterThan(0));
       expect(
         screen.queryByRole("dialog", { name: "Translate with AI" }),
       ).not.toBeInTheDocument();

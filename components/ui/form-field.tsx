@@ -147,6 +147,24 @@ export interface TranslatableFormFieldProps<
   onAiTranslate?: FormFieldAiAction<TContext>;
   /** Invoked once, when Translate with AI is triggered. */
   getAITranslationContext?: () => TContext;
+  /** Pins AI Assistance to always read from, and write its result back to,
+   * this one language -- independent of whichever tab is currently active
+   * (ANA-116 PR review). For a field whose `onAiAssist` is documented to
+   * always generate one fixed language (e.g. a Lesson Title/Description
+   * Suggest that always returns Arabic, while the field itself stays
+   * translatable so English can still be filled in separately via
+   * Translate with AI or typed by hand), the default behavior -- writing
+   * the result into whichever tab is active when Generate is clicked --
+   * would silently write that fixed language's output into the *other*
+   * language's slot the moment an editor switches tabs first. Omit for the
+   * default, tab-following behavior (e.g. Book-level `bookDescription`/
+   * `bookLongDescription`, whose own prompt is required to match whichever
+   * language `FormFieldAiActionArgs.language` reports, see
+   * components/README.md). Only affects the whole-field apply path -- for
+   * `type="markdown"`, a Markdown-selection AI Assistance run still targets
+   * whichever tab's editor the selection was made in, so this option only
+   * makes sense for a field that never runs AI Assistance on a selection. */
+  aiAssistanceLanguage?: string;
 }
 
 export interface PlainFormFieldProps<
@@ -443,15 +461,37 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const editorRef = useRef<MarkdownEditorHandle>(null);
   const [shown, setShown] = useState({ slug: activeSlug, value: activeValue });
 
+  // `aiAssistanceLanguage` (ANA-116 PR review) pins AI Assistance's whole-
+  // field (non-selection) source text and apply target to one fixed
+  // language, overriding the default tab-following `activeSlug`/
+  // `setActiveValue` -- see the prop's own doc for why. `undefined` (the
+  // default) falls through to the existing tab-following behavior
+  // unchanged.
+  const aiAssistanceLanguage = props.translatable
+    ? props.aiAssistanceLanguage
+    : undefined;
+  const assistSlug = aiAssistanceLanguage ?? activeSlug;
+  const assistSourceValue = aiAssistanceLanguage
+    ? (value[aiAssistanceLanguage] ?? "")
+    : activeValue;
+
+  function applyAssistResult(next: string) {
+    if (aiAssistanceLanguage) {
+      onChange({ ...value, [aiAssistanceLanguage]: next });
+      return;
+    }
+    setActiveValue(next);
+  }
+
   const assist = useFormFieldAssistAction({
     enabled: aiAssistance,
     disabled,
     type,
     translatable,
-    activeSlug,
-    activeValue,
+    activeSlug: assistSlug,
+    activeValue: assistSourceValue,
     editorRef,
-    onApply: setActiveValue,
+    onApply: applyAssistResult,
     onAiAssist,
     getContext: getAIAssistanceContext,
     onBusyChange,

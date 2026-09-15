@@ -15,11 +15,16 @@ const SAMPLE_VALUE: LessonFieldsValues = {
 // Wraps LessonForm with local state so every field edit behaves for real in
 // Storybook -- the component itself is fully controlled and has no state of
 // its own (mirrors LessonsPanelDemo, see lessons-panel.stories.tsx).
-function LessonFormDemo({ value: initialValue, onChange }: LessonFormProps) {
+function LessonFormDemo({
+  value: initialValue,
+  onChange,
+  ...rest
+}: LessonFormProps) {
   const [value, setValue] = useState(initialValue);
 
   return (
     <LessonForm
+      {...rest}
       value={value}
       onChange={(patch) => {
         setValue((prev) => ({ ...prev, ...patch }));
@@ -35,6 +40,9 @@ const meta = {
   tags: ["autodocs"],
   args: {
     onChange: () => {},
+    moduleTitle: "الصلاة",
+    moduleDescription: "مقدمة عن الصلاة",
+    moduleContent: "محتوى تعليمي عن الصلاة",
   },
   render: (args) => (
     <div style={{ width: 320 }}>

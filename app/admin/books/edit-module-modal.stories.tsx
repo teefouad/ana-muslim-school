@@ -2,9 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import type { Book } from "@/lib/books/types";
 import { EditModuleModal } from "./edit-module-modal";
-import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
-import type { MockLesson } from "./mock-lessons";
 
 const FILLED_FIELDS = {
   title: { ar: "المقدمة", en: "Introduction" },
@@ -53,37 +51,17 @@ export const Create: Story = {
   },
 };
 
+// Module mode's two-column layout (ANA-111, polished in ANA-115): Module
+// form and Lessons list, with real Edit/Delete actions on each row --
+// reorderable, and New Lesson opens Lesson mode with a blank draft. Its
+// Lessons are loaded live through the real Lesson list API (ANA-116) rather
+// than seeded as a prop -- this Storybook environment has no backend to
+// serve that request, so this story shows the panel's own loading/error
+// state rather than populated rows; see edit-module-modal.test.tsx for
+// coverage of a populated Lessons list.
 export const Edit: Story = {
   args: {
     state: { mode: "edit", id: "module-1", fields: FILLED_FIELDS },
-  },
-};
-
-// Module mode's two-column layout (ANA-111, polished in ANA-115): Module
-// form and Lessons list, with real Edit/Delete actions on each row --
-// reorderable, and New Lesson opens Lesson mode with a blank draft.
-const SAMPLE_LESSONS: MockLesson[] = [
-  buildLessonFixture({
-    id: "lesson-1",
-    title: { ar: "ما هي الصلاة؟", en: "What is Salah?" },
-    isPublished: true,
-  }),
-  buildLessonFixture({
-    id: "lesson-2",
-    title: { ar: "", en: "The five daily prayers" },
-    type: "video",
-    position: 1,
-  }),
-];
-
-export const EditWithLessons: Story = {
-  args: {
-    state: {
-      mode: "edit",
-      id: "module-1",
-      fields: FILLED_FIELDS,
-      lessons: SAMPLE_LESSONS,
-    },
   },
 };
 
