@@ -25,7 +25,7 @@
     "@mantine/core": "^9.6.0",
     "@mantine/dates": "^9.6.0",
     "@mantine/hooks": "^9.6.0",
-    "@mdxeditor/editor": "^4.2.3",
+    "@mdxeditor/editor": "^4.2.5",
     "@mdxeditor/gurx": "^1.2.4",
     "@microlink/react-json-view": "^1.31.32",
     "@mistralai/mistralai": "^2.6.4",
@@ -41,6 +41,9 @@
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
     "swr": "^2.5.1"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^5.3.1",
