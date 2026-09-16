@@ -3,11 +3,11 @@ import type { Lesson } from "@/lib/lessons/types";
 /**
  * Fixture Lessons for Storybook stories and tests only (ANA-115, wired to
  * the real `Lesson` shape in ANA-116) -- a real, API-backed Lesson document,
- * not a frontend-only mock. `reward`/`duration`/`videoURL`/`azkar`/
- * `questions`/`isLocked` are Configuration/Questions fields the Lesson
- * editor doesn't expose yet (ANA-110); their fixture defaults here are
- * unrelated to `lesson-fields.ts`'s own temporary create defaults, which
- * exist for a different reason (schema-valid placeholders sent on create).
+ * not a frontend-only mock. `reward`/`questions`/`isLocked` are Quiz/Final/
+ * Skip configuration fields the Lesson editor still doesn't expose
+ * (ANA-118); their fixture defaults here are unrelated to
+ * `lesson-fields.ts`'s own temporary create defaults, which exist for a
+ * different reason (schema-valid placeholders sent on create).
  */
 export function buildLessonFixture(overrides: Partial<Lesson> = {}): Lesson {
   return {
@@ -17,6 +17,7 @@ export function buildLessonFixture(overrides: Partial<Lesson> = {}): Lesson {
     type: "text",
     position: 0,
     reward: { coins: 0 },
+    content: { ar: "", en: "" },
     duration: 0,
     videoURL: "",
     azkar: [],

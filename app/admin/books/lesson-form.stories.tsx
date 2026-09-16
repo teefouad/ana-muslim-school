@@ -10,6 +10,39 @@ const SAMPLE_VALUE: LessonFieldsValues = {
   type: "text",
   position: 2,
   isPublished: true,
+  content: {
+    ar: "# ما هي الصلاة؟\n\nالصلاة هي الركن الثاني من أركان الإسلام.",
+    en: "# What is Salah?\n\nSalah is the second pillar of Islam.",
+  },
+  videoURL: "",
+  duration: 0,
+  azkar: [],
+};
+
+const VIDEO_VALUE: LessonFieldsValues = {
+  ...SAMPLE_VALUE,
+  type: "video",
+  content: {},
+  videoURL: "https://example.com/salah-intro.mp4",
+  duration: 180,
+};
+
+const BREAK_VALUE: LessonFieldsValues = {
+  ...SAMPLE_VALUE,
+  type: "break",
+  content: {},
+  azkar: [
+    {
+      id: "entry-1",
+      text: { ar: "سبحان الله", en: "Subhan Allah" },
+      repeat: 33,
+    },
+    {
+      id: "entry-2",
+      text: { ar: "الحمد لله", en: "Alhamdulillah" },
+      repeat: 33,
+    },
+  ],
 };
 
 // Wraps LessonForm with local state so every field edit behaves for real in
@@ -68,6 +101,22 @@ export const Blank: Story = {
       type: "text",
       position: 2,
       isPublished: false,
+      content: {},
+      videoURL: "",
+      duration: 0,
+      azkar: [],
     },
+  },
+};
+
+export const VideoType: Story = {
+  args: {
+    value: VIDEO_VALUE,
+  },
+};
+
+export const BreakType: Story = {
+  args: {
+    value: BREAK_VALUE,
   },
 };

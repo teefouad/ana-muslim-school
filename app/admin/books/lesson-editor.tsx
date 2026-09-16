@@ -13,7 +13,9 @@ import type { Lesson } from "@/lib/lessons/types";
 import { LessonForm } from "./lesson-form";
 import {
   createEmptyLessonFieldsValues,
+  isSameAzkar,
   toLessonFieldsValues,
+  type LessonAzkarFieldEntry,
   type LessonFieldsValues,
 } from "./lesson-fields";
 
@@ -33,7 +35,7 @@ export interface LessonEditorProps {
   lesson: Lesson | null;
   /** The owning Module's own current Arabic Title/Description/Learning
    * Material (ANA-116) -- forwarded to `LessonForm` unchanged, grounding
-   * both Title's and One-line description's AI Assistance suggestions in
+   * both Title's and Description's AI Assistance suggestions in
    * the Edit Module modal's *current* draft, including unsaved edits. */
   moduleTitle: string;
   moduleDescription: string;
@@ -88,6 +90,14 @@ export function LessonEditor({
   const [type, setType] = useState(initialFields.type);
   const [position, setPosition] = useState(initialFields.position);
   const [isPublished, setIsPublished] = useState(initialFields.isPublished);
+  const [content, setContent] = useState<TranslatedValue>(
+    initialFields.content,
+  );
+  const [videoURL, setVideoURL] = useState(initialFields.videoURL);
+  const [duration, setDuration] = useState(initialFields.duration);
+  const [azkar, setAzkar] = useState<LessonAzkarFieldEntry[]>(
+    initialFields.azkar,
+  );
 
   // Mirrors the Module form's own busy-gating (ANA-109): Save stays
   // disabled while Title's or Description's own Translate with AI or AI
@@ -108,7 +118,11 @@ export function LessonEditor({
     !isSameTranslatedValue(description, initialFields.description) ||
     type !== initialFields.type ||
     position !== initialFields.position ||
-    isPublished !== initialFields.isPublished;
+    isPublished !== initialFields.isPublished ||
+    !isSameTranslatedValue(content, initialFields.content) ||
+    videoURL !== initialFields.videoURL ||
+    duration !== initialFields.duration ||
+    !isSameAzkar(azkar, initialFields.azkar);
 
   function handleBackClick() {
     if (isDirty) {
@@ -133,6 +147,10 @@ export function LessonEditor({
       type,
       position,
       isPublished,
+      content,
+      videoURL,
+      duration,
+      azkar,
     };
 
     setSaveError(null);
@@ -184,7 +202,17 @@ export function LessonEditor({
 
       <Stack gap="lg" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <LessonForm
-          value={{ title, description, type, position, isPublished }}
+          value={{
+            title,
+            description,
+            type,
+            position,
+            isPublished,
+            content,
+            videoURL,
+            duration,
+            azkar,
+          }}
           onChange={(patch) => {
             if (patch.title !== undefined) setTitle(patch.title);
             if (patch.description !== undefined)
@@ -193,6 +221,10 @@ export function LessonEditor({
             if (patch.position !== undefined) setPosition(patch.position);
             if (patch.isPublished !== undefined)
               setIsPublished(patch.isPublished);
+            if (patch.content !== undefined) setContent(patch.content);
+            if (patch.videoURL !== undefined) setVideoURL(patch.videoURL);
+            if (patch.duration !== undefined) setDuration(patch.duration);
+            if (patch.azkar !== undefined) setAzkar(patch.azkar);
           }}
           moduleTitle={moduleTitle}
           moduleDescription={moduleDescription}

@@ -27,6 +27,12 @@ export type Lesson = {
   /** An ordinary client-controlled numeric field with no backend-defined relationship to `Module.lessons` order (see ANA-62). */
   position: number;
   reward: { coins: number };
+  /** The `text` Lesson type's translatable Markdown body (ANA-118). Absent
+   * on any Lesson document written before this field existed -- the
+   * repository (`lessons-repository.ts`) defaults a missing value to
+   * `{ ar: "", en: "" }` when reading, so every in-memory `Lesson` always
+   * has one, even though it's optional in Firestore. */
+  content: TranslatableString;
   duration: number;
   videoURL: string;
   azkar: LessonAzkarEntry[];
@@ -55,13 +61,17 @@ function isValidAzkarEntry(value: unknown): value is LessonAzkarEntry {
   return isValidTranslatableString(v.text) && typeof v.repeat === "number";
 }
 
-/** Validates Firestore-sourced data before it's trusted as a `Lesson`. */
+/** Validates Firestore-sourced data before it's trusted as a `Lesson`.
+ * `content` is deliberately optional here (ANA-118) -- a document written
+ * before that field existed has no `content` key at all, and that must
+ * still validate as a readable Lesson (see `Lesson.content`'s own doc). */
 export function isValidLessonDocument(value: unknown): value is Omit<
   Lesson,
-  "id" | "createdAt" | "updatedAt"
+  "id" | "createdAt" | "updatedAt" | "content"
 > & {
   createdAt: unknown;
   updatedAt: unknown;
+  content?: TranslatableString;
 } {
   if (!value || typeof value !== "object") {
     return false;
@@ -73,6 +83,7 @@ export function isValidLessonDocument(value: unknown): value is Omit<
   return (
     isValidTranslatableString(v.title) &&
     isValidTranslatableString(v.description) &&
+    (v.content === undefined || isValidTranslatableString(v.content)) &&
     typeof v.type === "string" &&
     (LESSON_TYPES as readonly string[]).includes(v.type) &&
     typeof v.position === "number" &&

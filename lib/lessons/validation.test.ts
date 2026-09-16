@@ -8,6 +8,7 @@ const validBody = {
   type: "text",
   position: 1,
   reward: { coins: 0 },
+  content: { ar: "", en: "" },
   duration: 0,
   videoURL: "",
   azkar: [],
@@ -58,6 +59,15 @@ describe("parseLessonCreateInput", () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it("rejects a `content` that isn't a { ar, en } string pair", () => {
+    const result = parseLessonCreateInput({
+      ...validBody,
+      content: { ar: "أ" },
+    });
+
+    expect(result.ok).toBe(false);
+  });
 });
 
 describe("parseLessonPatchInput", () => {
@@ -80,5 +90,22 @@ describe("parseLessonPatchInput", () => {
     const result = parseLessonPatchInput({ position: 42 });
 
     expect(result).toEqual({ ok: true, value: { position: 42 } });
+  });
+
+  it("accepts a `content` in a partial patch", () => {
+    const result = parseLessonPatchInput({
+      content: { ar: "محتوى", en: "content" },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { content: { ar: "محتوى", en: "content" } },
+    });
+  });
+
+  it("rejects a `content` that isn't a { ar, en } string pair in a partial patch", () => {
+    const result = parseLessonPatchInput({ content: { ar: "أ" } });
+
+    expect(result.ok).toBe(false);
   });
 });

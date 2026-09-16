@@ -46,6 +46,7 @@ const validLesson = {
   type: "text",
   position: 1,
   reward: { coins: 0 },
+  content: { ar: "", en: "" },
   duration: 0,
   videoURL: "",
   azkar: [],

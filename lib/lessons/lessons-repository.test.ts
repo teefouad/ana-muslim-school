@@ -93,6 +93,7 @@ const validLessonData = {
   type: "text",
   position: 3,
   reward: { coins: 10 },
+  content: { ar: "محتوى", en: "content" },
   duration: 60,
   videoURL: "",
   azkar: [],
@@ -218,6 +219,18 @@ describe("listLessonsByIds", () => {
   it("returns an empty array without calling getAll for an empty id list", async () => {
     expect(await listLessonsByIds("book-1", "module-1", [])).toEqual([]);
     expect(getAllMock).not.toHaveBeenCalled();
+  });
+
+  it("defaults `content` to empty strings for a Lesson written before that field existed", async () => {
+    const dataWithoutContent: Record<string, unknown> = { ...validLessonData };
+    delete dataWithoutContent.content;
+    getAllMock.mockResolvedValueOnce([
+      { exists: true, id: "l1", data: () => dataWithoutContent },
+    ]);
+
+    const result = await listLessonsByIds("book-1", "module-1", ["l1"]);
+
+    expect(result[0].content).toEqual({ ar: "", en: "" });
   });
 });
 
