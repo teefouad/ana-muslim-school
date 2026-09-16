@@ -5,6 +5,7 @@ import {
 import type { Question, QuestionWritableFields } from "@/lib/questions/types";
 import { toTranslatableString } from "./module-fields";
 import {
+  parseQuestionText,
   serializeQuestionText,
   type ParsedQuestionText,
 } from "./question-text-format";
@@ -167,5 +168,24 @@ export function isSameQuestionEntries(
         entry.id === b[index].id &&
         isSameTranslatedValue(entry.rawText, b[index].rawText),
     )
+  );
+}
+
+/** Whether any entry's raw textarea buffer -- in either language -- is
+ * currently unparseable (PR review, ANA-119). `QuestionTextEditor`
+ * deliberately keeps an invalid `rawText` around without ever reflecting it
+ * into `text`/`explanation`/`choices` (see `applyParsedQuestionText`'s own
+ * doc), so those structured fields can silently go stale relative to what's
+ * actually showing on screen. Save must be blocked while this is true --
+ * otherwise `saveLessonQuestions` would serialize the last successfully
+ * parsed (possibly blank) content instead of surfacing the parse error,
+ * exactly the "admin sees malformed text, clicks Save, it silently
+ * persists the wrong value" failure this guards against. Mirrors the old
+ * admin's own `hasInvalidQuestionText` check ahead of its Save action. */
+export function hasInvalidQuestionText(entries: QuestionFieldEntry[]): boolean {
+  return entries.some(
+    (entry) =>
+      !parseQuestionText(entry.rawText.ar ?? "").ok ||
+      !parseQuestionText(entry.rawText.en ?? "").ok,
   );
 }

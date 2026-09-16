@@ -1610,6 +1610,193 @@ describe("EditModuleModal", () => {
       ).toBe(false);
     });
 
+    it("blocks opening an existing Lesson's editor when Questions fail to load, never silently treating its questions as empty (PR review)", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : String(url);
+          const method = (init?.method ?? "GET").toUpperCase();
+
+          if (urlStr.endsWith("/lessons") && method === "GET") {
+            return Promise.resolve(jsonResponse({ data: [QUIZ_LESSON] }));
+          }
+          if (urlStr.endsWith("/questions") && method === "GET") {
+            return Promise.resolve(
+              jsonResponse({ error: "Failed to load Questions." }, 500),
+            );
+          }
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        },
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        await within(dialog).findByRole("button", { name: "Edit اختبار" }),
+      );
+
+      // The Lesson editor's own form never renders -- opening it would
+      // hydrate this Lesson's real `questions` ids as `[]` (Questions never
+      // loaded), and saving any other field would then PATCH
+      // `questions: []`, silently detaching every one of them.
+      expect(
+        await within(dialog).findByText("Failed to load Questions."),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
+      expect(
+        within(dialog).getByRole("button", { name: "Retry" }),
+      ).toBeInTheDocument();
+    });
+
+    it("opens the Lesson editor with real Question content once Retry succeeds", async () => {
+      let questionsCallCount = 0;
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : String(url);
+          const method = (init?.method ?? "GET").toUpperCase();
+
+          if (urlStr.endsWith("/lessons") && method === "GET") {
+            return Promise.resolve(jsonResponse({ data: [QUIZ_LESSON] }));
+          }
+          if (urlStr.endsWith("/questions") && method === "GET") {
+            questionsCallCount += 1;
+            if (questionsCallCount === 1) {
+              return Promise.resolve(
+                jsonResponse({ error: "Failed to load Questions." }, 500),
+              );
+            }
+            return Promise.resolve(
+              jsonResponse({ data: [QUESTION_1, QUESTION_2] }),
+            );
+          }
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        },
+      );
+      renderModal();
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        await within(dialog).findByRole("button", { name: "Edit اختبار" }),
+      );
+      await within(dialog).findByText("Failed to load Questions.");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+
+      expect(
+        await within(dialog).findByTestId("lesson-form"),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getAllByRole("textbox", { name: "Question" }),
+      ).toHaveLength(2);
+    });
+
+    it("does not duplicate an already-created Question draft when Save is retried after a later Question fails (PR review)", async () => {
+      const emptyQuizLesson: Lesson = { ...QUIZ_LESSON, questions: [] };
+      let questionPostCount = 0;
+
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : String(url);
+          const method = (init?.method ?? "GET").toUpperCase();
+
+          if (urlStr.endsWith("/lessons") && method === "GET") {
+            return Promise.resolve(jsonResponse({ data: [emptyQuizLesson] }));
+          }
+          if (urlStr.endsWith("/questions") && method === "GET") {
+            return Promise.resolve(jsonResponse({ data: [] }));
+          }
+          if (urlStr.endsWith("/questions") && method === "POST") {
+            questionPostCount += 1;
+            // The *second* Question's own POST fails the first time only --
+            // the first Question has already succeeded by then.
+            if (questionPostCount === 2) {
+              return Promise.resolve(
+                jsonResponse({ error: "Question create failed." }, 500),
+              );
+            }
+            const body = JSON.parse(init?.body as string) as {
+              text: unknown;
+              explanation: unknown;
+              choices: unknown;
+            };
+            return Promise.resolve(
+              jsonResponse(
+                {
+                  data: {
+                    id: `question-new-${questionPostCount}`,
+                    text: body.text,
+                    explanation: body.explanation,
+                    choices: body.choices,
+                    createdAt: new Date(0).toISOString(),
+                    updatedAt: new Date(0).toISOString(),
+                    createdBy: "a@example.com",
+                    updatedBy: "a@example.com",
+                  },
+                },
+                201,
+              ),
+            );
+          }
+          if (urlStr.endsWith("/lessons/lesson-1") && method === "PATCH") {
+            return Promise.resolve(jsonResponse({ data: emptyQuizLesson }));
+          }
+          return Promise.resolve(
+            jsonResponse({ error: "Unhandled fetch in test." }, 500),
+          );
+        },
+      );
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      fireEvent.click(form.getByRole("button", { name: "New" }));
+      fireEvent.click(form.getByRole("button", { name: "New" }));
+      const textareas = form.getAllByRole("textbox", { name: "Question" });
+      fireEvent.change(textareas[0], { target: { value: "سؤال أول" } });
+      fireEvent.change(textareas[1], { target: { value: "سؤال ثاني" } });
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      // First attempt: the first Question's own POST succeeds, the
+      // second's fails -- the editor stays open showing the error, with
+      // both drafts (including the already-created one) still there.
+      expect(
+        await within(dialog).findByText("Question create failed."),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+      );
+
+      const questionPosts = (
+        fetch as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(([url, init]) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        const method = ((init as RequestInit)?.method ?? "GET").toUpperCase();
+        return urlStr.endsWith("/questions") && method === "POST";
+      }) as [string, RequestInit][];
+      const firstQuestionPosts = questionPosts.filter((call) => {
+        const body = JSON.parse(call[1].body as string) as {
+          text: { ar: string };
+        };
+        return body.text.ar === "سؤال أول";
+      });
+
+      // The already-succeeded first Question is never POSTed again by the
+      // retry -- its draft was promoted to its real id the moment it
+      // originally succeeded, so the retry only re-attempts the second one.
+      expect(firstQuestionPosts).toHaveLength(1);
+    });
+
     it("discarding a Question edit leaves backend data unchanged", async () => {
       mockFetch({
         lessons: [QUIZ_LESSON],

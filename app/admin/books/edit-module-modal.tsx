@@ -324,6 +324,17 @@ function EditModuleModalBody({
   });
   const questionsLoading =
     questionsKey !== null && !questionsData && !questionsError;
+  // True only for a first-load failure with no data ever received (PR
+  // review) -- SWR keeps whatever `data` it last had on a *later* failed
+  // revalidation, so this stays false once Questions have loaded at least
+  // once, matching Lessons' own non-blocking failed-refresh treatment
+  // below. Distinguishing the two matters here specifically because
+  // `moduleQuestions` seeds `Lesson.questions`' hydration (see
+  // `toLessonFieldsValues`): falling back to `[]` on a genuine first-load
+  // failure would make an existing Lesson's own Question references look
+  // like they don't exist, and saving any other field would then PATCH
+  // `questions: []`, detaching every one of them.
+  const questionsUnavailable = questionsError !== undefined && !questionsData;
   const moduleQuestions: Question[] = questionsData?.data ?? [];
 
   // A pending drag-and-drop reorder, not yet persisted -- mirrors
@@ -411,7 +422,10 @@ function EditModuleModalBody({
   // never retroactively make this successful write look like it failed
   // (the create's own promise settles here, independent of that
   // fire-and-forget revalidation).
-  async function handleCreateLesson(fields: LessonFieldsValues) {
+  async function handleCreateLesson(
+    fields: LessonFieldsValues,
+    onQuestionSaved: (key: string, question: Question) => void,
+  ) {
     if (state.mode !== "edit") {
       return;
     }
@@ -421,12 +435,25 @@ function EditModuleModalBody({
     // request below can carry their real, final ids in `questions` -- a
     // failure here throws before any Lesson request is made, keeping the
     // Lesson editor open with the draft intact (see LessonEditor's own
-    // `handleSave`).
+    // `handleSave`). Each individual Question success is promoted into
+    // both LessonEditor's own draft (`onQuestionSaved`, PR review) and this
+    // Questions SWR cache immediately, not just after every save settles --
+    // so a Question already created here is never re-POSTed by a retry
+    // after a later Question or this Lesson create itself fails.
     const savedQuestions = await saveLessonQuestions(
       book.id,
       state.id,
       fields.questions,
       moduleQuestions,
+      (key, question) => {
+        onQuestionSaved(key, question);
+        void mutateQuestions(
+          (current) => ({
+            data: mergeQuestions(current?.data ?? [], [question]),
+          }),
+          { revalidate: false },
+        );
+      },
     );
 
     const created = await createLesson(
@@ -460,19 +487,30 @@ function EditModuleModalBody({
   async function handleUpdateLesson(
     lessonId: string,
     fields: LessonFieldsValues,
+    onQuestionSaved: (key: string, question: Question) => void,
   ) {
     if (state.mode !== "edit") {
       return;
     }
 
     // See handleCreateLesson's identical comment -- persists every local
-    // Question draft/edit first (ANA-119) so the Lesson PATCH below carries
-    // their real, final ids.
+    // Question draft/edit first (ANA-119), promoting each one into
+    // LessonEditor's own draft and this Questions SWR cache the moment it
+    // succeeds, so the Lesson PATCH below carries their real, final ids.
     const savedQuestions = await saveLessonQuestions(
       book.id,
       state.id,
       fields.questions,
       moduleQuestions,
+      (key, question) => {
+        onQuestionSaved(key, question);
+        void mutateQuestions(
+          (current) => ({
+            data: mergeQuestions(current?.data ?? [], [question]),
+          }),
+          { revalidate: false },
+        );
+      },
     );
 
     const updated = await updateLesson(
@@ -815,12 +853,32 @@ function EditModuleModalBody({
           <Stack align="center" justify="center" h="100%">
             <Loader />
           </Stack>
+        ) : questionsUnavailable && lessonEditorTarget.lessonId !== null ? (
+          // Blocking (PR review): unlike a failed *background* refresh
+          // (handled below, non-blocking), a genuine first-load failure
+          // here means `moduleQuestions` is `[]` with no real data behind
+          // it -- opening this existing Lesson's editor would hydrate
+          // `questions` as empty (see `toLessonFieldsValues`), and saving
+          // any other field would then PATCH `questions: []`, silently
+          // detaching every one of its real Questions. New Lesson
+          // (`lessonId === null`) has nothing to hydrate, so it's
+          // unaffected by this gate and still opens normally below.
+          <Stack align="center" justify="center" h="100%" gap="sm">
+            <Alert color="red" role="alert">
+              {questionsError?.message}
+            </Alert>
+            <Button variant="default" onClick={() => void mutateQuestions()}>
+              Retry
+            </Button>
+          </Stack>
         ) : (
           <Stack gap="sm" style={{ height: "100%" }}>
             {questionsError && (
-              // Non-blocking, matching Lessons' own failed-refresh
-              // treatment below -- a failed Questions refresh never blocks
-              // opening the Lesson editor, only surfaces the error above it.
+              // Non-blocking: Questions have loaded at least once here
+              // (see `questionsUnavailable`'s own doc), so `moduleQuestions`
+              // still reflects that last good list -- a failed background
+              // revalidation only ever surfaces as a banner, matching
+              // Lessons' own failed-refresh treatment below.
               <Alert color="red" role="alert">
                 {questionsError.message}
               </Alert>

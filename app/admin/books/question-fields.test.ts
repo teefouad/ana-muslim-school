@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Question } from "@/lib/questions/types";
 import {
   applyParsedQuestionText,
+  hasInvalidQuestionText,
   isSameQuestionEntries,
   makeQuestionFieldEntry,
   toQuestionFieldEntry,
@@ -139,5 +140,41 @@ describe("isSameQuestionEntries", () => {
     const edited: QuestionFieldEntry[] = [{ ...base[0], id: "other-id" }];
 
     expect(isSameQuestionEntries(base, edited)).toBe(false);
+  });
+});
+
+describe("hasInvalidQuestionText", () => {
+  it("is false when every entry's rawText parses in both languages", () => {
+    const entries: QuestionFieldEntry[] = [
+      toQuestionFieldEntry(buildQuestion()),
+    ];
+
+    expect(hasInvalidQuestionText(entries)).toBe(false);
+  });
+
+  it("is false for an empty list", () => {
+    expect(hasInvalidQuestionText([])).toBe(false);
+  });
+
+  it("is true when an entry's Arabic rawText is malformed", () => {
+    const entry = makeQuestionFieldEntry();
+    entry.rawText = { ar: "Q?\n\n[x]a", en: "" };
+
+    expect(hasInvalidQuestionText([entry])).toBe(true);
+  });
+
+  it("is true when an entry's English rawText is malformed, even if Arabic is valid", () => {
+    const entry = makeQuestionFieldEntry();
+    entry.rawText = { ar: "سؤال", en: "Q?\n\n[X] a" };
+
+    expect(hasInvalidQuestionText([entry])).toBe(true);
+  });
+
+  it("is true when any entry in a list is invalid, not just the first", () => {
+    const valid = toQuestionFieldEntry(buildQuestion());
+    const invalid = makeQuestionFieldEntry();
+    invalid.rawText = { ar: "Q?\n\n[ ]  a", en: "" };
+
+    expect(hasInvalidQuestionText([valid, invalid])).toBe(true);
   });
 });

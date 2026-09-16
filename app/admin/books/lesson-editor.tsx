@@ -20,6 +20,7 @@ import {
   type LessonFieldsValues,
 } from "./lesson-fields";
 import {
+  hasInvalidQuestionText,
   isSameQuestionEntries,
   type QuestionFieldEntry,
 } from "./question-fields";
@@ -53,12 +54,27 @@ export interface LessonEditorProps {
   /** Called when Save changes is clicked with no Lesson open (`lesson` is
    * `null`) -- persists a real Lesson through the existing Lesson create
    * API (ANA-116). Awaited: resolving returns to Module mode; rejecting
-   * keeps this editor open, preserves the draft, and shows the error. */
-  onCreate: (fields: LessonFieldsValues) => Promise<void>;
+   * keeps this editor open, preserves the draft, and shows the error.
+   * `onQuestionSaved` (ANA-119 PR review) is invoked synchronously the
+   * moment each Question draft's own create/update request succeeds --
+   * *before* the overall Lesson create/update settles, so a draft that was
+   * already persisted still counts as persisted even if a later Question
+   * or the Lesson request itself then fails. Without this, retrying a
+   * partially-failed Save would re-POST an already-created Question draft
+   * (its local `id` still `null`), creating a duplicate/orphaned document
+   * each retry. */
+  onCreate: (
+    fields: LessonFieldsValues,
+    onQuestionSaved: (key: string, question: Question) => void,
+  ) => Promise<void>;
   /** Called when Save changes is clicked with an existing Lesson open --
    * same awaited resolve/reject contract as `onCreate`, but PATCHes that
-   * Lesson instead (ANA-116). */
-  onUpdate: (id: string, fields: LessonFieldsValues) => Promise<void>;
+   * Lesson instead (ANA-116). See `onCreate`'s doc on `onQuestionSaved`. */
+  onUpdate: (
+    id: string,
+    fields: LessonFieldsValues,
+    onQuestionSaved: (key: string, question: Question) => void,
+  ) => Promise<void>;
   /** Returns to Module mode without closing the Edit Module modal
    * (ANA-115). Called directly when there's no unsaved edit; gated behind
    * a "Discard unsaved changes?" confirmation (reusing the same
@@ -125,6 +141,14 @@ export function LessonEditor({
   const [questionsBusy, setQuestionsBusy] = useState(false);
   const aiBusy = titleBusy || descriptionBusy || questionsBusy;
 
+  // Blocks Save while any Question's raw textarea buffer -- in either
+  // language -- is currently unparseable (PR review, ANA-119): its
+  // structured `text`/`explanation`/`choices` are frozen at their last
+  // successfully parsed (possibly blank) state, so saving now would
+  // silently persist that stale content instead of what's on screen. See
+  // `hasInvalidQuestionText`'s own doc.
+  const questionsInvalid = hasInvalidQuestionText(questions);
+
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -174,11 +198,30 @@ export function LessonEditor({
     setSaveError(null);
     setIsSaving(true);
 
+    // Promotes one Question draft's local `id` to its real, persisted id
+    // the moment its own create/update request succeeds (ANA-119 PR
+    // review) -- called by the caller from inside `saveLessonQuestions`,
+    // strictly before this whole `onCreate`/`onUpdate` call settles. Keyed
+    // by the entry's stable client-only `key` (never its `id`, which is
+    // exactly what's being filled in here for a brand-new draft). This is
+    // what makes retrying a partially-failed Save idempotent: if a later
+    // Question or the Lesson request itself then fails, this draft is
+    // already marked persisted in local state, so the next Save attempt
+    // PATCHes (or skips, if unchanged) it instead of re-POSTing a
+    // duplicate.
+    function promoteQuestion(key: string, question: Question) {
+      setQuestions((current) =>
+        current.map((entry) =>
+          entry.key === key ? { ...entry, id: question.id } : entry,
+        ),
+      );
+    }
+
     try {
       if (lesson) {
-        await onUpdate(lesson.id, fields);
+        await onUpdate(lesson.id, fields, promoteQuestion);
       } else {
-        await onCreate(fields);
+        await onCreate(fields, promoteQuestion);
       }
 
       onBack();
@@ -264,7 +307,7 @@ export function LessonEditor({
       <Button
         onClick={() => void handleSave()}
         loading={isSaving}
-        disabled={aiBusy}
+        disabled={aiBusy || questionsInvalid}
         style={{ alignSelf: "flex-end" }}
       >
         Save changes
