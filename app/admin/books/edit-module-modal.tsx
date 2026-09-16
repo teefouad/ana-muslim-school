@@ -10,6 +10,7 @@ import {
   Group,
   Modal,
   Skeleton,
+  SimpleGrid,
   Stack,
 } from "@mantine/core";
 
@@ -428,6 +429,19 @@ function EditModuleModalBody({
         await onCreate(fields);
       } else {
         await onSave(state.id, fields, lessonOrderDraft);
+
+        // PR review: promote the just-persisted Lesson order into the
+        // Lessons SWR cache immediately, before this modal closes --
+        // otherwise reopening the same Module lets `useSWR` synchronously
+        // render the still-stale pre-save cached order before its
+        // background revalidation returns the newly persisted one (a
+        // visible flash). `lessons` is already this exact order (the local
+        // reorder draft layered onto the server list) whenever a reorder
+        // was actually pending; still revalidates in the background for
+        // eventual correctness against any concurrent server-side change.
+        if (lessonOrderDraft) {
+          void mutateLessons({ data: lessons }, { revalidate: true });
+        }
       }
 
       onClose();
@@ -575,17 +589,20 @@ function EditModuleModalBody({
         onBusyChange={setContentBusy}
       />
 
-      <ColorField value={color} onChange={setColor} />
-
-      {/* Published (ANA-117): reflects and edits this Module's own
-          persisted `isPublished` -- included in both create and update
-          Module persistence (module-fields.ts), same as Book's own
-          Published toggle (book-form.tsx). */}
-      <ToggleCard
-        label="Published"
-        checked={isPublished}
-        onChange={setIsPublished}
-      />
+      {/* Published + Color (ANA-117 PR review): a single responsive row,
+          Published on the left and Color on the right -- matching Book
+          form's own Locked/Published row (book-form.tsx), stacking only on
+          narrow screens. Published reflects and edits this Module's own
+          persisted `isPublished`, included in both create and update
+          Module persistence (module-fields.ts). */}
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+        <ToggleCard
+          label="Published"
+          checked={isPublished}
+          onChange={setIsPublished}
+        />
+        <ColorField value={color} onChange={setColor} />
+      </SimpleGrid>
 
       {saveError && (
         <Alert color="red" role="alert">

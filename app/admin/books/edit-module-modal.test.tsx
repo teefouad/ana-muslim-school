@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
@@ -7,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EditModuleModal,
   type EditModuleModalProps,
+  type EditModuleModalState,
 } from "./edit-module-modal";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
@@ -688,6 +690,116 @@ describe("EditModuleModal", () => {
           "lesson-1",
         ]),
       );
+    });
+
+    it("shows the just-saved Lesson order immediately on reopen, before the follow-up GET resolves (PR review regression)", async () => {
+      const LESSONS: Lesson[] = [
+        buildLessonFixture({
+          id: "lesson-1",
+          title: { ar: "Introduction", en: "" },
+        }),
+        buildLessonFixture({
+          id: "lesson-2",
+          title: { ar: "Prayer basics", en: "" },
+          position: 1,
+        }),
+      ];
+      mockFetch({ lessons: LESSONS });
+      const onSave = vi.fn().mockResolvedValue(undefined);
+
+      // A single, persistent SWRConfig cache shared across close/reopen --
+      // mirrors the real app's single long-lived SWR cache (only tests
+      // reset it per render). `EditModuleModal` itself unmounts/remounts
+      // its body between `state`/`null`/`state` (see its own `{state &&
+      // ...}` guard), exactly like a real close-then-reopen -- this Harness
+      // only supplies the `state` toggle a real page would.
+      function Harness() {
+        const [state, setState] = useState<EditModuleModalState | null>({
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+        });
+        return (
+          <>
+            <EditModuleModal
+              state={state}
+              book={BOOK}
+              onClose={() => setState(null)}
+              onCreate={vi.fn()}
+              onSave={onSave}
+            />
+            <button
+              onClick={() =>
+                setState({ mode: "edit", id: "module-1", fields: EDIT_FIELDS })
+              }
+            >
+              Reopen
+            </button>
+          </>
+        );
+      }
+
+      render(
+        <MantineProvider>
+          <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+            <Harness />
+          </SWRConfig>
+        </MantineProvider>,
+      );
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      stubItemRects(["lesson-1", "lesson-2"]);
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await within(dialog).findByTestId("list-item-lesson-2");
+
+      // From this point on, the Lessons GET never resolves -- proves the
+      // reopened modal's correct order comes from the SWR cache being
+      // promoted on save, not from a background refetch that happened to
+      // race ahead of the assertion below.
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const method = (init?.method ?? "GET").toUpperCase();
+          if (
+            typeof url === "string" &&
+            url.endsWith("/lessons") &&
+            method === "GET"
+          ) {
+            return new Promise(() => {});
+          }
+          return Promise.resolve(jsonResponse({}, 200));
+        },
+      );
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Edit Module" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+
+      const reopenedDialog = await screen.findByRole("dialog", {
+        name: "Edit Module",
+      });
+      const rows = within(reopenedDialog).getAllByTestId(/^list-item-/);
+      expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+        "list-item-lesson-2",
+        "list-item-lesson-1",
+      ]);
     });
 
     it("New Lesson switches into Lesson mode with a blank, id-less draft and makes no create request", async () => {
