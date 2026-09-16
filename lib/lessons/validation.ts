@@ -61,6 +61,7 @@ const CREATE_KEYS = [
   "type",
   "position",
   "reward",
+  "content",
   "duration",
   "videoURL",
   "azkar",
@@ -99,6 +100,9 @@ export function parseLessonCreateInput(
   const reward = parseReward(body.reward);
   if (!reward) return fail("`reward` must be a { coins: number } object.");
 
+  const content = parseTranslatableString(body.content);
+  if (!content) return fail("`content` must be a { ar, en } string pair.");
+
   if (!Number.isFinite(body.duration)) {
     return fail("`duration` must be a finite number.");
   }
@@ -130,6 +134,7 @@ export function parseLessonCreateInput(
     type: body.type as LessonWritableFields["type"],
     position: body.position as number,
     reward,
+    content,
     duration: body.duration as number,
     videoURL: body.videoURL,
     azkar,
@@ -190,6 +195,12 @@ export function parseLessonPatchInput(
     const reward = parseReward(body.reward);
     if (!reward) return fail("`reward` must be a { coins: number } object.");
     result.reward = reward;
+  }
+
+  if ("content" in body) {
+    const content = parseTranslatableString(body.content);
+    if (!content) return fail("`content` must be a { ar, en } string pair.");
+    result.content = content;
   }
 
   if ("duration" in body) {

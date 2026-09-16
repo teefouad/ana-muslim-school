@@ -879,10 +879,11 @@ describe("EditModuleModal", () => {
         type: "text",
         position: 2,
         isPublished: false,
-        reward: { coins: 0 },
-        duration: 0,
+        content: { ar: "", en: "" },
         videoURL: "",
+        duration: 0,
         azkar: [],
+        reward: { coins: 0 },
         questions: [],
         isLocked: false,
       });
@@ -1050,14 +1051,16 @@ describe("EditModuleModal", () => {
       await openLesson(dialog, "Introduction");
 
       expect(within(dialog).queryByText("Lessons")).not.toBeInTheDocument();
-      // The Module form's own "Description" field is gone -- only the
-      // Lesson's own "One-line description" remains.
-      expect(
-        within(dialog).queryByLabelText("Description"),
-      ).not.toBeInTheDocument();
-      expect(
-        within(dialog).getByLabelText("One-line description"),
-      ).toBeInTheDocument();
+      // Only one "Description" field remains, and it's the Lesson's own
+      // (ANA-118 renamed Lesson's field from "One-line description" to
+      // "Description", the same label the Module form's own field already
+      // used) -- the Module form's own field is gone, not layered behind/
+      // alongside it, so its own value ("وصف") is nowhere on the page.
+      expect(within(dialog).getAllByLabelText("Description")).toHaveLength(1);
+      expect(within(dialog).getByLabelText("Description")).toHaveValue(
+        "Short intro",
+      );
+      expect(within(dialog).queryByDisplayValue("وصف")).not.toBeInTheDocument();
       // Only the Lesson's own "Title" input remains -- the Module form's own
       // Title field is gone, not layered behind/alongside it.
       expect(within(dialog).getAllByLabelText("Title")).toHaveLength(1);
@@ -1136,7 +1139,7 @@ describe("EditModuleModal", () => {
       expect(form.getByDisplayValue("Prayer basics")).toBeInTheDocument();
     });
 
-    it("Save changes PATCHes only this Lesson's five visible fields (never the hidden ones), then returns to Module mode with the update reflected (ANA-116)", async () => {
+    it("Save changes PATCHes this Lesson's visible fields (never the still-hidden ones), then returns to Module mode with the update reflected (ANA-116/ANA-118)", async () => {
       const updated = {
         ...LESSONS[0],
         title: { ar: "Introduction, edited", en: "" },
@@ -1172,11 +1175,12 @@ describe("EditModuleModal", () => {
         type: "text",
         position: 0,
         isPublished: false,
+        content: { ar: "", en: "" },
+        videoURL: "",
+        duration: 0,
+        azkar: [],
       });
       expect(body).not.toHaveProperty("reward");
-      expect(body).not.toHaveProperty("duration");
-      expect(body).not.toHaveProperty("videoURL");
-      expect(body).not.toHaveProperty("azkar");
       expect(body).not.toHaveProperty("questions");
       expect(body).not.toHaveProperty("isLocked");
     });
@@ -1260,7 +1264,7 @@ describe("EditModuleModal", () => {
       ).toBeInTheDocument();
     });
 
-    it("Lesson One-line description exposes both Translate and AI Assistance", async () => {
+    it("Lesson Description exposes both Translate and AI Assistance", async () => {
       mockFetch({ lessons: LESSONS });
       renderModal();
 
@@ -1269,12 +1273,12 @@ describe("EditModuleModal", () => {
 
       expect(
         form.getByRole("button", {
-          name: "Translate One-line description with AI",
+          name: "Translate Description with AI",
         }),
       ).toBeInTheDocument();
       expect(
         form.getByRole("button", {
-          name: "AI Assistance for One-line description",
+          name: "AI Assistance for Description",
         }),
       ).toBeInTheDocument();
     });
@@ -1312,7 +1316,7 @@ describe("EditModuleModal", () => {
       });
     });
 
-    it("grounds Lesson One-line description's AI Assistance in the same live Module context", async () => {
+    it("grounds Lesson Description's AI Assistance in the same live Module context", async () => {
       mockFetch({ lessons: LESSONS, other: { data: { text: "اقتراح" } } });
       renderModal();
 
@@ -1320,7 +1324,7 @@ describe("EditModuleModal", () => {
       const form = within(await openLesson(dialog, "Introduction"));
       fireEvent.click(
         form.getByRole("button", {
-          name: "AI Assistance for One-line description",
+          name: "AI Assistance for Description",
         }),
       );
       const suggestDialog = await screen.findByRole("dialog", {

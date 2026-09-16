@@ -43,6 +43,10 @@ function parseLessonDocument(doc: DocumentSnapshot): Lesson | null {
       type: data.type,
       position: data.position,
       reward: data.reward,
+      // A Lesson written before ANA-118 has no `content` key at all --
+      // treated as empty content rather than breaking old records (see
+      // `Lesson.content`'s own doc in lib/lessons/types.ts).
+      content: data.content ?? { ar: "", en: "" },
       duration: data.duration,
       videoURL: data.videoURL,
       azkar: data.azkar,

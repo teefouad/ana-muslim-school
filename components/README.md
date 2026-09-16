@@ -92,7 +92,7 @@ contracts above, this one _is_ enforced by `FormField` itself, via the
 selection) source text and apply target are pinned to that language,
 overriding the default tab-following `activeSlug`, so running it from the
 English tab can never write the fixed language's output into `en` (see
-lesson-form.tsx's Title/One-line description wiring). Omit
+lesson-form.tsx's Title/Description wiring). Omit
 `aiAssistanceLanguage` for either of the two contracts above -- `FormField`
 otherwise stays language-agnostic, so which one applies is each caller's
 responsibility.

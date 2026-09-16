@@ -1,6 +1,13 @@
 "use client";
 
-import { SegmentedControl, Select, Stack, Text } from "@mantine/core";
+import {
+  NumberInput,
+  SegmentedControl,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
@@ -10,6 +17,7 @@ import {
   suggestLessonTitle,
 } from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
+import { LessonBreakConfig } from "./lesson-break-config";
 import type { LessonFieldsValues } from "./lesson-fields";
 
 const LESSON_TYPE_LABELS: Record<LessonType, string> = {
@@ -41,7 +49,7 @@ export interface LessonFormProps {
   /** The owning Module's own current Arabic Title/Description/Learning
    * Material (ANA-116) -- read directly from the Edit Module modal's own
    * state, including any unsaved edits, never a fresh reload. Grounds both
-   * Title's and One-line description's AI Assistance suggestions (never
+   * Title's and Description's AI Assistance suggestions (never
    * Translate with AI, which stays the plain, context-free conversion it
    * already was). */
   moduleTitle: string;
@@ -57,17 +65,81 @@ export interface LessonFormProps {
   onDescriptionBusyChange?: (busy: boolean) => void;
 }
 
-// The selected Lesson's basic-fields form (ANA-114), rendered by
-// lesson-editor.tsx once Edit switches Edit Module into Lesson mode
-// (ANA-115). Deliberately limited to Type/Title/One-line description/
-// Published/Position -- Configuration and the Questions section are a
-// later task (ANA-110). Title and One-line description reuse FormField's
-// existing translatable-field behavior: Translate with AI runs through the
-// same plain, context-free `translateArabicToEnglish` boundary Book's own
-// Title field already uses (book-form.tsx), while AI Assistance (ANA-116)
-// runs through `suggestLessonTitle`/`suggestLessonDescription`, grounded in
-// the owning Module's current Title/Description/Learning Material -- every
-// other edit here only ever calls `onChange`, no network request.
+// Renders the currently-selected Lesson type's own Configuration (ANA-118)
+// -- `content` (Text)/`videoURL`+`duration` (Video)/`azkar` (Break) are all
+// still kept in `value` regardless of `type` (see `LessonFieldsValues`'s own
+// doc), so switching types back and forth only ever changes what's shown
+// here, never what's held in the other types' fields. Quiz/Final/Skip
+// deliberately render nothing yet -- their question/reward configuration is
+// a dedicated follow-up task, explicitly out of scope here.
+function LessonTypeConfig({
+  value,
+  onChange,
+}: Pick<LessonFormProps, "value" | "onChange">) {
+  switch (value.type) {
+    case "text":
+      return (
+        <FormField
+          label="Content"
+          type="markdown"
+          translatable
+          value={value.content}
+          onChange={(content) => onChange({ content })}
+        />
+      );
+
+    case "video":
+      return (
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+          <TextInput
+            label="Video URL"
+            value={value.videoURL}
+            onChange={(event) =>
+              onChange({ videoURL: event.currentTarget.value })
+            }
+          />
+          <NumberInput
+            label="Duration"
+            min={0}
+            value={value.duration}
+            onChange={(duration) =>
+              onChange({
+                duration: typeof duration === "number" ? duration : 0,
+              })
+            }
+          />
+        </SimpleGrid>
+      );
+
+    case "break":
+      return (
+        <LessonBreakConfig
+          value={value.azkar}
+          onChange={(azkar) => onChange({ azkar })}
+        />
+      );
+
+    case "quiz":
+    case "final":
+    case "skip":
+      return null;
+  }
+}
+
+// The selected Lesson's fields form (ANA-114, expanded with type-specific
+// Configuration in ANA-118), rendered by lesson-editor.tsx once Edit
+// switches Edit Module into Lesson mode (ANA-115). Type/Position lead the
+// form as a shared responsive row (ANA-118) -- Type as a SegmentedControl
+// matching Position's own existing visual treatment, replacing the old
+// dropdown -- ahead of Title/Description, which reuse FormField's existing
+// translatable-field behavior: Translate with AI runs through the same
+// plain, context-free `translateArabicToEnglish` boundary Book's own Title
+// field already uses (book-form.tsx), while AI Assistance (ANA-116) runs
+// through `suggestLessonTitle`/`suggestLessonDescription`, grounded in the
+// owning Module's current Title/Description/Learning Material -- every
+// other edit here only ever calls `onChange`, no network request. The
+// Questions section (Quiz/Final/Skip's own reward/scoring configuration)
+// remains a later task.
 export function LessonForm({
   value,
   onChange,
@@ -79,16 +151,37 @@ export function LessonForm({
 }: LessonFormProps) {
   return (
     <Stack gap="lg" data-testid="lesson-form">
-      <Select
-        label="Type"
-        data={LESSON_TYPES.map((type) => ({
-          value: type,
-          label: LESSON_TYPE_LABELS[type],
-        }))}
-        value={value.type}
-        onChange={(type) => type && onChange({ type: type as LessonType })}
-        allowDeselect={false}
-      />
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Type
+          </Text>
+          <SegmentedControl<LessonType>
+            aria-label="Type"
+            data={LESSON_TYPES.map((type) => ({
+              value: type,
+              label: LESSON_TYPE_LABELS[type],
+            }))}
+            value={value.type}
+            onChange={(type) => onChange({ type })}
+          />
+        </Stack>
+
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Position
+          </Text>
+          <SegmentedControl<number>
+            aria-label="Position"
+            data={LESSON_POSITIONS.map((position) => ({
+              value: position,
+              label: String(position),
+            }))}
+            value={value.position}
+            onChange={(position) => onChange({ position })}
+          />
+        </Stack>
+      </SimpleGrid>
 
       <FormField
         label="Title"
@@ -118,7 +211,7 @@ export function LessonForm({
       />
 
       <FormField
-        label="One-line description"
+        label="Description"
         translatable
         value={value.description}
         onChange={(description) => onChange({ description })}
@@ -135,32 +228,18 @@ export function LessonForm({
           })
         }
         // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
-        // review) -- One-line description's own Suggest is equally
-        // Arabic-only.
+        // review) -- Description's own Suggest is equally Arabic-only.
         aiAssistanceLanguage="ar"
         onBusyChange={onDescriptionBusyChange}
       />
+
+      <LessonTypeConfig value={value} onChange={onChange} />
 
       <ToggleCard
         label="Published"
         checked={value.isPublished}
         onChange={(isPublished) => onChange({ isPublished })}
       />
-
-      <Stack gap={4}>
-        <Text size="sm" fw={500}>
-          Position
-        </Text>
-        <SegmentedControl<number>
-          aria-label="Position"
-          data={LESSON_POSITIONS.map((position) => ({
-            value: position,
-            label: String(position),
-          }))}
-          value={value.position}
-          onChange={(position) => onChange({ position })}
-        />
-      </Stack>
     </Stack>
   );
 }

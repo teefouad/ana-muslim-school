@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +19,10 @@ const VALUE: LessonFieldsValues = {
   type: "text",
   position: 2,
   isPublished: false,
+  content: {},
+  videoURL: "",
+  duration: 0,
+  azkar: [],
 };
 
 function renderForm(overrides: Partial<LessonFormProps> = {}) {
@@ -42,19 +47,26 @@ describe("LessonForm", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("renders exactly Type, Title, One-line description, Published, and Position -- no Configuration", () => {
+  it("renders Type and Position as segmented controls sharing a row, ahead of Title/Description", () => {
     renderForm();
 
-    expect(screen.getByRole("combobox", { name: "Type" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Title")).toBeInTheDocument();
-    expect(screen.getByLabelText("One-line description")).toBeInTheDocument();
+    const form = screen.getByTestId("lesson-form");
     expect(
-      screen.getByRole("switch", { name: "Published" }),
+      screen.getByRole("radiogroup", { name: "Type" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("radiogroup", { name: "Position" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/config/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Description")).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Published" }),
+    ).toBeInTheDocument();
+
+    // Type + Position come first, before Title/Description (ANA-118).
+    const text = form.textContent ?? "";
+    expect(text.indexOf("Type")).toBeLessThan(text.indexOf("Title"));
+    expect(text.indexOf("Position")).toBeLessThan(text.indexOf("Description"));
   });
 
   it("seeds every field from the given value", () => {
@@ -62,7 +74,9 @@ describe("LessonForm", () => {
       value: { ...VALUE, type: "video", isPublished: true, position: 4 },
     });
 
-    expect(screen.getByRole("combobox", { name: "Type" })).toHaveValue("Video");
+    expect(
+      screen.getByRole("radio", { name: "Video", checked: true }),
+    ).toBeInTheDocument();
     expect(screen.getByDisplayValue("المقدمة")).toBeInTheDocument();
     expect(screen.getByDisplayValue("وصف قصير")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Published" })).toBeChecked();
@@ -74,8 +88,7 @@ describe("LessonForm", () => {
   it("calls onChange with the updated Type, leaving other fields untouched", () => {
     const { onChange } = renderForm();
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Type" }));
-    fireEvent.click(screen.getByRole("option", { name: "Video" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Video" }));
 
     expect(onChange).toHaveBeenCalledWith({ type: "video" });
   });
@@ -92,16 +105,126 @@ describe("LessonForm", () => {
     });
   });
 
-  it("calls onChange with the updated One-line description", () => {
+  it("calls onChange with the updated Description", () => {
     const { onChange } = renderForm();
 
-    fireEvent.change(screen.getByLabelText("One-line description"), {
+    fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "وصف جديد" },
     });
 
     expect(onChange).toHaveBeenCalledWith({
       description: { ar: "وصف جديد", en: "" },
     });
+  });
+
+  describe("type-specific Configuration (ANA-118)", () => {
+    // Title/Description are plain text inputs (also role "textbox"); the
+    // Content field's own contenteditable Markdown editor -- the only one
+    // with a `contenteditable` attribute -- renders last, matching
+    // edit-module-modal.test.tsx's identical convention for Module Content.
+    function getContentEditable(): HTMLElement {
+      const textboxes = screen.getAllByRole("textbox");
+      return textboxes[textboxes.length - 1];
+    }
+
+    it("shows Text's translatable Markdown Content field and emits edits as Markdown", async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderForm({
+        value: { ...VALUE, type: "text", content: { ar: "مرحبا", en: "" } },
+      });
+
+      expect(screen.getByText("Content")).toBeInTheDocument();
+
+      const editable = getContentEditable();
+      await user.click(editable);
+      await user.type(editable, "!");
+
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith({
+          content: { ar: "مرحبا!", en: "" },
+        }),
+      );
+    });
+
+    it("seeds Text's Content field from the given value", async () => {
+      renderForm({
+        value: {
+          ...VALUE,
+          type: "text",
+          content: { ar: "مرحبا بالعالم", en: "" },
+        },
+      });
+
+      expect(await screen.findByText("مرحبا بالعالم")).toBeInTheDocument();
+    });
+
+    it("shows Video's Video URL and Duration fields, calling onChange with each", () => {
+      const { onChange } = renderForm({
+        value: { ...VALUE, type: "video" },
+      });
+
+      fireEvent.change(screen.getByLabelText("Video URL"), {
+        target: { value: "https://example.com/video.mp4" },
+      });
+      expect(onChange).toHaveBeenCalledWith({
+        videoURL: "https://example.com/video.mp4",
+      });
+
+      fireEvent.change(screen.getByLabelText("Duration"), {
+        target: { value: "90" },
+      });
+      expect(onChange).toHaveBeenCalledWith({ duration: 90 });
+    });
+
+    it("seeds Video's Video URL and Duration from the given value", () => {
+      renderForm({
+        value: {
+          ...VALUE,
+          type: "video",
+          videoURL: "https://example.com/video.mp4",
+          duration: 120,
+        },
+      });
+
+      expect(
+        screen.getByDisplayValue("https://example.com/video.mp4"),
+      ).toBeInTheDocument();
+      expect(screen.getByDisplayValue("120")).toBeInTheDocument();
+    });
+
+    it("shows Break's sortable Break entries configuration, calling onChange with the updated azkar", () => {
+      const { onChange } = renderForm({
+        value: {
+          ...VALUE,
+          type: "break",
+          azkar: [
+            { id: "entry-1", text: { ar: "سبحان الله", en: "" }, repeat: 1 },
+          ],
+        },
+      });
+
+      expect(screen.getByDisplayValue("سبحان الله")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
+      expect(onChange).toHaveBeenCalledWith({
+        azkar: [
+          { id: "entry-1", text: { ar: "سبحان الله", en: "" }, repeat: 1 },
+          expect.objectContaining({ text: { ar: "", en: "" }, repeat: 1 }),
+        ],
+      });
+    });
+
+    it.each(["quiz", "final", "skip"] as const)(
+      "shows no configuration UI for the %s type",
+      (type) => {
+        renderForm({ value: { ...VALUE, type } });
+
+        expect(screen.queryByText("Content")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Video URL")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Duration")).not.toBeInTheDocument();
+        expect(screen.queryByText(/break entries/i)).not.toBeInTheDocument();
+      },
+    );
   });
 
   it("calls onChange with Published toggled", () => {
@@ -173,7 +296,7 @@ describe("LessonForm", () => {
     );
   });
 
-  it("reports One-line description's own Translate busy state through onDescriptionBusyChange", async () => {
+  it("reports Description's own Translate busy state through onDescriptionBusyChange", async () => {
     let resolveTranslate: (value: Response) => void = () => {};
     (fetch as ReturnType<typeof vi.fn>).mockImplementation(
       () => new Promise((resolve) => (resolveTranslate = resolve)),
@@ -183,7 +306,7 @@ describe("LessonForm", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Translate One-line description with AI",
+        name: "Translate Description with AI",
       }),
     );
 
@@ -214,7 +337,7 @@ describe("LessonForm", () => {
       return JSON.parse(init.body as string) as Record<string, unknown>;
     }
 
-    it("exposes AI Assistance for both Title and One-line description", () => {
+    it("exposes AI Assistance for both Title and Description", () => {
       renderForm();
 
       expect(
@@ -222,7 +345,7 @@ describe("LessonForm", () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole("button", {
-          name: "AI Assistance for One-line description",
+          name: "AI Assistance for Description",
         }),
       ).toBeInTheDocument();
     });
@@ -260,7 +383,7 @@ describe("LessonForm", () => {
       );
     });
 
-    it("sends the current Module Title/Description/Content as context for One-line description's AI Assistance, applying the result to Description only", async () => {
+    it("sends the current Module Title/Description/Content as context for Description's AI Assistance, applying the result to Description only", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "وصف مقترح" } }),
       );
@@ -268,7 +391,7 @@ describe("LessonForm", () => {
 
       fireEvent.click(
         screen.getByRole("button", {
-          name: "AI Assistance for One-line description",
+          name: "AI Assistance for Description",
         }),
       );
       const dialog = await screen.findByRole("dialog", {
@@ -328,7 +451,7 @@ describe("LessonForm", () => {
       });
     });
 
-    it("writes One-line description's Suggest result to Arabic even when the English tab is active, without touching English (ANA-116 PR review)", async () => {
+    it("writes Description's Suggest result to Arabic even when the English tab is active, without touching English (ANA-116 PR review)", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "وصف مقترح" } }),
       );
@@ -343,7 +466,7 @@ describe("LessonForm", () => {
 
       fireEvent.click(
         screen.getByRole("button", {
-          name: "AI Assistance for One-line description",
+          name: "AI Assistance for Description",
         }),
       );
       const dialog = await screen.findByRole("dialog", {

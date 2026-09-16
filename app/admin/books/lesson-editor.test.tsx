@@ -117,6 +117,10 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
           type: "text",
           position: 0,
           isPublished: false,
+          content: { ar: "", en: "" },
+          videoURL: "",
+          duration: 0,
+          azkar: [],
         }),
       );
       expect(onCreate).not.toHaveBeenCalled();
@@ -148,9 +152,9 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
     it("seeds every field blank/default", () => {
       renderNewLessonEditor();
 
-      expect(screen.getByRole("combobox", { name: "Type" })).toHaveValue(
-        "Text",
-      );
+      expect(
+        screen.getByRole("radio", { name: "Text", checked: true }),
+      ).toBeInTheDocument();
       expect(screen.getByLabelText("Title")).toHaveValue("");
       expect(
         screen.getByRole("switch", { name: "Published" }),
@@ -194,6 +198,10 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
           type: "text",
           position: 2,
           isPublished: false,
+          content: {},
+          videoURL: "",
+          duration: 0,
+          azkar: [],
         }),
       );
       expect(onCreate).toHaveBeenCalledTimes(1);
@@ -318,7 +326,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
   });
 
   describe("AI Suggest for Title/Description (ANA-116)", () => {
-    it("exposes both Translate and AI Assistance for Title and One-line description", () => {
+    it("exposes both Translate and AI Assistance for Title and Description", () => {
       renderEditor();
 
       expect(
@@ -329,12 +337,12 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       ).toBeInTheDocument();
       expect(
         screen.getByRole("button", {
-          name: "Translate One-line description with AI",
+          name: "Translate Description with AI",
         }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole("button", {
-          name: "AI Assistance for One-line description",
+          name: "AI Assistance for Description",
         }),
       ).toBeInTheDocument();
     });
@@ -414,6 +422,45 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
           screen.getByRole("button", { name: "Save changes" }),
         ).not.toBeDisabled(),
       );
+    });
+  });
+
+  describe("switching Lesson types preserves unsaved configuration (ANA-118)", () => {
+    it("keeps a Video Lesson's Video URL/Duration after switching away to Break and back", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Video" }));
+      fireEvent.change(screen.getByLabelText("Video URL"), {
+        target: { value: "https://example.com/video.mp4" },
+      });
+      fireEvent.change(screen.getByLabelText("Duration"), {
+        target: { value: "42" },
+      });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Break" }));
+      expect(screen.queryByLabelText("Video URL")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Video" }));
+      expect(
+        screen.getByDisplayValue("https://example.com/video.mp4"),
+      ).toBeInTheDocument();
+      expect(screen.getByDisplayValue("42")).toBeInTheDocument();
+    });
+
+    it("keeps a Break Lesson's entries after switching away to Video and back", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Break" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
+      fireEvent.change(screen.getByLabelText("Text 1"), {
+        target: { value: "سبحان الله" },
+      });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Video" }));
+      expect(screen.queryByText(/break entries/i)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Break" }));
+      expect(screen.getByDisplayValue("سبحان الله")).toBeInTheDocument();
     });
   });
 });
