@@ -18,8 +18,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { buildBookFixture } from "../../book-fixtures";
+import { buildLessonFixture } from "../../lesson-fixtures";
 import EditBookPage from "./page";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
+import type { Lesson } from "@/lib/lessons/types";
 import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 
@@ -69,6 +71,10 @@ function setupFetch(
   options: {
     bookStatus?: number;
     modules?: Module[];
+    /** Seeds the Edit Module modal's own Lessons list load (ANA-117) --
+     * every fixture here is served for whichever `moduleId` the modal
+     * requests, since these tests only ever open one Module at a time. */
+    lessons?: Lesson[];
     materials?: Material[];
     /** Simulates a failed Materials lookup (ANA-94 PR review) -- e.g. 500. */
     materialsStatus?: number;
@@ -90,6 +96,7 @@ function setupFetch(
   const {
     bookStatus = 200,
     modules = [],
+    lessons = [],
     materials = [],
     materialsStatus = 200,
     hasSource = false,
@@ -146,6 +153,13 @@ function setupFetch(
           JSON.parse(init?.body as string),
         );
         return Promise.resolve(jsonResponse(body, status));
+      }
+
+      const lessonsMatch =
+        /^\/api\/v1\/books\/book-1\/modules\/(.+)\/lessons$/.exec(url);
+
+      if (method === "GET" && lessonsMatch) {
+        return Promise.resolve(jsonResponse({ data: lessons }));
       }
 
       const moduleMatch = /^\/api\/v1\/books\/book-1\/modules\/(.+)$/.exec(url);
@@ -1738,9 +1752,14 @@ describe("EditBookPage", () => {
             screen.queryByRole("dialog", { name: "Edit Module" }),
           ).not.toBeInTheDocument(),
         );
-        expect(patchBody).toMatchObject({ title: { ar: "المقدمة", en: "" } });
+        // isPublished is now sent as entered (ANA-117 gave the modal its
+        // own Published toggle) -- this Module's seeded value, `false`,
+        // untouched in this test.
+        expect(patchBody).toMatchObject({
+          title: { ar: "المقدمة", en: "" },
+          isPublished: false,
+        });
         expect(patchBody).not.toHaveProperty("isLocked");
-        expect(patchBody).not.toHaveProperty("isPublished");
         expect(patchBody).not.toHaveProperty("content");
         await vi.waitFor(() =>
           expect(createMaterialBody).toMatchObject({
@@ -1749,6 +1768,166 @@ describe("EditBookPage", () => {
             content: { ar: "", en: "" },
           }),
         );
+      });
+
+      it("includes a toggled Published value in the Module PATCH", async () => {
+        let patchBody: unknown = null;
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          onUpdateModule: (moduleId, body) => {
+            patchBody = body;
+            return {
+              status: 200,
+              body: { data: buildModuleFixture({ id: moduleId }) },
+            };
+          },
+          onCreateMaterial: () => ({
+            status: 201,
+            body: { data: buildMaterialFixture({ id: "material-1" }) },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("switch", { name: "Published" }),
+        );
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        await vi.waitFor(() =>
+          expect(patchBody).toMatchObject({ isPublished: true }),
+        );
+      });
+
+      it("persists a completed Lesson reorder in the same Module PATCH as `lessons` (ANA-117)", async () => {
+        let patchBody: unknown = null;
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: [
+            buildLessonFixture({
+              id: "lesson-1",
+              title: { ar: "Introduction", en: "" },
+            }),
+            buildLessonFixture({
+              id: "lesson-2",
+              title: { ar: "Prayer basics", en: "" },
+              position: 1,
+            }),
+          ],
+          onUpdateModule: (moduleId, body) => {
+            patchBody = body;
+            return {
+              status: 200,
+              body: { data: buildModuleFixture({ id: moduleId }) },
+            };
+          },
+          onCreateMaterial: () => ({
+            status: 201,
+            body: { data: buildMaterialFixture({ id: "material-1" }) },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        await within(dialog).findByText("Introduction");
+
+        // Same keyboard-drag technique as the Modules reorder tests above
+        // (dnd-kit's keyboard coordinate math needs real-ish rects, keyed
+        // by ItemList's own testid scheme) -- swaps lesson-1/lesson-2.
+        const order = ["lesson-1", "lesson-2"];
+        const rectSpy = vi
+          .spyOn(Element.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: Element) {
+            const container = this.closest('[data-testid^="list-item-"]');
+            const id = container
+              ?.getAttribute("data-testid")
+              ?.replace("list-item-", "");
+            const index = id ? order.indexOf(id) : -1;
+            const top = index === -1 ? 0 : index * 60;
+            return {
+              top,
+              bottom: top + 60,
+              left: 0,
+              right: 300,
+              width: 300,
+              height: 60,
+              x: 0,
+              y: top,
+              toJSON() {},
+            } as DOMRect;
+          });
+
+        const grip = within(dialog)
+          .getByTestId("list-item-lesson-2")
+          .querySelector("[aria-hidden='true']") as HTMLElement;
+        grip.focus();
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+        fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+        rectSpy.mockRestore();
+
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        await vi.waitFor(() =>
+          expect(patchBody).toMatchObject({
+            lessons: ["lesson-2", "lesson-1"],
+          }),
+        );
+      });
+
+      it("leaves `lessons` out of the Module PATCH when no reorder happened, preserving the current Lesson order", async () => {
+        let patchBody: Record<string, unknown> | null = null;
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+          lessons: [buildLessonFixture({ id: "lesson-1" })],
+          onUpdateModule: (moduleId, body) => {
+            patchBody = body as Record<string, unknown>;
+            return {
+              status: 200,
+              body: { data: buildModuleFixture({ id: moduleId }) },
+            };
+          },
+          onCreateMaterial: () => ({
+            status: 201,
+            body: { data: buildMaterialFixture({ id: "material-1" }) },
+          }),
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        await vi.waitFor(() => expect(patchBody).not.toBeNull());
+        expect(patchBody).not.toHaveProperty("lessons");
       });
 
       it("PATCHes the existing Material's content when the Module already has one, instead of creating a second one", async () => {

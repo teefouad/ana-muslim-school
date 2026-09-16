@@ -15,6 +15,7 @@ import {
 
 import { ColorField } from "@/components/ui/color-field";
 import { FormField } from "@/components/ui/form-field";
+import { ToggleCard } from "@/components/ui/toggle-card";
 import type { TranslatedValue } from "@/components/ui/translatable-value";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
@@ -48,6 +49,16 @@ function errorMessage(err: unknown): string {
 }
 
 const LESSONS_SKELETON_ROW_COUNT = 3;
+
+/** Fixed at the `md`+ breakpoint only (ANA-117) -- Module mode's editor +
+ * Lessons list and Lesson mode's own editor render this same height
+ * regardless of which is taller, so switching between them never resizes
+ * the modal itself; content taller than this scrolls internally instead
+ * (each mode's own wrapper below sets `overflowY: "auto"`). Left at `auto`
+ * below `md`, where the two columns already stack instead of sitting side
+ * by side -- constraining height there would fight that stacked layout's
+ * own natural scroll instead of stabilizing anything. */
+const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 640 } as const;
 
 // Approximates LessonsPanel/ItemList's own card chrome (ANA-116) --
 // mirrors `[id]/edit/page.tsx`'s `ModulesPanelSkeleton`, sized for this
@@ -133,8 +144,16 @@ export interface EditModuleModalProps {
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the modal's current field values when Save changes is
    * clicked in edit mode. Same awaited resolve/reject contract as
-   * `onCreate`. */
-  onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+   * `onCreate`. `lessonsOrder` (ANA-117) is this Module's current Lesson
+   * display order -- a pending drag-and-drop reorder as its exact id list,
+   * or `null` when the Lessons list was never reordered this session, in
+   * which case the caller must leave the Module's persisted Lesson order
+   * untouched rather than resend the order it happened to load with. */
+  onSave: (
+    id: string,
+    fields: ModuleFieldsValues,
+    lessonsOrder: string[] | null,
+  ) => Promise<void>;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
@@ -194,7 +213,11 @@ function EditModuleModalBody({
   book: Book;
   onClose: () => void;
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
-  onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+  onSave: (
+    id: string,
+    fields: ModuleFieldsValues,
+    lessonsOrder: string[] | null,
+  ) => Promise<void>;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -207,6 +230,7 @@ function EditModuleModalBody({
   const [content, setContent] = useState<TranslatedValue>(
     initialFields.content,
   );
+  const [isPublished, setIsPublished] = useState(initialFields.isPublished);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -243,8 +267,11 @@ function EditModuleModalBody({
 
   // A pending drag-and-drop reorder, not yet persisted -- mirrors
   // `[id]/edit/page.tsx`'s own `moduleOrderDraft` for `Book.modules`.
-  // Neither ANA-115 nor this task persists a Lesson reorder; dragging stays
-  // a local display-order draft only.
+  // Dragging only ever updates this local draft; it's persisted, alongside
+  // this Module's other fields, through the existing Module PATCH when Save
+  // changes is clicked (ANA-117) -- see `handlePrimaryAction` below and
+  // `handleSaveModule` in `[id]/edit/page.tsx`, never a separate reorder
+  // request of its own.
   const [lessonOrderDraft, setLessonOrderDraft] = useState<string[] | null>(
     null,
   );
@@ -389,12 +416,18 @@ function EditModuleModalBody({
     setIsSaving(true);
 
     try {
-      const fields: ModuleFieldsValues = { title, description, color, content };
+      const fields: ModuleFieldsValues = {
+        title,
+        description,
+        color,
+        content,
+        isPublished,
+      };
 
       if (state.mode === "create") {
         await onCreate(fields);
       } else {
-        await onSave(state.id, fields);
+        await onSave(state.id, fields, lessonOrderDraft);
       }
 
       onClose();
@@ -405,7 +438,11 @@ function EditModuleModalBody({
     }
   }
 
-  const moduleForm = (
+  // Split from the footer below (ANA-117) so edit mode can pin Cancel/Save
+  // outside the fixed-height, internally-scrollable region created further
+  // down -- the footer must stay visible without scrolling, not be content
+  // that can scroll out of view along with the fields above it.
+  const moduleFormFields = (
     <Stack gap="lg">
       {/* Title (ANA-98/ANA-99): AI Assistance and Translate with AI are both
           grounded in this Module's own Arabic Learning Material plus the
@@ -540,50 +577,75 @@ function EditModuleModalBody({
 
       <ColorField value={color} onChange={setColor} />
 
+      {/* Published (ANA-117): reflects and edits this Module's own
+          persisted `isPublished` -- included in both create and update
+          Module persistence (module-fields.ts), same as Book's own
+          Published toggle (book-form.tsx). */}
+      <ToggleCard
+        label="Published"
+        checked={isPublished}
+        onChange={setIsPublished}
+      />
+
       {saveError && (
         <Alert color="red" role="alert">
           {saveError}
         </Alert>
       )}
-
-      <Group justify="flex-end" gap="sm">
-        <Button variant="default" onClick={onClose} disabled={isSaving}>
-          Cancel
-        </Button>
-        <Button
-          onClick={() => void handlePrimaryAction()}
-          loading={isSaving}
-          disabled={aiBusy}
-        >
-          {state.mode === "create" ? "Save Module" : "Save changes"}
-        </Button>
-      </Group>
     </Stack>
+  );
+
+  const moduleFormFooter = (
+    <Group justify="flex-end" gap="sm">
+      <Button variant="default" onClick={onClose} disabled={isSaving}>
+        Cancel
+      </Button>
+      <Button
+        onClick={() => void handlePrimaryAction()}
+        loading={isSaving}
+        disabled={aiBusy}
+      >
+        {state.mode === "create" ? "Save Module" : "Save changes"}
+      </Button>
+    </Group>
   );
 
   // Create mode keeps its existing single-column layout unchanged. Edit
   // mode shows either the Module editor + Lessons list (Module mode) or
   // the open Lesson's own editor (Lesson mode, ANA-115) -- never both; the
   // three-column layout from ANA-111/ANA-114 is removed. `align="stretch"`
-  // matches the two Module-mode columns to the form's own natural height,
-  // the same pattern the Edit Book page already uses for its own
-  // BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`).
+  // matches the two Module-mode columns to the shared `EDIT_MODE_CONTENT_
+  // HEIGHT` below, the same pattern the Edit Book page already uses for its
+  // own BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`). Both
+  // modes are pinned to that same fixed height (ANA-117) so switching
+  // between them never grows/shrinks the modal itself -- only the fields
+  // area scrolls internally when its content is taller (`overflowY:
+  // "auto"`); the footer (Module mode's Cancel/Save, Lesson mode's own Save
+  // via `LessonEditor`'s internal layout) stays pinned outside that scroll
+  // region, never itself scrolled out of view.
   if (state.mode === "create") {
-    return moduleForm;
+    return (
+      <Stack gap="lg">
+        {moduleFormFields}
+        {moduleFormFooter}
+      </Stack>
+    );
   }
 
   if (lessonEditorTarget) {
     return (
-      <LessonEditor
-        key={openLesson?.id ?? "new"}
-        lesson={openLesson}
-        moduleTitle={title.ar ?? ""}
-        moduleDescription={description.ar ?? ""}
-        moduleContent={content.ar ?? ""}
-        onCreate={handleCreateLesson}
-        onUpdate={handleUpdateLesson}
-        onBack={() => setLessonEditorTarget(null)}
-      />
+      <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
+        <LessonEditor
+          key={openLesson?.id ?? "new"}
+          lesson={openLesson}
+          moduleTitle={title.ar ?? ""}
+          moduleDescription={description.ar ?? ""}
+          moduleContent={content.ar ?? ""}
+          onCreate={handleCreateLesson}
+          onUpdate={handleUpdateLesson}
+          onBack={() => setLessonEditorTarget(null)}
+        />
+      </Box>
     );
   }
 
@@ -598,25 +660,33 @@ function EditModuleModalBody({
   );
 
   return (
-    <Flex gap="lg" direction={{ base: "column", md: "row" }} align="stretch">
-      <Box style={{ flex: 1, minWidth: 0 }}>{moduleForm}</Box>
-      <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
-        {lessonsLoading ? (
-          <LessonsPanelSkeleton />
-        ) : lessonsError ? (
-          // Non-blocking: a failed Lessons refresh never hides the panel
-          // (whatever it last successfully showed, including a just-
-          // written Lesson applied via `mutateLessons` above) behind an
-          // error state -- it must never be presented as though the write
-          // itself failed (ANA-116).
-          <Stack gap="xs" style={{ height: "100%" }}>
-            <Alert color="red">{lessonsError.message}</Alert>
-            <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
-          </Stack>
-        ) : (
-          lessonsPanel
-        )}
-      </Box>
-    </Flex>
+    <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
+      <Flex
+        gap="lg"
+        direction={{ base: "column", md: "row" }}
+        align="stretch"
+        style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+      >
+        <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
+        <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
+          {lessonsLoading ? (
+            <LessonsPanelSkeleton />
+          ) : lessonsError ? (
+            // Non-blocking: a failed Lessons refresh never hides the panel
+            // (whatever it last successfully showed, including a just-
+            // written Lesson applied via `mutateLessons` above) behind an
+            // error state -- it must never be presented as though the
+            // write itself failed (ANA-116).
+            <Stack gap="xs" style={{ height: "100%" }}>
+              <Alert color="red">{lessonsError.message}</Alert>
+              <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
+            </Stack>
+          ) : (
+            lessonsPanel
+          )}
+        </Box>
+      </Flex>
+      {moduleFormFooter}
+    </Stack>
   );
 }

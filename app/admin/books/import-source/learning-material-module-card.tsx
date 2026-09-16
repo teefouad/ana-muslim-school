@@ -502,6 +502,9 @@ export function LearningMaterialModuleCard({
         <ActionIconButton
           className={styles.headerAction}
           aria-label="AI Assistant"
+          // Shares the one Suggest/AI Assistance color used everywhere else
+          // in the admin (ANA-117, see components/ui/form-field.tsx).
+          color="#eca2ff"
           disabled={isAiAssistDisabled}
           loading={isGenerating}
           onClick={handleAiAssistClick}
@@ -512,6 +515,9 @@ export function LearningMaterialModuleCard({
           <ActionIconButton
             className={styles.headerAction}
             aria-label="Translate to English"
+            // Shares the one Translate color used everywhere else in the
+            // admin (ANA-117, see components/ui/form-field.tsx).
+            color="#87caff"
             disabled={isTranslateDisabled}
             loading={isTranslating}
             onClick={handleTranslateClick}

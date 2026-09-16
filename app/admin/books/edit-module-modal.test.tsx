@@ -141,6 +141,33 @@ function getContentEditable(dialog: HTMLElement): HTMLElement {
   return textboxes[textboxes.length - 1];
 }
 
+// dnd-kit's collision detection/keyboard coordinate getter is driven by real
+// element geometry, which jsdom always reports as a zeroed-out rect --
+// ported from lessons-panel.test.tsx's identical helper (ANA-117).
+function stubItemRects(order: string[], itemHeight = 60) {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const container = this.closest('[data-testid^="list-item-"]');
+      const id = container
+        ?.getAttribute("data-testid")
+        ?.replace("list-item-", "");
+      const index = id ? order.indexOf(id) : -1;
+      const top = index === -1 ? 0 : index * itemHeight;
+      return {
+        top,
+        bottom: top + itemHeight,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: itemHeight,
+        x: 0,
+        y: top,
+        toJSON() {},
+      } as DOMRect;
+    },
+  );
+}
+
 const BOOK: Book = {
   id: "book-1",
   title: { ar: "عنوان الكتاب", en: "Book Title" },
@@ -162,6 +189,7 @@ const EDIT_FIELDS = {
   description: { ar: "وصف", en: "" },
   color: "cyan.6",
   content: { ar: "محتوى", en: "" },
+  isPublished: false,
 };
 
 function renderModal(overrides: Partial<EditModuleModalProps> = {}) {
@@ -289,6 +317,9 @@ describe("EditModuleModal", () => {
         expect(onSave).toHaveBeenCalledWith(
           "module-1",
           expect.objectContaining({ title: { ar: "عنوان جديد", en: "" } }),
+          // No Lesson drag happened this session -- `lessonsOrder` is
+          // `null` (ANA-117), never the load order resent as if reordered.
+          null,
         ),
       );
       await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -335,6 +366,62 @@ describe("EditModuleModal", () => {
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       expect(within(dialog).getByLabelText("Title")).toHaveValue("");
+    });
+  });
+
+  describe("Published toggle (ANA-117)", () => {
+    it("seeds Published from the Module's own current isPublished", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: { ...EDIT_FIELDS, isPublished: true },
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).toBeChecked();
+    });
+
+    it("includes the toggled Published value in the Module save", async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderModal({ onSave });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).not.toBeChecked();
+      fireEvent.click(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      );
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith(
+          "module-1",
+          expect.objectContaining({ isPublished: true }),
+          null,
+        ),
+      );
+    });
+
+    it("defaults a brand-new Module's Published to off", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-new",
+          fields: createEmptyModuleFieldsValues(),
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).not.toBeChecked();
     });
   });
 
@@ -570,6 +657,36 @@ describe("EditModuleModal", () => {
 
       expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
         callsBefore,
+      );
+    });
+
+    it("persists a completed Lesson reorder as `lessonsOrder` when the Module is saved (ANA-117)", async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onSave });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      stubItemRects(["lesson-1", "lesson-2"]);
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      await within(dialog).findByTestId("list-item-lesson-2");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith("module-1", expect.anything(), [
+          "lesson-2",
+          "lesson-1",
+        ]),
       );
     });
 
@@ -1352,6 +1469,7 @@ describe("EditModuleModal", () => {
           expect.objectContaining({
             title: expect.objectContaining({ en: "Introduction" }),
           }),
+          null,
         ),
       );
     });

@@ -9,6 +9,7 @@ const FILLED_FIELDS = {
   description: { ar: "وصف مختصر للوحدة", en: "A short module description" },
   color: "cyan.6",
   content: { ar: "# محتوى\nنص تجريبي", en: "# Content\nSample text" },
+  isPublished: false,
 };
 
 const BOOK: Book = {

@@ -16,6 +16,9 @@ export interface ModuleFieldsValues {
   description: TranslatedValue;
   color: string;
   content: TranslatedValue;
+  /** The modal's Published toggle (ANA-117) -- `isLocked` still has no UI
+   * here, so it's left out of this shape entirely, unlike `isPublished`. */
+  isPublished: boolean;
 }
 
 export function createEmptyModuleFieldsValues(): ModuleFieldsValues {
@@ -24,6 +27,7 @@ export function createEmptyModuleFieldsValues(): ModuleFieldsValues {
     description: {},
     color: DEFAULT_APPLICATION_COLOR,
     content: {},
+    isPublished: false,
   };
 }
 
@@ -40,6 +44,7 @@ export function toModuleFieldsValues(
     description: module.description,
     color: module.color,
     content,
+    isPublished: module.isPublished,
   };
 }
 
@@ -59,11 +64,12 @@ export function toTranslatableString(
  * modal's fields. `content` is deliberately excluded -- it isn't a Module
  * field at all (see `ModuleFieldsValues` above); the caller persists it
  * separately as this Module's Learning Material via `createMaterial`, once
- * the Module itself exists and its real id is known. `isLocked`/
- * `isPublished` are required by that endpoint but this modal has no UI for
- * either, so they always default to `false` for a newly-created Module,
- * matching the Book form's own `DEFAULT_COLOR`-style default-on-create
- * convention. */
+ * the Module itself exists and its real id is known. `isLocked` is required
+ * by that endpoint but this modal still has no UI for it, so it always
+ * defaults to `false` for a newly-created Module, matching the Book form's
+ * own `DEFAULT_COLOR`-style default-on-create convention. `isPublished`
+ * (ANA-117) does have UI here now, so it's sent as entered rather than
+ * defaulted. */
 export function toModuleCreateFields(
   fields: ModuleFieldsValues,
 ): ModuleWritableFields {
@@ -72,17 +78,21 @@ export function toModuleCreateFields(
     description: toTranslatableString(fields.description),
     color: fields.color,
     isLocked: false,
-    isPublished: false,
+    isPublished: fields.isPublished,
   };
 }
 
-/** Builds a `PATCH /api/v1/books/{bookId}/modules/{moduleId}` body (ANA-94)
- * from the modal's fields -- deliberately omits `isLocked`/`isPublished`
- * (that endpoint leaves an omitted field unchanged) since this modal has no
- * UI for either; sending `false` unconditionally here would silently
- * clobber a value set some other way. `content` is excluded here too, for
- * the same reason as `toModuleCreateFields` -- the caller persists it
- * separately via `createMaterial`/`updateMaterial`. */
+/** Builds a `PATCH /api/v1/books/{bookId}/modules/{moduleId}` body (ANA-94,
+ * `isPublished` added in ANA-117) from the modal's fields -- deliberately
+ * omits `isLocked` (that endpoint leaves an omitted field unchanged) since
+ * this modal still has no UI for it; sending `false` unconditionally here
+ * would silently clobber a value set some other way. `content` is excluded
+ * here too, for the same reason as `toModuleCreateFields` -- the caller
+ * persists it separately via `createMaterial`/`updateMaterial`. `lessons`
+ * (a reordered Lesson id list, ANA-117) is deliberately not built here --
+ * it isn't one of this modal's own fields, so the caller
+ * (`[id]/edit/page.tsx`'s `handleSaveModule`) merges it into the PATCH body
+ * itself only when a reorder is actually pending. */
 export function toModulePatchFields(
   fields: ModuleFieldsValues,
 ): Partial<ModuleWritableFields> {
@@ -90,6 +100,7 @@ export function toModulePatchFields(
     title: toTranslatableString(fields.title),
     description: toTranslatableString(fields.description),
     color: fields.color,
+    isPublished: fields.isPublished,
   };
 }
 
