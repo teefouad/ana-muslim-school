@@ -5,7 +5,10 @@ import { ArrowLeft } from "lucide-react";
 import { Alert, Button, Stack } from "@mantine/core";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { TranslatedValue } from "@/components/ui/translatable-value";
+import {
+  isSameTranslatedValue,
+  type TranslatedValue,
+} from "@/components/ui/translatable-value";
 import type { Lesson } from "@/lib/lessons/types";
 import { LessonForm } from "./lesson-form";
 import {
@@ -13,10 +16,6 @@ import {
   toLessonFieldsValues,
   type LessonFieldsValues,
 } from "./lesson-fields";
-
-function isSameTranslatedValue(a: TranslatedValue, b: TranslatedValue) {
-  return (a.ar ?? "") === (b.ar ?? "") && (a.en ?? "") === (b.en ?? "");
-}
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";

@@ -1994,4 +1994,111 @@ describe("EditModuleModal", () => {
       expect(lastRequestBody()).not.toHaveProperty("additionalInstructions");
     });
   });
+
+  describe("Dirty state and close guard (PR review)", () => {
+    it("closes immediately, without confirmation, when nothing has changed", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks Cancel once a field has been edited, offering Discard changes / Keep editing", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "عنوان جديد" },
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(
+        await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Your changes have not been saved and will be lost."),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(within(dialog).getByLabelText("Title")).toHaveValue("عنوان جديد");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks Cancel once Lessons have been reordered but not saved (PR review regression)", async () => {
+      mockFetch({
+        lessons: [
+          buildLessonFixture({
+            id: "lesson-1",
+            title: { ar: "Introduction", en: "" },
+          }),
+          buildLessonFixture({
+            id: "lesson-2",
+            title: { ar: "Prayer basics", en: "" },
+            position: 1,
+          }),
+        ],
+      });
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      stubItemRects(["lesson-1", "lesson-2"]);
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await within(dialog).findByTestId("list-item-lesson-2");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(
+        await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks every other way of dismissing the modal (X button/Escape/backdrop, funneled through Mantine's own onClose) the same way as Cancel", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "عنوان جديد" },
+      });
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
 });

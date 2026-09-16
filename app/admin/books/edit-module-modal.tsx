@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import useSWR from "swr";
 import {
   Alert,
@@ -15,9 +15,13 @@ import {
 } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
-import type { TranslatedValue } from "@/components/ui/translatable-value";
+import {
+  isSameTranslatedValue,
+  type TranslatedValue,
+} from "@/components/ui/translatable-value";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import type { Lesson } from "@/lib/lessons/types";
@@ -170,10 +174,23 @@ export function EditModuleModal({
   onCreate,
   onSave,
 }: EditModuleModalProps) {
+  // Bridges every way Mantine's Modal can be dismissed (X button, Escape,
+  // backdrop click -- all three funnel into this one `onClose` prop) through
+  // whichever unsaved-changes guard `EditModuleModalBody` currently owns,
+  // since only it tracks the fields'/Lesson-reorder draft's dirty state
+  // (PR review: reorder Lessons, dismiss without saving -- no warning).
+  // Same "funnel every dismiss path through one guard" precedent as Module
+  // Builder's own `handleClose` (import-source-modal.tsx). Kept in sync via
+  // an effect in the body below rather than called directly during render,
+  // so Mantine's own Modal (which only ever invokes this while `state !==
+  // null`, i.e. while a body is mounted to have already synced it) never
+  // observes a stale guard.
+  const requestCloseRef = useRef(onClose);
+
   return (
     <Modal
       opened={state !== null}
-      onClose={onClose}
+      onClose={() => requestCloseRef.current()}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
       // Edit mode's own fixed 900px width (ANA-115 PR review) -- the same
       // for both Module mode (Module editor + Lessons list) and Lesson
@@ -197,6 +214,7 @@ export function EditModuleModal({
           onClose={onClose}
           onCreate={onCreate}
           onSave={onSave}
+          requestCloseRef={requestCloseRef}
         />
       )}
     </Modal>
@@ -209,6 +227,7 @@ function EditModuleModalBody({
   onClose,
   onCreate,
   onSave,
+  requestCloseRef,
 }: {
   state: EditModuleModalState;
   book: Book;
@@ -219,6 +238,7 @@ function EditModuleModalBody({
     fields: ModuleFieldsValues,
     lessonsOrder: string[] | null,
   ) => Promise<void>;
+  requestCloseRef: MutableRefObject<() => void>;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -234,6 +254,10 @@ function EditModuleModalBody({
   const [isPublished, setIsPublished] = useState(initialFields.isPublished);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Gates dismissing the whole modal (Cancel, X, Escape, backdrop click)
+  // behind a "Discard unsaved changes?" confirmation -- see `isDirty`/
+  // `handleRequestClose` below (PR review).
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   // Each field disables only itself while its own AI request is in flight
   // (ANA-109) -- these three flags are never fed back into another field's
@@ -298,6 +322,20 @@ function EditModuleModalBody({
         .map((id) => serverLessons.find((lesson) => lesson.id === id))
         .filter((lesson): lesson is Lesson => lesson !== undefined)
     : serverLessons;
+
+  // Whether this draft (any Module field, or a pending Lesson reorder) has
+  // diverged from what it was seeded with -- mirrors LessonEditor's own
+  // `isDirty` (lesson-editor.tsx). Drives `handleRequestClose` below: a
+  // reorder that's never been saved is exactly as much unsaved work as an
+  // edited Title (PR review), so it gates dismissing the whole modal the
+  // same way.
+  const isDirty =
+    !isSameTranslatedValue(title, initialFields.title) ||
+    !isSameTranslatedValue(description, initialFields.description) ||
+    color !== initialFields.color ||
+    !isSameTranslatedValue(content, initialFields.content) ||
+    isPublished !== initialFields.isPublished ||
+    lessonOrderDraft !== null;
 
   function handleReorderLessons(reordered: Lesson[]) {
     if (
@@ -411,6 +449,35 @@ function EditModuleModalBody({
       { revalidate: true },
     );
   }
+
+  // Funnels every way of dismissing the modal (Cancel, X, Escape, backdrop
+  // click) through one dirty check (PR review), mirroring Module Builder's
+  // own `handleClose` (import-source-modal.tsx). A save already in flight
+  // is never raced -- dismissing is simply ignored until it settles, same
+  // as that precedent (Cancel is separately disabled for the same window
+  // via its own `disabled={isSaving}` below; this covers X/Escape/backdrop,
+  // which aren't).
+  function handleRequestClose() {
+    if (isSaving) {
+      return;
+    }
+
+    if (isDirty) {
+      setConfirmingDiscard(true);
+      return;
+    }
+
+    onClose();
+  }
+
+  // Keeps the outer `EditModuleModal`'s Modal-dismiss bridge pointed at
+  // this render's own `handleRequestClose` -- an effect, not a direct
+  // render-time assignment, since Mantine only ever reads this ref from a
+  // later, separate event (the user actually dismissing the modal), by
+  // which point the effect has already run.
+  useEffect(() => {
+    requestCloseRef.current = handleRequestClose;
+  });
 
   async function handlePrimaryAction() {
     setSaveError(null);
@@ -614,7 +681,11 @@ function EditModuleModalBody({
 
   const moduleFormFooter = (
     <Group justify="flex-end" gap="sm">
-      <Button variant="default" onClick={onClose} disabled={isSaving}>
+      <Button
+        variant="default"
+        onClick={handleRequestClose}
+        disabled={isSaving}
+      >
         Cancel
       </Button>
       <Button
@@ -625,6 +696,16 @@ function EditModuleModalBody({
         {state.mode === "create" ? "Save Module" : "Save changes"}
       </Button>
     </Group>
+  );
+
+  const lessonsPanel = (
+    <LessonsPanel
+      lessons={lessons}
+      onLessonsChange={handleReorderLessons}
+      onEditLesson={(lesson) => setLessonEditorTarget({ lessonId: lesson.id })}
+      onDeleteLesson={handleDeleteLesson}
+      onNewLesson={() => setLessonEditorTarget({ lessonId: null })}
+    />
   );
 
   // Create mode keeps its existing single-column layout unchanged. Edit
@@ -640,17 +721,13 @@ function EditModuleModalBody({
   // "auto"`); the footer (Module mode's Cancel/Save, Lesson mode's own Save
   // via `LessonEditor`'s internal layout) stays pinned outside that scroll
   // region, never itself scrolled out of view.
-  if (state.mode === "create") {
-    return (
+  const modeContent =
+    state.mode === "create" ? (
       <Stack gap="lg">
         {moduleFormFields}
         {moduleFormFooter}
       </Stack>
-    );
-  }
-
-  if (lessonEditorTarget) {
-    return (
+    ) : lessonEditorTarget ? (
       <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
         <LessonEditor
           key={openLesson?.id ?? "new"}
@@ -663,47 +740,62 @@ function EditModuleModalBody({
           onBack={() => setLessonEditorTarget(null)}
         />
       </Box>
+    ) : (
+      <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
+        <Flex
+          gap="lg"
+          direction={{ base: "column", md: "row" }}
+          align="stretch"
+          style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+        >
+          <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
+          <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
+            {lessonsLoading ? (
+              <LessonsPanelSkeleton />
+            ) : lessonsError ? (
+              // Non-blocking: a failed Lessons refresh never hides the
+              // panel (whatever it last successfully showed, including a
+              // just-written Lesson applied via `mutateLessons` above)
+              // behind an error state -- it must never be presented as
+              // though the write itself failed (ANA-116).
+              <Stack gap="xs" style={{ height: "100%" }}>
+                <Alert color="red">{lessonsError.message}</Alert>
+                <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
+              </Stack>
+            ) : (
+              lessonsPanel
+            )}
+          </Box>
+        </Flex>
+        {moduleFormFooter}
+      </Stack>
     );
-  }
-
-  const lessonsPanel = (
-    <LessonsPanel
-      lessons={lessons}
-      onLessonsChange={handleReorderLessons}
-      onEditLesson={(lesson) => setLessonEditorTarget({ lessonId: lesson.id })}
-      onDeleteLesson={handleDeleteLesson}
-      onNewLesson={() => setLessonEditorTarget({ lessonId: null })}
-    />
-  );
 
   return (
-    <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
-      <Flex
-        gap="lg"
-        direction={{ base: "column", md: "row" }}
-        align="stretch"
-        style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
-      >
-        <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
-        <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
-          {lessonsLoading ? (
-            <LessonsPanelSkeleton />
-          ) : lessonsError ? (
-            // Non-blocking: a failed Lessons refresh never hides the panel
-            // (whatever it last successfully showed, including a just-
-            // written Lesson applied via `mutateLessons` above) behind an
-            // error state -- it must never be presented as though the
-            // write itself failed (ANA-116).
-            <Stack gap="xs" style={{ height: "100%" }}>
-              <Alert color="red">{lessonsError.message}</Alert>
-              <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
-            </Stack>
-          ) : (
-            lessonsPanel
-          )}
-        </Box>
-      </Flex>
-      {moduleFormFooter}
-    </Stack>
+    <>
+      {modeContent}
+      {/* Discard confirmation (PR review) -- gates every way of dismissing
+          the modal (Cancel, X, Escape, backdrop click, all funneled
+          through `handleRequestClose` above) while any field or a pending
+          Lesson reorder is unsaved. Rendered here, outside `modeContent`'s own
+          three branches, so it isn't tied to whichever mode happens to be
+          showing when the dismiss was attempted -- same copy as
+          LessonEditor's own identical guard (lesson-editor.tsx) and Module
+          Builder's (import-source-modal.tsx). */}
+      {confirmingDiscard && (
+        <ConfirmDialog
+          opened
+          title="Discard unsaved changes?"
+          description="Your changes have not been saved and will be lost."
+          confirmLabel="Discard changes"
+          cancelLabel="Keep editing"
+          onCancel={() => setConfirmingDiscard(false)}
+          onConfirm={() => {
+            setConfirmingDiscard(false);
+            onClose();
+          }}
+        />
+      )}
+    </>
   );
 }

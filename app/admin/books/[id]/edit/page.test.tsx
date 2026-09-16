@@ -2033,6 +2033,13 @@ describe("EditBookPage", () => {
         });
         fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
+        // Editing Title made this draft dirty, so Cancel is gated behind
+        // the discard confirmation (PR review) -- confirming is what
+        // actually closes the modal.
+        fireEvent.click(
+          await screen.findByRole("button", { name: "Discard changes" }),
+        );
+
         await vi.waitFor(() =>
           expect(
             screen.queryByRole("dialog", { name: "Edit Module" }),
@@ -2044,6 +2051,32 @@ describe("EditBookPage", () => {
             ([, init]) => init?.method === "PATCH",
           ),
         ).toBe(false);
+      });
+
+      it("Cancel closes immediately, without confirmation, when nothing was edited", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+
+        const dialog = await screen.findByRole("dialog", {
+          name: "Edit Module",
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+        expect(
+          screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+        ).not.toBeInTheDocument();
+        await vi.waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Edit Module" }),
+          ).not.toBeInTheDocument(),
+        );
       });
     });
   });
