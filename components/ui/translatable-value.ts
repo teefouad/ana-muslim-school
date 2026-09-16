@@ -6,3 +6,13 @@ export interface LanguageOption {
   slug: string;
   label: string;
 }
+
+/** Compares two `TranslatedValue`s by their `ar`/`en` slots specifically
+ * (a missing slot treated as `""`), the shape every editor built on
+ * `FormField`'s default languages actually uses -- shared by every
+ * unsaved-changes ("is this draft dirty?") check across those editors
+ * (lesson-editor.tsx, edit-module-modal.tsx) so they don't each redefine
+ * the same comparison. */
+export function isSameTranslatedValue(a: TranslatedValue, b: TranslatedValue) {
+  return (a.ar ?? "") === (b.ar ?? "") && (a.en ?? "") === (b.en ?? "");
+}

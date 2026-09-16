@@ -28,29 +28,32 @@ function buildModuleFixture(overrides: Partial<Module> = {}): Module {
 }
 
 describe("createEmptyModuleFieldsValues", () => {
-  it("starts every field blank, with the default application color", () => {
+  it("starts every field blank, with the default application color and Published off", () => {
     expect(createEmptyModuleFieldsValues()).toEqual({
       title: {},
       description: {},
       color: DEFAULT_APPLICATION_COLOR,
       content: {},
+      isPublished: false,
     });
   });
 });
 
 describe("toModuleFieldsValues", () => {
-  it("maps the Module's own title/description/color", () => {
+  it("maps the Module's own title/description/color/isPublished", () => {
     const fields = toModuleFieldsValues(
       buildModuleFixture({
         title: { ar: "أ", en: "A" },
         description: { ar: "وصف", en: "Desc" },
         color: "cyan.6",
+        isPublished: true,
       }),
     );
 
     expect(fields.title).toEqual({ ar: "أ", en: "A" });
     expect(fields.description).toEqual({ ar: "وصف", en: "Desc" });
     expect(fields.color).toBe("cyan.6");
+    expect(fields.isPublished).toBe(true);
   });
 
   it("seeds content from a given Learning Material content (ANA-94 PR review)", () => {
@@ -70,12 +73,13 @@ describe("toModuleFieldsValues", () => {
 });
 
 describe("toModuleCreateFields", () => {
-  it("normalizes title/description to { ar, en } pairs, defaults isLocked/isPublished to false, and never includes content", () => {
+  it("normalizes title/description to { ar, en } pairs, sends the entered isPublished, defaults isLocked to false, and never includes content", () => {
     const result = toModuleCreateFields({
       title: { ar: "أ" },
       description: {},
       color: "pink.6",
       content: { ar: "محتوى", en: "Content" },
+      isPublished: true,
     });
 
     expect(result).toEqual({
@@ -83,28 +87,29 @@ describe("toModuleCreateFields", () => {
       description: { ar: "", en: "" },
       color: "pink.6",
       isLocked: false,
-      isPublished: false,
+      isPublished: true,
     });
     expect(result).not.toHaveProperty("content");
   });
 });
 
 describe("toModulePatchFields", () => {
-  it("normalizes title/description, never includes isLocked/isPublished/content", () => {
+  it("normalizes title/description, sends the entered isPublished, never includes isLocked/content", () => {
     const result = toModulePatchFields({
       title: { en: "A" },
       description: { ar: "وصف" },
       color: "cyan.6",
       content: { ar: "محتوى", en: "" },
+      isPublished: true,
     });
 
     expect(result).toEqual({
       title: { ar: "", en: "A" },
       description: { ar: "وصف", en: "" },
       color: "cyan.6",
+      isPublished: true,
     });
     expect(result).not.toHaveProperty("isLocked");
-    expect(result).not.toHaveProperty("isPublished");
     expect(result).not.toHaveProperty("content");
   });
 });
@@ -117,6 +122,7 @@ describe("toMaterialContent", () => {
         description: {},
         color: "",
         content: { ar: "محتوى" },
+        isPublished: false,
       }),
     ).toEqual({ ar: "محتوى", en: "" });
   });

@@ -28,13 +28,15 @@ export async function createModule(
  * `PATCH /api/v1/books/{bookId}/modules/{moduleId}` (ANA-94) -- every field
  * is optional server-side (an omitted one is left unchanged), so callers
  * only send the subset they actually edited. The Edit Module modal always
- * sends `title`/`description`/`color` together and never `isLocked`/
- * `isPublished` (it has no UI for those), so a save can never clobber
- * them. */
+ * sends `title`/`description`/`color`/`isPublished` together and never
+ * `isLocked` (it has no UI for that one), so a save can never clobber it.
+ * `lessons` (ANA-117) is a same-set reorder of this Module's Lesson ids --
+ * omit it to leave the current order untouched, exactly like every other
+ * field here. */
 export async function updateModule(
   bookId: string,
   moduleId: string,
-  fields: Partial<ModuleWritableFields>,
+  fields: Partial<ModuleWritableFields> & { lessons?: string[] },
 ): Promise<Module> {
   const response = await fetch(`/api/v1/books/${bookId}/modules/${moduleId}`, {
     method: "PATCH",

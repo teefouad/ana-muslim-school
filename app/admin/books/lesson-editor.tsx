@@ -5,7 +5,10 @@ import { ArrowLeft } from "lucide-react";
 import { Alert, Button, Stack } from "@mantine/core";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { TranslatedValue } from "@/components/ui/translatable-value";
+import {
+  isSameTranslatedValue,
+  type TranslatedValue,
+} from "@/components/ui/translatable-value";
 import type { Lesson } from "@/lib/lessons/types";
 import { LessonForm } from "./lesson-form";
 import {
@@ -13,10 +16,6 @@ import {
   toLessonFieldsValues,
   type LessonFieldsValues,
 } from "./lesson-fields";
-
-function isSameTranslatedValue(a: TranslatedValue, b: TranslatedValue) {
-  return (a.ar ?? "") === (b.ar ?? "") && (a.en ?? "") === (b.en ?? "");
-}
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -155,7 +154,14 @@ export function LessonEditor({
   }
 
   return (
-    <Stack gap="lg">
+    // `height: "100%"` (ANA-117) -- this editor always renders inside a
+    // fixed-height wrapper the caller sizes to match Module mode's own
+    // content height, so switching between modes never resizes the modal
+    // itself (edit-module-modal.tsx). Back/Save stay pinned outside the
+    // scrollable middle `Stack` below rather than living inside it, so
+    // they're never themselves scrolled out of view when the Lesson form's
+    // own content is taller than the fixed height.
+    <Stack gap="lg" style={{ height: "100%" }}>
       <Button
         variant="subtle"
         color="gray"
@@ -176,29 +182,31 @@ export function LessonEditor({
         Back to Module
       </Button>
 
-      <LessonForm
-        value={{ title, description, type, position, isPublished }}
-        onChange={(patch) => {
-          if (patch.title !== undefined) setTitle(patch.title);
-          if (patch.description !== undefined)
-            setDescription(patch.description);
-          if (patch.type !== undefined) setType(patch.type);
-          if (patch.position !== undefined) setPosition(patch.position);
-          if (patch.isPublished !== undefined)
-            setIsPublished(patch.isPublished);
-        }}
-        moduleTitle={moduleTitle}
-        moduleDescription={moduleDescription}
-        moduleContent={moduleContent}
-        onTitleBusyChange={setTitleBusy}
-        onDescriptionBusyChange={setDescriptionBusy}
-      />
+      <Stack gap="lg" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        <LessonForm
+          value={{ title, description, type, position, isPublished }}
+          onChange={(patch) => {
+            if (patch.title !== undefined) setTitle(patch.title);
+            if (patch.description !== undefined)
+              setDescription(patch.description);
+            if (patch.type !== undefined) setType(patch.type);
+            if (patch.position !== undefined) setPosition(patch.position);
+            if (patch.isPublished !== undefined)
+              setIsPublished(patch.isPublished);
+          }}
+          moduleTitle={moduleTitle}
+          moduleDescription={moduleDescription}
+          moduleContent={moduleContent}
+          onTitleBusyChange={setTitleBusy}
+          onDescriptionBusyChange={setDescriptionBusy}
+        />
 
-      {saveError && (
-        <Alert color="red" role="alert">
-          {saveError}
-        </Alert>
-      )}
+        {saveError && (
+          <Alert color="red" role="alert">
+            {saveError}
+          </Alert>
+        )}
+      </Stack>
 
       <Button
         onClick={() => void handleSave()}

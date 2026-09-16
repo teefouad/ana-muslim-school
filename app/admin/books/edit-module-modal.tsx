@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import useSWR from "swr";
 import {
   Alert,
@@ -10,12 +10,18 @@ import {
   Group,
   Modal,
   Skeleton,
+  SimpleGrid,
   Stack,
 } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
-import type { TranslatedValue } from "@/components/ui/translatable-value";
+import { ToggleCard } from "@/components/ui/toggle-card";
+import {
+  isSameTranslatedValue,
+  type TranslatedValue,
+} from "@/components/ui/translatable-value";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import type { Lesson } from "@/lib/lessons/types";
@@ -48,6 +54,16 @@ function errorMessage(err: unknown): string {
 }
 
 const LESSONS_SKELETON_ROW_COUNT = 3;
+
+/** Fixed at the `md`+ breakpoint only (ANA-117) -- Module mode's editor +
+ * Lessons list and Lesson mode's own editor render this same height
+ * regardless of which is taller, so switching between them never resizes
+ * the modal itself; content taller than this scrolls internally instead
+ * (each mode's own wrapper below sets `overflowY: "auto"`). Left at `auto`
+ * below `md`, where the two columns already stack instead of sitting side
+ * by side -- constraining height there would fight that stacked layout's
+ * own natural scroll instead of stabilizing anything. */
+const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 640 } as const;
 
 // Approximates LessonsPanel/ItemList's own card chrome (ANA-116) --
 // mirrors `[id]/edit/page.tsx`'s `ModulesPanelSkeleton`, sized for this
@@ -133,8 +149,16 @@ export interface EditModuleModalProps {
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the modal's current field values when Save changes is
    * clicked in edit mode. Same awaited resolve/reject contract as
-   * `onCreate`. */
-  onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+   * `onCreate`. `lessonsOrder` (ANA-117) is this Module's current Lesson
+   * display order -- a pending drag-and-drop reorder as its exact id list,
+   * or `null` when the Lessons list was never reordered this session, in
+   * which case the caller must leave the Module's persisted Lesson order
+   * untouched rather than resend the order it happened to load with. */
+  onSave: (
+    id: string,
+    fields: ModuleFieldsValues,
+    lessonsOrder: string[] | null,
+  ) => Promise<void>;
 }
 
 // Top-level modal (ANA-91) opened from the Edit Book screen's Modules panel
@@ -150,10 +174,23 @@ export function EditModuleModal({
   onCreate,
   onSave,
 }: EditModuleModalProps) {
+  // Bridges every way Mantine's Modal can be dismissed (X button, Escape,
+  // backdrop click -- all three funnel into this one `onClose` prop) through
+  // whichever unsaved-changes guard `EditModuleModalBody` currently owns,
+  // since only it tracks the fields'/Lesson-reorder draft's dirty state
+  // (PR review: reorder Lessons, dismiss without saving -- no warning).
+  // Same "funnel every dismiss path through one guard" precedent as Module
+  // Builder's own `handleClose` (import-source-modal.tsx). Kept in sync via
+  // an effect in the body below rather than called directly during render,
+  // so Mantine's own Modal (which only ever invokes this while `state !==
+  // null`, i.e. while a body is mounted to have already synced it) never
+  // observes a stale guard.
+  const requestCloseRef = useRef(onClose);
+
   return (
     <Modal
       opened={state !== null}
-      onClose={onClose}
+      onClose={() => requestCloseRef.current()}
       title={state?.mode === "create" ? "Add Module" : "Edit Module"}
       // Edit mode's own fixed 900px width (ANA-115 PR review) -- the same
       // for both Module mode (Module editor + Lessons list) and Lesson
@@ -177,6 +214,7 @@ export function EditModuleModal({
           onClose={onClose}
           onCreate={onCreate}
           onSave={onSave}
+          requestCloseRef={requestCloseRef}
         />
       )}
     </Modal>
@@ -189,12 +227,18 @@ function EditModuleModalBody({
   onClose,
   onCreate,
   onSave,
+  requestCloseRef,
 }: {
   state: EditModuleModalState;
   book: Book;
   onClose: () => void;
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
-  onSave: (id: string, fields: ModuleFieldsValues) => Promise<void>;
+  onSave: (
+    id: string,
+    fields: ModuleFieldsValues,
+    lessonsOrder: string[] | null,
+  ) => Promise<void>;
+  requestCloseRef: MutableRefObject<() => void>;
 }) {
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
@@ -207,8 +251,13 @@ function EditModuleModalBody({
   const [content, setContent] = useState<TranslatedValue>(
     initialFields.content,
   );
+  const [isPublished, setIsPublished] = useState(initialFields.isPublished);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Gates dismissing the whole modal (Cancel, X, Escape, backdrop click)
+  // behind a "Discard unsaved changes?" confirmation -- see `isDirty`/
+  // `handleRequestClose` below (PR review).
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   // Each field disables only itself while its own AI request is in flight
   // (ANA-109) -- these three flags are never fed back into another field's
@@ -243,8 +292,11 @@ function EditModuleModalBody({
 
   // A pending drag-and-drop reorder, not yet persisted -- mirrors
   // `[id]/edit/page.tsx`'s own `moduleOrderDraft` for `Book.modules`.
-  // Neither ANA-115 nor this task persists a Lesson reorder; dragging stays
-  // a local display-order draft only.
+  // Dragging only ever updates this local draft; it's persisted, alongside
+  // this Module's other fields, through the existing Module PATCH when Save
+  // changes is clicked (ANA-117) -- see `handlePrimaryAction` below and
+  // `handleSaveModule` in `[id]/edit/page.tsx`, never a separate reorder
+  // request of its own.
   const [lessonOrderDraft, setLessonOrderDraft] = useState<string[] | null>(
     null,
   );
@@ -270,6 +322,20 @@ function EditModuleModalBody({
         .map((id) => serverLessons.find((lesson) => lesson.id === id))
         .filter((lesson): lesson is Lesson => lesson !== undefined)
     : serverLessons;
+
+  // Whether this draft (any Module field, or a pending Lesson reorder) has
+  // diverged from what it was seeded with -- mirrors LessonEditor's own
+  // `isDirty` (lesson-editor.tsx). Drives `handleRequestClose` below: a
+  // reorder that's never been saved is exactly as much unsaved work as an
+  // edited Title (PR review), so it gates dismissing the whole modal the
+  // same way.
+  const isDirty =
+    !isSameTranslatedValue(title, initialFields.title) ||
+    !isSameTranslatedValue(description, initialFields.description) ||
+    color !== initialFields.color ||
+    !isSameTranslatedValue(content, initialFields.content) ||
+    isPublished !== initialFields.isPublished ||
+    lessonOrderDraft !== null;
 
   function handleReorderLessons(reordered: Lesson[]) {
     if (
@@ -384,17 +450,65 @@ function EditModuleModalBody({
     );
   }
 
+  // Funnels every way of dismissing the modal (Cancel, X, Escape, backdrop
+  // click) through one dirty check (PR review), mirroring Module Builder's
+  // own `handleClose` (import-source-modal.tsx). A save already in flight
+  // is never raced -- dismissing is simply ignored until it settles, same
+  // as that precedent (Cancel is separately disabled for the same window
+  // via its own `disabled={isSaving}` below; this covers X/Escape/backdrop,
+  // which aren't).
+  function handleRequestClose() {
+    if (isSaving) {
+      return;
+    }
+
+    if (isDirty) {
+      setConfirmingDiscard(true);
+      return;
+    }
+
+    onClose();
+  }
+
+  // Keeps the outer `EditModuleModal`'s Modal-dismiss bridge pointed at
+  // this render's own `handleRequestClose` -- an effect, not a direct
+  // render-time assignment, since Mantine only ever reads this ref from a
+  // later, separate event (the user actually dismissing the modal), by
+  // which point the effect has already run.
+  useEffect(() => {
+    requestCloseRef.current = handleRequestClose;
+  });
+
   async function handlePrimaryAction() {
     setSaveError(null);
     setIsSaving(true);
 
     try {
-      const fields: ModuleFieldsValues = { title, description, color, content };
+      const fields: ModuleFieldsValues = {
+        title,
+        description,
+        color,
+        content,
+        isPublished,
+      };
 
       if (state.mode === "create") {
         await onCreate(fields);
       } else {
-        await onSave(state.id, fields);
+        await onSave(state.id, fields, lessonOrderDraft);
+
+        // PR review: promote the just-persisted Lesson order into the
+        // Lessons SWR cache immediately, before this modal closes --
+        // otherwise reopening the same Module lets `useSWR` synchronously
+        // render the still-stale pre-save cached order before its
+        // background revalidation returns the newly persisted one (a
+        // visible flash). `lessons` is already this exact order (the local
+        // reorder draft layered onto the server list) whenever a reorder
+        // was actually pending; still revalidates in the background for
+        // eventual correctness against any concurrent server-side change.
+        if (lessonOrderDraft) {
+          void mutateLessons({ data: lessons }, { revalidate: true });
+        }
       }
 
       onClose();
@@ -405,7 +519,11 @@ function EditModuleModalBody({
     }
   }
 
-  const moduleForm = (
+  // Split from the footer below (ANA-117) so edit mode can pin Cancel/Save
+  // outside the fixed-height, internally-scrollable region created further
+  // down -- the footer must stay visible without scrolling, not be content
+  // that can scroll out of view along with the fields above it.
+  const moduleFormFields = (
     <Stack gap="lg">
       {/* Title (ANA-98/ANA-99): AI Assistance and Translate with AI are both
           grounded in this Module's own Arabic Learning Material plus the
@@ -538,54 +656,47 @@ function EditModuleModalBody({
         onBusyChange={setContentBusy}
       />
 
-      <ColorField value={color} onChange={setColor} />
+      {/* Published + Color (ANA-117 PR review): a single responsive row,
+          Published on the left and Color on the right -- matching Book
+          form's own Locked/Published row (book-form.tsx), stacking only on
+          narrow screens. Published reflects and edits this Module's own
+          persisted `isPublished`, included in both create and update
+          Module persistence (module-fields.ts). */}
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+        <ToggleCard
+          label="Published"
+          checked={isPublished}
+          onChange={setIsPublished}
+        />
+        <ColorField value={color} onChange={setColor} />
+      </SimpleGrid>
 
       {saveError && (
         <Alert color="red" role="alert">
           {saveError}
         </Alert>
       )}
-
-      <Group justify="flex-end" gap="sm">
-        <Button variant="default" onClick={onClose} disabled={isSaving}>
-          Cancel
-        </Button>
-        <Button
-          onClick={() => void handlePrimaryAction()}
-          loading={isSaving}
-          disabled={aiBusy}
-        >
-          {state.mode === "create" ? "Save Module" : "Save changes"}
-        </Button>
-      </Group>
     </Stack>
   );
 
-  // Create mode keeps its existing single-column layout unchanged. Edit
-  // mode shows either the Module editor + Lessons list (Module mode) or
-  // the open Lesson's own editor (Lesson mode, ANA-115) -- never both; the
-  // three-column layout from ANA-111/ANA-114 is removed. `align="stretch"`
-  // matches the two Module-mode columns to the form's own natural height,
-  // the same pattern the Edit Book page already uses for its own
-  // BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`).
-  if (state.mode === "create") {
-    return moduleForm;
-  }
-
-  if (lessonEditorTarget) {
-    return (
-      <LessonEditor
-        key={openLesson?.id ?? "new"}
-        lesson={openLesson}
-        moduleTitle={title.ar ?? ""}
-        moduleDescription={description.ar ?? ""}
-        moduleContent={content.ar ?? ""}
-        onCreate={handleCreateLesson}
-        onUpdate={handleUpdateLesson}
-        onBack={() => setLessonEditorTarget(null)}
-      />
-    );
-  }
+  const moduleFormFooter = (
+    <Group justify="flex-end" gap="sm">
+      <Button
+        variant="default"
+        onClick={handleRequestClose}
+        disabled={isSaving}
+      >
+        Cancel
+      </Button>
+      <Button
+        onClick={() => void handlePrimaryAction()}
+        loading={isSaving}
+        disabled={aiBusy}
+      >
+        {state.mode === "create" ? "Save Module" : "Save changes"}
+      </Button>
+    </Group>
+  );
 
   const lessonsPanel = (
     <LessonsPanel
@@ -597,26 +708,94 @@ function EditModuleModalBody({
     />
   );
 
-  return (
-    <Flex gap="lg" direction={{ base: "column", md: "row" }} align="stretch">
-      <Box style={{ flex: 1, minWidth: 0 }}>{moduleForm}</Box>
-      <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
-        {lessonsLoading ? (
-          <LessonsPanelSkeleton />
-        ) : lessonsError ? (
-          // Non-blocking: a failed Lessons refresh never hides the panel
-          // (whatever it last successfully showed, including a just-
-          // written Lesson applied via `mutateLessons` above) behind an
-          // error state -- it must never be presented as though the write
-          // itself failed (ANA-116).
-          <Stack gap="xs" style={{ height: "100%" }}>
-            <Alert color="red">{lessonsError.message}</Alert>
-            <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
-          </Stack>
-        ) : (
-          lessonsPanel
-        )}
+  // Create mode keeps its existing single-column layout unchanged. Edit
+  // mode shows either the Module editor + Lessons list (Module mode) or
+  // the open Lesson's own editor (Lesson mode, ANA-115) -- never both; the
+  // three-column layout from ANA-111/ANA-114 is removed. `align="stretch"`
+  // matches the two Module-mode columns to the shared `EDIT_MODE_CONTENT_
+  // HEIGHT` below, the same pattern the Edit Book page already uses for its
+  // own BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`). Both
+  // modes are pinned to that same fixed height (ANA-117) so switching
+  // between them never grows/shrinks the modal itself -- only the fields
+  // area scrolls internally when its content is taller (`overflowY:
+  // "auto"`); the footer (Module mode's Cancel/Save, Lesson mode's own Save
+  // via `LessonEditor`'s internal layout) stays pinned outside that scroll
+  // region, never itself scrolled out of view.
+  const modeContent =
+    state.mode === "create" ? (
+      <Stack gap="lg">
+        {moduleFormFields}
+        {moduleFormFooter}
+      </Stack>
+    ) : lessonEditorTarget ? (
+      <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
+        <LessonEditor
+          key={openLesson?.id ?? "new"}
+          lesson={openLesson}
+          moduleTitle={title.ar ?? ""}
+          moduleDescription={description.ar ?? ""}
+          moduleContent={content.ar ?? ""}
+          onCreate={handleCreateLesson}
+          onUpdate={handleUpdateLesson}
+          onBack={() => setLessonEditorTarget(null)}
+        />
       </Box>
-    </Flex>
+    ) : (
+      <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
+        <Flex
+          gap="lg"
+          direction={{ base: "column", md: "row" }}
+          align="stretch"
+          style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+        >
+          <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
+          <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
+            {lessonsLoading ? (
+              <LessonsPanelSkeleton />
+            ) : lessonsError ? (
+              // Non-blocking: a failed Lessons refresh never hides the
+              // panel (whatever it last successfully showed, including a
+              // just-written Lesson applied via `mutateLessons` above)
+              // behind an error state -- it must never be presented as
+              // though the write itself failed (ANA-116).
+              <Stack gap="xs" style={{ height: "100%" }}>
+                <Alert color="red">{lessonsError.message}</Alert>
+                <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
+              </Stack>
+            ) : (
+              lessonsPanel
+            )}
+          </Box>
+        </Flex>
+        {moduleFormFooter}
+      </Stack>
+    );
+
+  return (
+    <>
+      {modeContent}
+      {/* Discard confirmation (PR review) -- gates every way of dismissing
+          the modal (Cancel, X, Escape, backdrop click, all funneled
+          through `handleRequestClose` above) while any field or a pending
+          Lesson reorder is unsaved. Rendered here, outside `modeContent`'s own
+          three branches, so it isn't tied to whichever mode happens to be
+          showing when the dismiss was attempted -- same copy as
+          LessonEditor's own identical guard (lesson-editor.tsx) and Module
+          Builder's (import-source-modal.tsx). */}
+      {confirmingDiscard && (
+        <ConfirmDialog
+          opened
+          title="Discard unsaved changes?"
+          description="Your changes have not been saved and will be lost."
+          confirmLabel="Discard changes"
+          cancelLabel="Keep editing"
+          onCancel={() => setConfirmingDiscard(false)}
+          onConfirm={() => {
+            setConfirmingDiscard(false);
+            onClose();
+          }}
+        />
+      )}
+    </>
   );
 }

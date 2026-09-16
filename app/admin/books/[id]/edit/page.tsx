@@ -394,12 +394,30 @@ export default function EditBookPage() {
   // matching entry's display title is patched too -- otherwise the panel
   // would keep showing this Module's pre-edit title, read from the now-
   // stale draft, until that reorder is either saved or abandoned.
-  async function handleSaveModule(id: string, fields: ModuleFieldsValues) {
+  //
+  // `lessonsOrder` (ANA-117) is the Edit Module modal's own pending Lesson
+  // reorder, if any -- bundled into this same Module PATCH as `lessons`,
+  // exactly like this page's own Module reorder rides along in the Book
+  // PATCH (`handleSubmit` below). `null` (no drag happened this session)
+  // leaves the field out of the request entirely, so the endpoint's own
+  // "omitted field is left unchanged" contract preserves whatever order is
+  // already persisted.
+  async function handleSaveModule(
+    id: string,
+    fields: ModuleFieldsValues,
+    lessonsOrder: string[] | null,
+  ) {
     if (!book) {
       return;
     }
 
-    await updateModule(book.id, id, toModulePatchFields(fields));
+    const patchFields = toModulePatchFields(fields);
+
+    await updateModule(
+      book.id,
+      id,
+      lessonsOrder ? { ...patchFields, lessons: lessonsOrder } : patchFields,
+    );
 
     const existingMaterial = materialsData?.data.find(
       (material) => material.moduleId === id,

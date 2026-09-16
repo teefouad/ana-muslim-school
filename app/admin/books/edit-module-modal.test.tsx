@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
@@ -7,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EditModuleModal,
   type EditModuleModalProps,
+  type EditModuleModalState,
 } from "./edit-module-modal";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
@@ -141,6 +143,33 @@ function getContentEditable(dialog: HTMLElement): HTMLElement {
   return textboxes[textboxes.length - 1];
 }
 
+// dnd-kit's collision detection/keyboard coordinate getter is driven by real
+// element geometry, which jsdom always reports as a zeroed-out rect --
+// ported from lessons-panel.test.tsx's identical helper (ANA-117).
+function stubItemRects(order: string[], itemHeight = 60) {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const container = this.closest('[data-testid^="list-item-"]');
+      const id = container
+        ?.getAttribute("data-testid")
+        ?.replace("list-item-", "");
+      const index = id ? order.indexOf(id) : -1;
+      const top = index === -1 ? 0 : index * itemHeight;
+      return {
+        top,
+        bottom: top + itemHeight,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: itemHeight,
+        x: 0,
+        y: top,
+        toJSON() {},
+      } as DOMRect;
+    },
+  );
+}
+
 const BOOK: Book = {
   id: "book-1",
   title: { ar: "عنوان الكتاب", en: "Book Title" },
@@ -162,6 +191,7 @@ const EDIT_FIELDS = {
   description: { ar: "وصف", en: "" },
   color: "cyan.6",
   content: { ar: "محتوى", en: "" },
+  isPublished: false,
 };
 
 function renderModal(overrides: Partial<EditModuleModalProps> = {}) {
@@ -289,6 +319,9 @@ describe("EditModuleModal", () => {
         expect(onSave).toHaveBeenCalledWith(
           "module-1",
           expect.objectContaining({ title: { ar: "عنوان جديد", en: "" } }),
+          // No Lesson drag happened this session -- `lessonsOrder` is
+          // `null` (ANA-117), never the load order resent as if reordered.
+          null,
         ),
       );
       await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -335,6 +368,62 @@ describe("EditModuleModal", () => {
 
       const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
       expect(within(dialog).getByLabelText("Title")).toHaveValue("");
+    });
+  });
+
+  describe("Published toggle (ANA-117)", () => {
+    it("seeds Published from the Module's own current isPublished", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-1",
+          fields: { ...EDIT_FIELDS, isPublished: true },
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).toBeChecked();
+    });
+
+    it("includes the toggled Published value in the Module save", async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderModal({ onSave });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).not.toBeChecked();
+      fireEvent.click(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      );
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith(
+          "module-1",
+          expect.objectContaining({ isPublished: true }),
+          null,
+        ),
+      );
+    });
+
+    it("defaults a brand-new Module's Published to off", async () => {
+      renderModal({
+        state: {
+          mode: "edit",
+          id: "module-new",
+          fields: createEmptyModuleFieldsValues(),
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).not.toBeChecked();
     });
   });
 
@@ -571,6 +660,146 @@ describe("EditModuleModal", () => {
       expect((fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
         callsBefore,
       );
+    });
+
+    it("persists a completed Lesson reorder as `lessonsOrder` when the Module is saved (ANA-117)", async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderWithLessons({ onSave });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      stubItemRects(["lesson-1", "lesson-2"]);
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      await within(dialog).findByTestId("list-item-lesson-2");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith("module-1", expect.anything(), [
+          "lesson-2",
+          "lesson-1",
+        ]),
+      );
+    });
+
+    it("shows the just-saved Lesson order immediately on reopen, before the follow-up GET resolves (PR review regression)", async () => {
+      const LESSONS: Lesson[] = [
+        buildLessonFixture({
+          id: "lesson-1",
+          title: { ar: "Introduction", en: "" },
+        }),
+        buildLessonFixture({
+          id: "lesson-2",
+          title: { ar: "Prayer basics", en: "" },
+          position: 1,
+        }),
+      ];
+      mockFetch({ lessons: LESSONS });
+      const onSave = vi.fn().mockResolvedValue(undefined);
+
+      // A single, persistent SWRConfig cache shared across close/reopen --
+      // mirrors the real app's single long-lived SWR cache (only tests
+      // reset it per render). `EditModuleModal` itself unmounts/remounts
+      // its body between `state`/`null`/`state` (see its own `{state &&
+      // ...}` guard), exactly like a real close-then-reopen -- this Harness
+      // only supplies the `state` toggle a real page would.
+      function Harness() {
+        const [state, setState] = useState<EditModuleModalState | null>({
+          mode: "edit",
+          id: "module-1",
+          fields: EDIT_FIELDS,
+        });
+        return (
+          <>
+            <EditModuleModal
+              state={state}
+              book={BOOK}
+              onClose={() => setState(null)}
+              onCreate={vi.fn()}
+              onSave={onSave}
+            />
+            <button
+              onClick={() =>
+                setState({ mode: "edit", id: "module-1", fields: EDIT_FIELDS })
+              }
+            >
+              Reopen
+            </button>
+          </>
+        );
+      }
+
+      render(
+        <MantineProvider>
+          <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+            <Harness />
+          </SWRConfig>
+        </MantineProvider>,
+      );
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      stubItemRects(["lesson-1", "lesson-2"]);
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await within(dialog).findByTestId("list-item-lesson-2");
+
+      // From this point on, the Lessons GET never resolves -- proves the
+      // reopened modal's correct order comes from the SWR cache being
+      // promoted on save, not from a background refetch that happened to
+      // race ahead of the assertion below.
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: RequestInfo | URL, init?: RequestInit) => {
+          const method = (init?.method ?? "GET").toUpperCase();
+          if (
+            typeof url === "string" &&
+            url.endsWith("/lessons") &&
+            method === "GET"
+          ) {
+            return new Promise(() => {});
+          }
+          return Promise.resolve(jsonResponse({}, 200));
+        },
+      );
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Edit Module" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+
+      const reopenedDialog = await screen.findByRole("dialog", {
+        name: "Edit Module",
+      });
+      const rows = within(reopenedDialog).getAllByTestId(/^list-item-/);
+      expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+        "list-item-lesson-2",
+        "list-item-lesson-1",
+      ]);
     });
 
     it("New Lesson switches into Lesson mode with a blank, id-less draft and makes no create request", async () => {
@@ -1352,6 +1581,7 @@ describe("EditModuleModal", () => {
           expect.objectContaining({
             title: expect.objectContaining({ en: "Introduction" }),
           }),
+          null,
         ),
       );
     });
@@ -1762,6 +1992,113 @@ describe("EditModuleModal", () => {
         screen.queryByRole("dialog", { name: "Translate with AI" }),
       ).not.toBeInTheDocument();
       expect(lastRequestBody()).not.toHaveProperty("additionalInstructions");
+    });
+  });
+
+  describe("Dirty state and close guard (PR review)", () => {
+    it("closes immediately, without confirmation, when nothing has changed", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks Cancel once a field has been edited, offering Discard changes / Keep editing", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "عنوان جديد" },
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(
+        await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Your changes have not been saved and will be lost."),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(within(dialog).getByLabelText("Title")).toHaveValue("عنوان جديد");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks Cancel once Lessons have been reordered but not saved (PR review regression)", async () => {
+      mockFetch({
+        lessons: [
+          buildLessonFixture({
+            id: "lesson-1",
+            title: { ar: "Introduction", en: "" },
+          }),
+          buildLessonFixture({
+            id: "lesson-2",
+            title: { ar: "Prayer basics", en: "" },
+            position: 1,
+          }),
+        ],
+      });
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      await within(dialog).findByText("Introduction");
+      stubItemRects(["lesson-1", "lesson-2"]);
+      const grip = within(dialog)
+        .getByTestId("list-item-lesson-2")
+        .querySelector("[aria-hidden='true']") as HTMLElement;
+
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await within(dialog).findByTestId("list-item-lesson-2");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(
+        await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks every other way of dismissing the modal (X button/Escape/backdrop, funneled through Mantine's own onClose) the same way as Cancel", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.change(within(dialog).getByLabelText("Title"), {
+        target: { value: "عنوان جديد" },
+      });
+
+      fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+      expect(
+        await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
     });
   });
 });

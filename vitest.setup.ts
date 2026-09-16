@@ -77,3 +77,12 @@ if (typeof Range !== "undefined" && !Range.prototype.getBoundingClientRect) {
 if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
 }
+
+// jsdom doesn't implement Element.scrollIntoView, but dnd-kit's keyboard
+// sensor calls it on activation once it finds a scrollable ancestor (the
+// Edit Module modal's Lessons list/Lesson editor sit inside a real
+// `overflow: auto` region, ANA-117, so this is no longer skipped the way it
+// was before that region existed).
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
