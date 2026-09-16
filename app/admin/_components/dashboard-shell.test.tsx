@@ -59,7 +59,7 @@ describe("DashboardShell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("still shows the Dashboard group (via Books/Add Book) when Users is hidden", () => {
+  it("hides the empty Dashboard group when Users is hidden", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="someone@example.com"
@@ -69,13 +69,13 @@ describe("DashboardShell", () => {
       </DashboardShell>,
     );
 
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /^Users$/ }),
     ).not.toBeInTheDocument();
   });
 
-  it("shows Books and Add Book under the Dashboard group regardless of permissions", () => {
+  it("shows All Books and New Book under the Books group regardless of permissions", () => {
     renderWithProvider(
       <DashboardShell
         userEmail="someone@example.com"
@@ -85,11 +85,12 @@ describe("DashboardShell", () => {
       </DashboardShell>,
     );
 
-    expect(screen.getByRole("link", { name: "Books" })).toHaveAttribute(
+    expect(screen.getByText("Books")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All Books" })).toHaveAttribute(
       "href",
       "/admin/books",
     );
-    expect(screen.getByRole("link", { name: "Add Book" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "New Book" })).toHaveAttribute(
       "href",
       "/admin/books/new",
     );
