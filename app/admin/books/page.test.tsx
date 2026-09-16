@@ -37,11 +37,11 @@ describe("BooksPage", () => {
     );
   });
 
-  it("shows the Books title and an Add Book link", () => {
+  it("shows the Books title and a New Book link", () => {
     renderPage();
 
     expect(screen.getByRole("heading", { name: "Books" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add Book" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "New Book" })).toHaveAttribute(
       "href",
       "/admin/books/new",
     );

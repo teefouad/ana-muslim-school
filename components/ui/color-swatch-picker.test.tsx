@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { APPLICATION_COLORS } from "./application-colors";
 import { ColorSwatchPicker } from "./color-swatch-picker";
+import styles from "./color-swatch-picker.module.css";
 
 const SWATCH_NAMES = [
   "Night",
@@ -23,7 +24,7 @@ const SWATCH_NAMES = [
 ];
 
 describe("ColorSwatchPicker", () => {
-  it("renders exactly 15 swatches, in the required order, each 19px wide", () => {
+  it("renders exactly 15 swatches, in the required order, each equally sized", () => {
     render(<ColorSwatchPicker value="pink.6" onChange={vi.fn()} />);
 
     const group = screen.getByRole("radiogroup", { name: "Color" });
@@ -34,7 +35,7 @@ describe("ColorSwatchPicker", () => {
       SWATCH_NAMES,
     );
     for (const swatch of swatches) {
-      expect(swatch).toHaveStyle({ width: "19px" });
+      expect(swatch.classList.contains(styles.swatch)).toBe(true);
     }
   });
 

@@ -61,10 +61,10 @@ describe("AddBookPage", () => {
     expect(screen.getByText("Color")).toBeInTheDocument();
   });
 
-  it("renders Add book as a page header action that submits the Book form", () => {
+  it("renders Create book as a page header action that submits the Book form", () => {
     renderPage();
 
-    const addButton = screen.getByRole("button", { name: "Add book" });
+    const addButton = screen.getByRole("button", { name: "Create book" });
     expect(addButton).toHaveAttribute("type", "submit");
     expect(addButton).toHaveAttribute("form");
   });
@@ -102,7 +102,7 @@ describe("AddBookPage", () => {
     fireEvent.change(screen.getByLabelText("In-app image ID"), {
       target: { value: "new-book-image" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create book" }));
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
 
@@ -137,7 +137,7 @@ describe("AddBookPage", () => {
     );
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create book" }));
 
     await vi.waitFor(() =>
       expect(replaceMock).toHaveBeenCalledWith(
@@ -152,14 +152,14 @@ describe("AddBookPage", () => {
     );
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create book" }));
 
     expect(
       await screen.findByText("Something went wrong."),
     ).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "Add book" }),
+      screen.getByRole("button", { name: "Create book" }),
     ).toBeInTheDocument();
   });
 });

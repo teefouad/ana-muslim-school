@@ -93,7 +93,6 @@ export function ColorSwatchPicker({
             aria-label={swatchLabel(name)}
             className={styles.swatch}
             style={{
-              width: "19px",
               backgroundColor: APPLICATION_COLORS[token],
             }}
             onClick={() => {
