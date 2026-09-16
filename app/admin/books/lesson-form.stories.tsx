@@ -3,6 +3,8 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { LessonForm, type LessonFormProps } from "./lesson-form";
 import type { LessonFieldsValues } from "./lesson-fields";
+import { toQuestionFieldEntry } from "./question-fields";
+import { buildQuestionFixture } from "./question-fixtures";
 
 const SAMPLE_VALUE: LessonFieldsValues = {
   title: { ar: "ما هي الصلاة؟", en: "What is Salah?" },
@@ -17,6 +19,7 @@ const SAMPLE_VALUE: LessonFieldsValues = {
   videoURL: "",
   duration: 0,
   azkar: [],
+  questions: [],
 };
 
 const VIDEO_VALUE: LessonFieldsValues = {
@@ -43,6 +46,13 @@ const BREAK_VALUE: LessonFieldsValues = {
       repeat: 33,
     },
   ],
+};
+
+const QUIZ_VALUE: LessonFieldsValues = {
+  ...SAMPLE_VALUE,
+  type: "quiz",
+  content: {},
+  questions: [toQuestionFieldEntry(buildQuestionFixture())],
 };
 
 // Wraps LessonForm with local state so every field edit behaves for real in
@@ -105,6 +115,7 @@ export const Blank: Story = {
       videoURL: "",
       duration: 0,
       azkar: [],
+      questions: [],
     },
   },
 };
@@ -118,5 +129,11 @@ export const VideoType: Story = {
 export const BreakType: Story = {
   args: {
     value: BREAK_VALUE,
+  },
+};
+
+export const QuizType: Story = {
+  args: {
+    value: QUIZ_VALUE,
   },
 };

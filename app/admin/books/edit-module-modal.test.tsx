@@ -12,9 +12,11 @@ import {
 } from "./edit-module-modal";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { createEmptyModuleFieldsValues } from "./module-fields";
+import { buildQuestionFixture } from "./question-fixtures";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
 import type { Book } from "@/lib/books/types";
 import type { Lesson } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -45,9 +47,10 @@ function lastRequestBody(): Record<string, unknown> {
   return JSON.parse(init.body as string) as Record<string, unknown>;
 }
 
-/** Every fetch call other than the automatic Lessons GET every `edit`-mode
- * render fires on mount (ANA-116) -- what most of these tests actually
- * want to assert on (a single AI request, a single Lesson mutation). */
+/** Every fetch call other than the automatic Lessons/Questions GET every
+ * `edit`-mode render fires on mount (ANA-116, Questions GET added in
+ * ANA-119) -- what most of these tests actually want to assert on (a
+ * single AI request, a single Lesson mutation). */
 function mutationCalls(): [string, RequestInit][] {
   return (
     (fetch as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit?][]
@@ -55,33 +58,46 @@ function mutationCalls(): [string, RequestInit][] {
     ([url, init]) =>
       !(
         typeof url === "string" &&
-        url.endsWith("/lessons") &&
+        (url.endsWith("/lessons") || url.endsWith("/questions")) &&
         (init?.method ?? "GET").toUpperCase() === "GET"
       ),
   ) as [string, RequestInit][];
 }
 
-/** Routes every fetch call in these tests (ANA-116): a `GET .../lessons`
- * request -- fired automatically on every `edit`-mode render, independent
- * of whatever a given test is actually exercising, and again by every
- * `mutateLessons(..., { revalidate: true })` background refetch -- always
- * resolves from an in-memory `current` list seeded from `lessons`; every
- * other call (an AI request, a Lesson create/update/delete) resolves with
- * `other`/`otherStatus`. A *successful* (2xx) Lesson create/update/delete
- * also updates `current` from `other`'s own `{ data: Lesson }` shape (or,
- * for delete, just drops the id) -- so the background revalidation a
- * mutation triggers reflects the same change the mutation itself just
- * made, instead of the revalidate GET's static response reverting it. */
+/** Routes every fetch call in these tests (ANA-116, Questions routing added
+ * in ANA-119): a `GET .../lessons` or `GET .../questions` request -- each
+ * fired automatically on every `edit`-mode render, independent of whatever
+ * a given test is actually exercising, and again by every
+ * `mutateLessons`/`mutateQuestions(..., { revalidate: true })` background
+ * refetch -- always resolves from an in-memory `current`/`currentQuestions`
+ * list seeded from `lessons`/`questions`; every other call (an AI request, a
+ * Lesson/Question create/update/delete) resolves with `other`/`otherStatus`.
+ * A *successful* (2xx) mutation also updates the matching in-memory list
+ * from `other`'s own `{ data: ... }` shape (or, for a Lesson delete, just
+ * drops the id) -- so the background revalidation a mutation triggers
+ * reflects the same change the mutation itself just made, instead of the
+ * revalidate GET's static response reverting it. */
 function mockFetch({
   lessons = [],
+  questions = [],
   other,
   otherStatus = 200,
+  questionOther,
+  questionOtherStatus = 200,
 }: {
   lessons?: Lesson[];
+  questions?: Question[];
   other?: unknown;
   otherStatus?: number;
+  /** Forces a specific Question POST/PATCH response (most often a failure)
+   * -- see the routing comment above `isQuestionMutation` below. Omit to
+   * auto-echo the request body back as a persisted Question. */
+  questionOther?: unknown;
+  questionOtherStatus?: number;
 } = {}) {
   let current: Lesson[] = [...lessons];
+  let currentQuestions: Question[] = [...questions];
+  let nextQuestionId = 1;
 
   (fetch as ReturnType<typeof vi.fn>).mockImplementation(
     (url: RequestInfo | URL, init?: RequestInit) => {
@@ -89,9 +105,15 @@ function mockFetch({
       const urlStr = typeof url === "string" ? url : String(url);
       const isLessonsList = urlStr.endsWith("/lessons");
       const lessonMatch = urlStr.match(/\/lessons\/([^/]+)$/);
+      const isQuestionsList = urlStr.endsWith("/questions");
+      const questionMatch = urlStr.match(/\/questions\/([^/]+)$/);
 
       if (isLessonsList && method === "GET") {
         return Promise.resolve(jsonResponse({ data: current }));
+      }
+
+      if (isQuestionsList && method === "GET") {
+        return Promise.resolve(jsonResponse({ data: currentQuestions }));
       }
 
       const isLessonMutation =
@@ -121,6 +143,70 @@ function mockFetch({
         }
 
         return Promise.resolve(jsonResponse(other, otherStatus));
+      }
+
+      const isQuestionMutation =
+        (isQuestionsList && method === "POST") ||
+        (questionMatch !== null && method === "PATCH");
+
+      if (isQuestionMutation) {
+        // A test that wants to force a specific Question mutation outcome
+        // (most often a failure) passes `questionOther`/`questionOtherStatus`
+        // explicitly -- otherwise this auto-echoes the request body back as
+        // a persisted Question, since most Lesson-save tests don't care
+        // about the exact Question response shape, only that Save
+        // succeeds/fails and what ends up in `Lesson.questions`.
+        if (questionOther !== undefined) {
+          if (questionOtherStatus >= 200 && questionOtherStatus < 300) {
+            const body = questionOther as { data?: Question };
+            if (isQuestionsList && method === "POST" && body.data) {
+              currentQuestions = [...currentQuestions, body.data];
+            } else if (questionMatch && method === "PATCH" && body.data) {
+              const id = questionMatch[1];
+              currentQuestions = currentQuestions.map((question) =>
+                question.id === id ? (body.data as Question) : question,
+              );
+            }
+          }
+
+          return Promise.resolve(
+            jsonResponse(questionOther, questionOtherStatus),
+          );
+        }
+
+        const requestBody = init?.body
+          ? (JSON.parse(init.body as string) as Partial<Question>)
+          : {};
+
+        if (isQuestionsList && method === "POST") {
+          const created: Question = {
+            id: `question-${nextQuestionId++}`,
+            text: requestBody.text ?? { ar: "", en: "" },
+            explanation: requestBody.explanation ?? { ar: "", en: "" },
+            choices: requestBody.choices ?? [],
+            createdAt: new Date(0),
+            updatedAt: new Date(0),
+            createdBy: "a@example.com",
+            updatedBy: "a@example.com",
+          };
+          currentQuestions = [...currentQuestions, created];
+          return Promise.resolve(jsonResponse({ data: created }, 201));
+        }
+
+        if (questionMatch) {
+          const id = questionMatch[1];
+          const existing = currentQuestions.find(
+            (question) => question.id === id,
+          );
+          const updated: Question = {
+            ...(existing as Question),
+            ...requestBody,
+          };
+          currentQuestions = currentQuestions.map((question) =>
+            question.id === id ? updated : question,
+          );
+          return Promise.resolve(jsonResponse({ data: updated }));
+        }
       }
 
       if (other !== undefined) {
@@ -1179,9 +1265,12 @@ describe("EditModuleModal", () => {
         videoURL: "",
         duration: 0,
         azkar: [],
+        // `questions` (ANA-119) is always included, like `azkar`/`videoURL`
+        // -- this Lesson has none, so it's sent as an empty array, never
+        // omitted.
+        questions: [],
       });
       expect(body).not.toHaveProperty("reward");
-      expect(body).not.toHaveProperty("questions");
       expect(body).not.toHaveProperty("isLocked");
     });
 
@@ -1230,6 +1319,317 @@ describe("EditModuleModal", () => {
       // The plain, context-free translation body -- no `field`/`bookId`
       // Module-scoped context, unlike Module Title's own translate request.
       expect(body).toEqual({ text: "Introduction" });
+    });
+  });
+
+  describe("Questions editor persistence (ANA-119)", () => {
+    const QUESTION_1 = buildQuestionFixture({
+      id: "question-1",
+      text: { ar: "سؤال أول", en: "First question" },
+    });
+    const QUESTION_2 = buildQuestionFixture({
+      id: "question-2",
+      text: { ar: "سؤال ثاني", en: "Second question" },
+    });
+    const QUIZ_LESSON: Lesson = buildLessonFixture({
+      id: "lesson-1",
+      title: { ar: "اختبار", en: "" },
+      type: "quiz",
+      questions: [QUESTION_2.id, QUESTION_1.id],
+    });
+
+    async function openQuizLesson() {
+      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      fireEvent.click(
+        await within(dialog).findByRole("button", { name: "Edit اختبار" }),
+      );
+      const form = within(within(dialog).getByTestId("lesson-form"));
+      return { dialog, form };
+    }
+
+    it("loads existing referenced Questions in Lesson.questions order", async () => {
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+      });
+      renderModal();
+
+      const { form } = await openQuizLesson();
+
+      const textareas = form.getAllByRole("textbox", { name: "Question" });
+      // `Lesson.questions` is [question-2, question-1] -- the opposite of
+      // `questions`' own insertion order above.
+      expect((textareas[0] as HTMLTextAreaElement).value).toContain(
+        "سؤال ثاني",
+      );
+      expect((textareas[1] as HTMLTextAreaElement).value).toContain("سؤال أول");
+    });
+
+    it("PATCHes an edited, existing Question and keeps its id in Lesson.questions on Save", async () => {
+      const updatedLesson = { ...QUIZ_LESSON };
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+        other: { data: updatedLesson },
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      const [firstTextarea] = form.getAllByRole("textbox", {
+        name: "Question",
+      });
+      fireEvent.change(firstTextarea, {
+        target: { value: "سؤال ثاني معدّل" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+      );
+
+      const [, patchInit] = mutationCalls().find(([url]) =>
+        url.endsWith("/questions/question-2"),
+      )!;
+      const patchBody = JSON.parse(patchInit.body as string);
+      // Editing only the Arabic buffer leaves the already-loaded English
+      // side untouched.
+      expect(patchBody.text).toEqual({
+        ar: "سؤال ثاني معدّل",
+        en: "Second question",
+      });
+
+      const lessonPatch = mutationCalls().find(
+        ([url, init]) =>
+          url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+      )!;
+      const lessonBody = JSON.parse(lessonPatch[1].body as string);
+      expect(lessonBody.questions).toEqual(["question-2", "question-1"]);
+
+      // question-1 was never touched -- it's reused as-is, never re-PATCHed
+      // merely because the Lesson itself was saved.
+      expect(
+        mutationCalls().some(([url]) => url.endsWith("/questions/question-1")),
+      ).toBe(false);
+    });
+
+    it("never re-PATCHes an existing Question that wasn't edited when the Lesson is saved", async () => {
+      const updatedLesson = { ...QUIZ_LESSON };
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+        other: { data: updatedLesson },
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      // Edit only the Lesson's own Title -- neither Question is touched.
+      fireEvent.change(form.getByLabelText("Title"), {
+        target: { value: "اختبار معدّل" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+      );
+
+      expect(
+        mutationCalls().some(
+          ([url, init]) =>
+            url.includes("/questions/") && init.method === "PATCH",
+        ),
+      ).toBe(false);
+
+      const lessonPatch = mutationCalls().find(
+        ([url, init]) =>
+          url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+      )!;
+      const lessonBody = JSON.parse(lessonPatch[1].body as string);
+      // The unedited Questions' ids still round-trip into the save.
+      expect(lessonBody.questions).toEqual(["question-2", "question-1"]);
+    });
+
+    it("POSTs new Question drafts on Save and stores the returned ids in Lesson.questions", async () => {
+      const updatedLesson = { ...QUIZ_LESSON, questions: [] };
+      mockFetch({
+        lessons: [{ ...QUIZ_LESSON, questions: [] }],
+        other: { data: updatedLesson },
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      fireEvent.click(form.getByRole("button", { name: "New" }));
+      const [textarea] = form.getAllByRole("textbox", { name: "Question" });
+      fireEvent.change(textarea, { target: { value: "سؤال جديد" } });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+      );
+
+      const [, postInit] = mutationCalls().find(
+        ([url, init]) => url.endsWith("/questions") && init.method === "POST",
+      )!;
+      const postBody = JSON.parse(postInit.body as string);
+      expect(postBody.text).toEqual({ ar: "سؤال جديد", en: "" });
+
+      const lessonPatch = mutationCalls().find(
+        ([url, init]) =>
+          url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+      )!;
+      const lessonBody = JSON.parse(lessonPatch[1].body as string);
+      // The auto-echoed POST response's synthesized id lands in the
+      // Lesson's own `questions` id list.
+      expect(lessonBody.questions).toEqual(["question-1"]);
+    });
+
+    it("persists a reorder through the Question id order on the Lesson", async () => {
+      const updatedLesson = { ...QUIZ_LESSON };
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+        other: { data: updatedLesson },
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+
+      // Each Question card's `data-testid` is keyed by its own client-only
+      // `key` (a random uuid, see question-fields.ts), never the linked
+      // Question's real id -- read the actual rendered order rather than
+      // predicting it.
+      const cardTestIds = form
+        .getAllByTestId(/^question-card-/)
+        .map((card) => card.getAttribute("data-testid") ?? "");
+      stubItemRects(
+        cardTestIds.map((testId) => testId.replace("question-card-", "")),
+      );
+
+      const grip = form.getByRole("button", { name: "Reorder question 2" });
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+      );
+      const lessonPatch = mutationCalls().find(
+        ([url, init]) =>
+          url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+      )!;
+      const lessonBody = JSON.parse(lessonPatch[1].body as string);
+      // Loaded order was [question-2, question-1] -- moving the second card
+      // up one position swaps them.
+      expect(lessonBody.questions).toEqual(["question-1", "question-2"]);
+    });
+
+    it("detaches a removed existing Question from Lesson.questions without deleting its document", async () => {
+      const updatedLesson = { ...QUIZ_LESSON, questions: [QUESTION_1.id] };
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+        other: { data: updatedLesson },
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      fireEvent.click(form.getByRole("button", { name: "Remove question 1" }));
+      const confirmDialog = screen.getByRole("dialog", {
+        name: "Delete question 1?",
+      });
+      fireEvent.click(
+        within(confirmDialog).getByRole("button", { name: "Delete" }),
+      );
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+      );
+      const lessonPatch = mutationCalls().find(
+        ([url, init]) =>
+          url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+      )!;
+      const lessonBody = JSON.parse(lessonPatch[1].body as string);
+      expect(lessonBody.questions).toEqual(["question-1"]);
+
+      // The Module-level Question document is never DELETEd by removing it
+      // from this Lesson's local list -- only the reference is dropped.
+      expect(mutationCalls().some(([, init]) => init.method === "DELETE")).toBe(
+        false,
+      );
+    });
+
+    it("keeps the Lesson editor open with the draft intact when a Question save fails", async () => {
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+        questionOther: { error: "Question is still referenced." },
+        questionOtherStatus: 409,
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      const [firstTextarea] = form.getAllByRole("textbox", {
+        name: "Question",
+      });
+      fireEvent.change(firstTextarea, {
+        target: { value: "سؤال ثاني معدّل" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      expect(
+        await within(dialog).findByText("Question is still referenced."),
+      ).toBeInTheDocument();
+      // Still in Lesson mode, draft intact -- never silently returned to
+      // Module mode.
+      expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
+      expect((firstTextarea as HTMLTextAreaElement).value).toContain(
+        "سؤال ثاني معدّل",
+      );
+      // No Lesson request was ever made -- Questions are saved first.
+      expect(
+        mutationCalls().some(
+          ([url, init]) =>
+            url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+        ),
+      ).toBe(false);
+    });
+
+    it("discarding a Question edit leaves backend data unchanged", async () => {
+      mockFetch({
+        lessons: [QUIZ_LESSON],
+        questions: [QUESTION_1, QUESTION_2],
+      });
+      renderModal();
+
+      const { dialog, form } = await openQuizLesson();
+      const [firstTextarea] = form.getAllByRole("textbox", {
+        name: "Question",
+      });
+      fireEvent.change(firstTextarea, {
+        target: { value: "سؤال ثاني معدّل" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Back to Module" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      expect(mutationCalls()).toHaveLength(0);
     });
   });
 

@@ -32,6 +32,7 @@ function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
     <MantineProvider>
       <LessonEditor
         lesson={LESSON}
+        moduleQuestions={[]}
         moduleTitle="عنوان الوحدة"
         moduleDescription="وصف الوحدة"
         moduleContent="محتوى الوحدة"
@@ -121,6 +122,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
           videoURL: "",
           duration: 0,
           azkar: [],
+          questions: [],
         }),
       );
       expect(onCreate).not.toHaveBeenCalled();
@@ -202,6 +204,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
           videoURL: "",
           duration: 0,
           azkar: [],
+          questions: [],
         }),
       );
       expect(onCreate).toHaveBeenCalledTimes(1);
@@ -461,6 +464,21 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
 
       fireEvent.click(screen.getByRole("radio", { name: "Break" }));
       expect(screen.getByDisplayValue("سبحان الله")).toBeInTheDocument();
+    });
+
+    it("keeps a Quiz Lesson's Questions after switching away to Text and back (ANA-119)", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      const [textarea] = screen.getAllByRole("textbox", { name: "Question" });
+      fireEvent.change(textarea, { target: { value: "ما هي الصلاة؟" } });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Text" }));
+      expect(screen.queryByText("Questions")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
+      expect(screen.getByDisplayValue("ما هي الصلاة؟")).toBeInTheDocument();
     });
   });
 });

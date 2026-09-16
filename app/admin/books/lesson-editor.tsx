@@ -10,6 +10,7 @@ import {
   type TranslatedValue,
 } from "@/components/ui/translatable-value";
 import type { Lesson } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 import { LessonForm } from "./lesson-form";
 import {
   createEmptyLessonFieldsValues,
@@ -18,6 +19,10 @@ import {
   type LessonAzkarFieldEntry,
   type LessonFieldsValues,
 } from "./lesson-fields";
+import {
+  isSameQuestionEntries,
+  type QuestionFieldEntry,
+} from "./question-fields";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -33,6 +38,11 @@ export interface LessonEditorProps {
    * opened, so editing or discarding one draft can never leak into
    * another's. */
   lesson: Lesson | null;
+  /** Every Question currently loaded for the owning Module (ANA-119) --
+   * used only to seed `questions` when `lesson` is given (see
+   * `toLessonFieldsValues`); a brand-new New Lesson draft has no Questions
+   * to seed regardless of this list's contents. */
+  moduleQuestions: Question[];
   /** The owning Module's own current Arabic Title/Description/Learning
    * Material (ANA-116) -- forwarded to `LessonForm` unchanged, grounding
    * both Title's and Description's AI Assistance suggestions in
@@ -72,6 +82,7 @@ export interface LessonEditorProps {
 // by opening this editor, only by a successful `onCreate`.
 export function LessonEditor({
   lesson,
+  moduleQuestions,
   moduleTitle,
   moduleDescription,
   moduleContent,
@@ -80,7 +91,7 @@ export function LessonEditor({
   onBack,
 }: LessonEditorProps) {
   const initialFields = lesson
-    ? toLessonFieldsValues(lesson)
+    ? toLessonFieldsValues(lesson, moduleQuestions)
     : createEmptyLessonFieldsValues();
 
   const [title, setTitle] = useState<TranslatedValue>(initialFields.title);
@@ -98,16 +109,21 @@ export function LessonEditor({
   const [azkar, setAzkar] = useState<LessonAzkarFieldEntry[]>(
     initialFields.azkar,
   );
+  const [questions, setQuestions] = useState<QuestionFieldEntry[]>(
+    initialFields.questions,
+  );
 
   // Mirrors the Module form's own busy-gating (ANA-109): Save stays
   // disabled while Title's or Description's own Translate with AI or AI
   // Assistance request is unresolved, since saving now would persist the
   // pre-translation/pre-suggestion value and the AI result would be lost
   // once it lands after a successful save has already unmounted this
-  // editor.
+  // editor. `questionsBusy` extends this to a Question's own Translate
+  // action (ANA-119).
   const [titleBusy, setTitleBusy] = useState(false);
   const [descriptionBusy, setDescriptionBusy] = useState(false);
-  const aiBusy = titleBusy || descriptionBusy;
+  const [questionsBusy, setQuestionsBusy] = useState(false);
+  const aiBusy = titleBusy || descriptionBusy || questionsBusy;
 
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -122,7 +138,8 @@ export function LessonEditor({
     !isSameTranslatedValue(content, initialFields.content) ||
     videoURL !== initialFields.videoURL ||
     duration !== initialFields.duration ||
-    !isSameAzkar(azkar, initialFields.azkar);
+    !isSameAzkar(azkar, initialFields.azkar) ||
+    !isSameQuestionEntries(questions, initialFields.questions);
 
   function handleBackClick() {
     if (isDirty) {
@@ -151,6 +168,7 @@ export function LessonEditor({
       videoURL,
       duration,
       azkar,
+      questions,
     };
 
     setSaveError(null);
@@ -212,6 +230,7 @@ export function LessonEditor({
             videoURL,
             duration,
             azkar,
+            questions,
           }}
           onChange={(patch) => {
             if (patch.title !== undefined) setTitle(patch.title);
@@ -225,12 +244,14 @@ export function LessonEditor({
             if (patch.videoURL !== undefined) setVideoURL(patch.videoURL);
             if (patch.duration !== undefined) setDuration(patch.duration);
             if (patch.azkar !== undefined) setAzkar(patch.azkar);
+            if (patch.questions !== undefined) setQuestions(patch.questions);
           }}
           moduleTitle={moduleTitle}
           moduleDescription={moduleDescription}
           moduleContent={moduleContent}
           onTitleBusyChange={setTitleBusy}
           onDescriptionBusyChange={setDescriptionBusy}
+          onQuestionsBusyChange={setQuestionsBusy}
         />
 
         {saveError && (

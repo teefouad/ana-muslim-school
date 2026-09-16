@@ -8,6 +8,7 @@ import {
   Button,
   Flex,
   Group,
+  Loader,
   Modal,
   Skeleton,
   SimpleGrid,
@@ -25,6 +26,7 @@ import {
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import type { Lesson } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 import {
   assistLearningMaterial,
   suggestModuleDescription,
@@ -48,9 +50,23 @@ import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
 } from "./module-fields";
+import { saveLessonQuestions } from "./questions-client";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
+}
+
+/** Upserts freshly created/updated Questions (ANA-119) into the Module's
+ * cached Question list by id -- keeps the Questions SWR cache current for
+ * this session without waiting on its own background revalidation, the
+ * same "write the real result in, then let SWR revalidate" contract
+ * `mutateLessons` already uses for Lessons. */
+function mergeQuestions(current: Question[], saved: Question[]): Question[] {
+  const byId = new Map(current.map((question) => [question.id, question]));
+  for (const question of saved) {
+    byId.set(question.id, question);
+  }
+  return Array.from(byId.values());
 }
 
 const LESSONS_SKELETON_ROW_COUNT = 3;
@@ -290,6 +306,26 @@ function EditModuleModalBody({
   const lessonsLoading = lessonsKey !== null && !lessonsData && !lessonsError;
   const serverLessons: Lesson[] = lessonsData?.data ?? [];
 
+  // Every Question currently defined for this Module (ANA-119), loaded the
+  // same way/at the same time as its Lessons -- the Lesson editor's own
+  // Questions configuration needs the full list to seed a Lesson's
+  // `questions` (an ordered id array) with real Question content when it
+  // opens (see lesson-fields.ts's `toLessonFieldsValues`).
+  const questionsKey =
+    state.mode === "edit"
+      ? `/api/v1/books/${book.id}/modules/${state.id}/questions`
+      : null;
+  const {
+    data: questionsData,
+    error: questionsError,
+    mutate: mutateQuestions,
+  } = useSWR<{ data: Question[] }>(questionsKey, fetchJson, {
+    shouldRetryOnError: false,
+  });
+  const questionsLoading =
+    questionsKey !== null && !questionsData && !questionsError;
+  const moduleQuestions: Question[] = questionsData?.data ?? [];
+
   // A pending drag-and-drop reorder, not yet persisted -- mirrors
   // `[id]/edit/page.tsx`'s own `moduleOrderDraft` for `Book.modules`.
   // Dragging only ever updates this local draft; it's persisted, alongside
@@ -380,15 +416,37 @@ function EditModuleModalBody({
       return;
     }
 
+    // Every local Question draft/edit is persisted first (ANA-119: new
+    // drafts POST, existing linked Questions PATCH), so the Lesson create
+    // request below can carry their real, final ids in `questions` -- a
+    // failure here throws before any Lesson request is made, keeping the
+    // Lesson editor open with the draft intact (see LessonEditor's own
+    // `handleSave`).
+    const savedQuestions = await saveLessonQuestions(
+      book.id,
+      state.id,
+      fields.questions,
+      moduleQuestions,
+    );
+
     const created = await createLesson(
       book.id,
       state.id,
-      toLessonCreateFields(fields),
+      toLessonCreateFields(
+        fields,
+        savedQuestions.map((question) => question.id),
+      ),
     );
 
     setLessonOrderDraft(null);
     void mutateLessons(
       (current) => ({ data: [...(current?.data ?? []), created] }),
+      { revalidate: true },
+    );
+    void mutateQuestions(
+      (current) => ({
+        data: mergeQuestions(current?.data ?? [], savedQuestions),
+      }),
       { revalidate: true },
     );
   }
@@ -407,11 +465,24 @@ function EditModuleModalBody({
       return;
     }
 
+    // See handleCreateLesson's identical comment -- persists every local
+    // Question draft/edit first (ANA-119) so the Lesson PATCH below carries
+    // their real, final ids.
+    const savedQuestions = await saveLessonQuestions(
+      book.id,
+      state.id,
+      fields.questions,
+      moduleQuestions,
+    );
+
     const updated = await updateLesson(
       book.id,
       state.id,
       lessonId,
-      toLessonPatchFields(fields),
+      toLessonPatchFields(
+        fields,
+        savedQuestions.map((question) => question.id),
+      ),
     );
 
     void mutateLessons(
@@ -419,6 +490,12 @@ function EditModuleModalBody({
         data: (current?.data ?? []).map((lesson) =>
           lesson.id === lessonId ? updated : lesson,
         ),
+      }),
+      { revalidate: true },
+    );
+    void mutateQuestions(
+      (current) => ({
+        data: mergeQuestions(current?.data ?? [], savedQuestions),
       }),
       { revalidate: true },
     );
@@ -729,16 +806,40 @@ function EditModuleModalBody({
       </Stack>
     ) : lessonEditorTarget ? (
       <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
-        <LessonEditor
-          key={openLesson?.id ?? "new"}
-          lesson={openLesson}
-          moduleTitle={title.ar ?? ""}
-          moduleDescription={description.ar ?? ""}
-          moduleContent={content.ar ?? ""}
-          onCreate={handleCreateLesson}
-          onUpdate={handleUpdateLesson}
-          onBack={() => setLessonEditorTarget(null)}
-        />
+        {questionsLoading ? (
+          // This Module's Questions (needed to seed an existing Lesson's
+          // `questions`, see lesson-fields.ts's `toLessonFieldsValues`)
+          // load alongside its Lessons and have almost always already
+          // resolved by the time Edit/New Lesson is clicked -- this only
+          // ever shows on a genuinely slow first load.
+          <Stack align="center" justify="center" h="100%">
+            <Loader />
+          </Stack>
+        ) : (
+          <Stack gap="sm" style={{ height: "100%" }}>
+            {questionsError && (
+              // Non-blocking, matching Lessons' own failed-refresh
+              // treatment below -- a failed Questions refresh never blocks
+              // opening the Lesson editor, only surfaces the error above it.
+              <Alert color="red" role="alert">
+                {questionsError.message}
+              </Alert>
+            )}
+            <Box style={{ flex: 1, minHeight: 0 }}>
+              <LessonEditor
+                key={openLesson?.id ?? "new"}
+                lesson={openLesson}
+                moduleQuestions={moduleQuestions}
+                moduleTitle={title.ar ?? ""}
+                moduleDescription={description.ar ?? ""}
+                moduleContent={content.ar ?? ""}
+                onCreate={handleCreateLesson}
+                onUpdate={handleUpdateLesson}
+                onBack={() => setLessonEditorTarget(null)}
+              />
+            </Box>
+          </Stack>
+        )}
       </Box>
     ) : (
       <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
