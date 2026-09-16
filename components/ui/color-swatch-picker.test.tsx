@@ -8,29 +8,30 @@ import styles from "./color-swatch-picker.module.css";
 const SWATCH_NAMES = [
   "Night",
   "Cream",
-  "Red",
-  "Green",
-  "Blue",
+  "Orange",
   "Gold",
   "Yellow",
-  "Orange",
-  "Pink",
-  "Grape",
-  "Violet",
-  "Indigo",
-  "Cyan",
-  "Teal",
   "Lime",
+  "Green",
+  "Teal",
+  "Dark",
+  "Cyan",
+  "Blue",
+  "Indigo",
+  "Violet",
+  "Grape",
+  "Pink",
+  "Red",
 ];
 
 describe("ColorSwatchPicker", () => {
-  it("renders exactly 15 swatches, in the required order, each equally sized", () => {
+  it("renders exactly 16 swatches, in the required order, each equally sized", () => {
     render(<ColorSwatchPicker value="pink.6" onChange={vi.fn()} />);
 
     const group = screen.getByRole("radiogroup", { name: "Color" });
     const swatches = within(group).getAllByRole("radio");
 
-    expect(swatches).toHaveLength(15);
+    expect(swatches).toHaveLength(16);
     expect(swatches.map((swatch) => swatch.getAttribute("aria-label"))).toEqual(
       SWATCH_NAMES,
     );

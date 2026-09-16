@@ -277,7 +277,7 @@ describe("BookForm", () => {
     );
   });
 
-  it("renders the 15-color swatch picker wired to the Color field (ANA-89)", () => {
+  it("renders the 16-color swatch picker wired to the Color field (ANA-89)", () => {
     renderWithProvider(
       <BookForm
         id={FORM_ID}
@@ -287,7 +287,7 @@ describe("BookForm", () => {
     );
 
     const group = screen.getByRole("radiogroup", { name: "Color" });
-    expect(within(group).getAllByRole("radio")).toHaveLength(15);
+    expect(within(group).getAllByRole("radio")).toHaveLength(16);
     expect(within(group).getByRole("radio", { name: "Cyan" })).toHaveAttribute(
       "aria-checked",
       "true",
