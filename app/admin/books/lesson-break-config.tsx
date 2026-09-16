@@ -184,7 +184,6 @@ export function LessonBreakConfig({ value, onChange }: LessonBreakConfigProps) {
         </Text>
         <Button
           size="xs"
-          variant="subtle"
           leftSection={<Plus size={14} aria-hidden="true" />}
           onClick={handleAdd}
         >
