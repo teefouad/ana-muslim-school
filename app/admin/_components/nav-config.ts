@@ -30,18 +30,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Users,
         isVisible: (access) => access.isSuperAdmin || access.canManageUsers,
       },
-    ],
-  },
-  {
-    label: "Books",
-    items: [
       {
-        label: "All Books",
+        label: "Books",
         href: "/admin/books",
         icon: BookOpen,
       },
       {
-        label: "New Book",
+        label: "Add Book",
         href: "/admin/books/new",
         icon: BookPlus,
       },

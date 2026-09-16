@@ -16,20 +16,19 @@ import styles from "./color-swatch-picker.module.css";
 const SWATCH_COLOR_NAMES = [
   "night",
   "cream",
-  "orange",
+  "red",
+  "green",
+  "blue",
   "gold",
   "yellow",
-  "lime",
-  "green",
-  "teal",
-  "dark",
-  "cyan",
-  "blue",
-  "indigo",
-  "violet",
-  "grape",
+  "orange",
   "pink",
-  "red",
+  "grape",
+  "violet",
+  "indigo",
+  "cyan",
+  "teal",
+  "lime",
 ] as const;
 
 function swatchLabel(name: string): string {
@@ -94,6 +93,7 @@ export function ColorSwatchPicker({
             aria-label={swatchLabel(name)}
             className={styles.swatch}
             style={{
+              width: "19px",
               backgroundColor: APPLICATION_COLORS[token],
             }}
             onClick={() => {
