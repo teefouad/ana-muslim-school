@@ -12,6 +12,7 @@ import {
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { LESSON_TYPES, type LessonType } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 import {
   suggestLessonDescription,
   suggestLessonTitle,
@@ -56,6 +57,10 @@ export interface LessonFormProps {
   moduleTitle: string;
   moduleDescription: string;
   moduleContent: string;
+  /** Every Question currently loaded for the owning Module (ANA-120) --
+   * forwarded to the Quiz/Final/Skip Questions editor's own Insert action,
+   * unused by every other Lesson type's Configuration. */
+  moduleQuestions: Question[];
   /** Mirrors Title's/Description's own Translate with AI and AI
    * Assistance request in-flight state (ANA-109/ANA-116), so the caller can
    * keep Save disabled while either is unresolved -- saving now would
@@ -80,8 +85,12 @@ export interface LessonFormProps {
 function LessonTypeConfig({
   value,
   onChange,
+  moduleQuestions,
   onQuestionsBusyChange,
-}: Pick<LessonFormProps, "value" | "onChange" | "onQuestionsBusyChange">) {
+}: Pick<
+  LessonFormProps,
+  "value" | "onChange" | "moduleQuestions" | "onQuestionsBusyChange"
+>) {
   switch (value.type) {
     case "text":
       return (
@@ -132,6 +141,7 @@ function LessonTypeConfig({
         <QuestionsEditor
           questions={value.questions}
           onChange={(questions) => onChange({ questions })}
+          moduleQuestions={moduleQuestions}
           onBusyChange={onQuestionsBusyChange}
         />
       );
@@ -161,6 +171,7 @@ export function LessonForm({
   moduleTitle,
   moduleDescription,
   moduleContent,
+  moduleQuestions,
   onTitleBusyChange,
   onDescriptionBusyChange,
   onQuestionsBusyChange,
@@ -277,6 +288,7 @@ export function LessonForm({
         <LessonTypeConfig
           value={value}
           onChange={onChange}
+          moduleQuestions={moduleQuestions}
           onQuestionsBusyChange={onQuestionsBusyChange}
         />
       </Stack>

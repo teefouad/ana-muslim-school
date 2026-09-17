@@ -10,20 +10,29 @@ import {
 import { buildQuestionFixture } from "./question-fixtures";
 import { QuestionsEditor, type QuestionsEditorProps } from "./questions-editor";
 
+const QUESTION_1 = buildQuestionFixture({
+  id: "question-1",
+  text: { ar: "سؤال أول", en: "First question" },
+});
+const QUESTION_2 = buildQuestionFixture({
+  id: "question-2",
+  text: { ar: "سؤال ثاني", en: "Second question" },
+});
+// Not yet linked into the Lesson -- available for Insert to pick (ANA-120).
+const QUESTION_3 = buildQuestionFixture({
+  id: "question-3",
+  text: { ar: "سؤال ثالث", en: "Third question" },
+});
+
 const QUESTIONS: QuestionFieldEntry[] = [
-  toQuestionFieldEntry(
-    buildQuestionFixture({
-      id: "question-1",
-      text: { ar: "سؤال أول", en: "First question" },
-    }),
-  ),
-  toQuestionFieldEntry(
-    buildQuestionFixture({
-      id: "question-2",
-      text: { ar: "سؤال ثاني", en: "Second question" },
-    }),
-  ),
+  toQuestionFieldEntry(QUESTION_1),
+  toQuestionFieldEntry(QUESTION_2),
 ];
+
+// The owning Module's own Question bank -- includes both Questions already
+// linked into `QUESTIONS` above (so Insert's exclusion is exercised) and
+// one more available to insert.
+const MODULE_QUESTIONS = [QUESTION_1, QUESTION_2, QUESTION_3];
 
 // QuestionsEditor is fully controlled -- wraps it with local state so
 // reorder/collapse/delete interactions actually reflect back into what's
@@ -53,7 +62,12 @@ function renderEditor(overrides: Partial<QuestionsEditorProps> = {}) {
 
   const utils = render(
     <MantineProvider>
-      <Demo questions={QUESTIONS} onChange={onChange} {...overrides} />
+      <Demo
+        questions={QUESTIONS}
+        onChange={onChange}
+        moduleQuestions={MODULE_QUESTIONS}
+        {...overrides}
+      />
     </MantineProvider>,
   );
   return { onChange, ...utils };
@@ -118,12 +132,24 @@ describe("QuestionsEditor", () => {
     ).toHaveClass("lucide-sparkles");
   });
 
-  it("keeps Insert and Generate present but disabled", () => {
+  it("keeps Generate present but disabled, while New and Insert stay enabled (ANA-120)", () => {
     renderEditor();
 
-    expect(screen.getByRole("button", { name: "Insert" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "New" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Insert" })).not.toBeDisabled();
+  });
+
+  it("styles New/Insert/Generate as compact text actions, not button chrome (ANA-120)", () => {
+    renderEditor();
+
+    for (const name of ["New", "Insert", "Generate"]) {
+      const button = screen.getByRole("button", { name });
+      // Plain <button> elements styled through a CSS Module class, not a
+      // Mantine `Button` (which always renders `.mantine-Button-root`).
+      expect(button.tagName).toBe("BUTTON");
+      expect(button.className).not.toMatch(/mantine-Button-root/);
+    }
   });
 
   it("shows the exact empty-state copy when there are no questions", () => {
@@ -229,5 +255,76 @@ describe("QuestionsEditor", () => {
 
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByText("Question 1")).toBeInTheDocument();
+  });
+
+  describe("Insert (ANA-120)", () => {
+    it("opens the Insert a question picker, listing eligible Module Questions and excluding already-linked ones", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+
+      expect(
+        screen.getByRole("dialog", { name: "Insert a question" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Search questions…"),
+      ).toBeInTheDocument();
+      // question-1/question-2 are already in the Lesson -- only question-3
+      // (not yet linked) is offered.
+      expect(screen.queryByText("سؤال أول")).not.toBeInTheDocument();
+      expect(screen.getByText("سؤال ثالث")).toBeInTheDocument();
+    });
+
+    it("filters results by Arabic and English question text", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+      fireEvent.change(screen.getByPlaceholderText("Search questions…"), {
+        target: { value: "Third" },
+      });
+
+      expect(screen.getByText("سؤال ثالث")).toBeInTheDocument();
+
+      fireEvent.change(screen.getByPlaceholderText("Search questions…"), {
+        target: { value: "no match" },
+      });
+
+      expect(screen.getByText("No questions found.")).toBeInTheDocument();
+    });
+
+    it("opening and closing Insert without selecting a question never calls onChange", () => {
+      const { onChange } = renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+      const dialog = screen.getByRole("dialog", { name: "Insert a question" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Insert a question" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("selecting a question appends it (reusing its persisted id), closes the picker, and shows it expanded", () => {
+      const { onChange } = renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+      fireEvent.click(screen.getByRole("option", { name: /سؤال ثالث/ }));
+
+      expect(
+        screen.queryByRole("dialog", { name: "Insert a question" }),
+      ).not.toBeInTheDocument();
+      expect(onChange).toHaveBeenCalledWith([
+        ...QUESTIONS,
+        expect.objectContaining({ id: "question-3" }),
+      ]);
+      // Newly inserted, so it renders expanded (its structured editor is
+      // visible) rather than collapsed, consistent with a newly added New
+      // entry -- alongside the two already-expanded existing cards.
+      expect(screen.getByText("Question 3")).toBeInTheDocument();
+      expect(screen.getAllByRole("textbox", { name: "Question" })).toHaveLength(
+        3,
+      );
+    });
   });
 });

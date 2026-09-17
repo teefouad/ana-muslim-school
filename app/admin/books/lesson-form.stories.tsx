@@ -48,11 +48,25 @@ const BREAK_VALUE: LessonFieldsValues = {
   ],
 };
 
+// The owning Module's own Question bank (ANA-120) -- includes the Question
+// already linked into `QUIZ_VALUE` below plus one more, available for the
+// Insert action to demonstrate.
+const MODULE_QUESTIONS = [
+  buildQuestionFixture(),
+  buildQuestionFixture({
+    id: "question-2",
+    text: {
+      ar: "ما هو أول أركان الإسلام؟",
+      en: "What is the first pillar of Islam?",
+    },
+  }),
+];
+
 const QUIZ_VALUE: LessonFieldsValues = {
   ...SAMPLE_VALUE,
   type: "quiz",
   content: {},
-  questions: [toQuestionFieldEntry(buildQuestionFixture())],
+  questions: [toQuestionFieldEntry(MODULE_QUESTIONS[0])],
 };
 
 // Wraps LessonForm with local state so every field edit behaves for real in
@@ -86,6 +100,7 @@ const meta = {
     moduleTitle: "الصلاة",
     moduleDescription: "مقدمة عن الصلاة",
     moduleContent: "محتوى تعليمي عن الصلاة",
+    moduleQuestions: MODULE_QUESTIONS,
   },
   render: (args) => (
     <div style={{ width: 320 }}>

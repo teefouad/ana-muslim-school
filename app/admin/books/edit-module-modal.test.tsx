@@ -1818,6 +1818,110 @@ describe("EditModuleModal", () => {
 
       expect(mutationCalls()).toHaveLength(0);
     });
+
+    describe("Insert (ANA-120)", () => {
+      const partialQuizLesson: Lesson = {
+        ...QUIZ_LESSON,
+        questions: [QUESTION_1.id],
+      };
+
+      async function insertQuestion2() {
+        const { dialog, form } = await openQuizLesson();
+        fireEvent.click(form.getByRole("button", { name: "Insert" }));
+        const picker = await screen.findByRole("dialog", {
+          name: "Insert a question",
+        });
+        fireEvent.click(
+          within(picker).getByRole("option", { name: /سؤال ثاني/ }),
+        );
+        return { dialog, form };
+      }
+
+      it("appends the selected Question to the Lesson draft, expanded, without touching backend data", async () => {
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+        });
+        renderModal();
+
+        const { form } = await insertQuestion2();
+
+        expect(
+          screen.queryByRole("dialog", { name: "Insert a question" }),
+        ).not.toBeInTheDocument();
+        expect(form.getAllByRole("textbox", { name: "Question" })).toHaveLength(
+          2,
+        );
+        expect(mutationCalls()).toHaveLength(0);
+      });
+
+      it("Saves the inserted Question by reusing its existing id, without POSTing a duplicate Question document", async () => {
+        const updatedLesson = { ...partialQuizLesson };
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+          other: { data: updatedLesson },
+        });
+        renderModal();
+
+        const { dialog } = await insertQuestion2();
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        await vi.waitFor(() =>
+          expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        );
+
+        // Unchanged since it was loaded -- reused as-is, never PATCHed or
+        // re-created through a POST.
+        expect(
+          mutationCalls().some(([url]) => url.includes("/questions")),
+        ).toBe(false);
+
+        const lessonPatch = mutationCalls().find(
+          ([url, init]) =>
+            url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+        )!;
+        const lessonBody = JSON.parse(lessonPatch[1].body as string);
+        expect(lessonBody.questions).toEqual(["question-1", "question-2"]);
+      });
+
+      it("discarding after Insert leaves backend data unchanged", async () => {
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+        });
+        renderModal();
+
+        const { dialog } = await insertQuestion2();
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Back to Module" }),
+        );
+        fireEvent.click(
+          screen.getByRole("button", { name: "Discard changes" }),
+        );
+
+        expect(mutationCalls()).toHaveLength(0);
+      });
+
+      it("excludes Questions already linked into the Lesson from the picker", async () => {
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+        });
+        renderModal();
+
+        const { form } = await openQuizLesson();
+        fireEvent.click(form.getByRole("button", { name: "Insert" }));
+        const picker = await screen.findByRole("dialog", {
+          name: "Insert a question",
+        });
+
+        expect(within(picker).queryByText("سؤال أول")).not.toBeInTheDocument();
+        expect(within(picker).getByText("سؤال ثاني")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("Lesson AI Suggest context reflects the live, unsaved Module draft (ANA-116)", () => {

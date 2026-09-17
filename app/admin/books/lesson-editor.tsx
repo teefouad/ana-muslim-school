@@ -272,6 +272,7 @@ export function LessonEditor({
           moduleTitle={moduleTitle}
           moduleDescription={moduleDescription}
           moduleContent={moduleContent}
+          moduleQuestions={moduleQuestions}
           onTitleBusyChange={setTitleBusy}
           onDescriptionBusyChange={setDescriptionBusy}
           onQuestionsBusyChange={setQuestionsBusy}

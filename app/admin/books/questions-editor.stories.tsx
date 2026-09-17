@@ -28,12 +28,38 @@ function QuestionsEditorDemo({
   );
 }
 
+// The owning Module's own Question bank (ANA-120) -- includes both
+// Questions already linked into `Filled` below (so Insert's exclusion is
+// visible) and a couple more available to insert.
+const MODULE_QUESTIONS = [
+  buildQuestionFixture({
+    id: "question-1",
+    text: {
+      ar: "كم عدد أركان الصلاة؟",
+      en: "How many pillars does Salah have?",
+    },
+  }),
+  buildQuestionFixture({
+    id: "question-2",
+    text: { ar: "ما هو أول أركان الإسلام؟", en: "" },
+  }),
+  buildQuestionFixture({
+    id: "question-3",
+    text: { ar: "ما هي أركان الإيمان؟", en: "What are the pillars of Iman?" },
+  }),
+  buildQuestionFixture({
+    id: "question-4",
+    text: { ar: "متى تجب الزكاة؟", en: "When is Zakah due?" },
+  }),
+];
+
 const meta = {
   title: "Books/QuestionsEditor",
   component: QuestionsEditor,
   tags: ["autodocs"],
   args: {
     onChange: () => {},
+    moduleQuestions: MODULE_QUESTIONS,
   },
   render: (args) => (
     <div style={{ width: 480 }}>
@@ -54,21 +80,8 @@ export const Empty: Story = {
 export const Filled: Story = {
   args: {
     questions: [
-      toQuestionFieldEntry(
-        buildQuestionFixture({
-          id: "question-1",
-          text: {
-            ar: "كم عدد أركان الصلاة؟",
-            en: "How many pillars does Salah have?",
-          },
-        }),
-      ),
-      toQuestionFieldEntry(
-        buildQuestionFixture({
-          id: "question-2",
-          text: { ar: "ما هو أول أركان الإسلام؟", en: "" },
-        }),
-      ),
+      toQuestionFieldEntry(MODULE_QUESTIONS[0]),
+      toQuestionFieldEntry(MODULE_QUESTIONS[1]),
     ],
   },
 };

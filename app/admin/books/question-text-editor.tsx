@@ -2,8 +2,9 @@
 
 import { useId } from "react";
 import { Languages } from "lucide-react";
-import { Button, Group, Stack, Text, Textarea } from "@mantine/core";
+import { Group, Stack, Text, Textarea } from "@mantine/core";
 
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import type { LanguageOption } from "@/components/ui/translatable-value";
 import { useActiveLanguage } from "@/components/ui/use-active-language";
@@ -97,11 +98,15 @@ export function QuestionTextEditor({
           Question
         </Text>
         <Group gap="sm">
-          <Button
-            type="button"
-            variant="light"
-            size="xs"
-            radius="xl"
+          <ActionIconButton
+            aria-label="Translate question with AI"
+            // White, not the shared blue used by FormField's own Translate
+            // with AI action (form-field.tsx) -- this action sits inside a
+            // Question card's own compact header rather than a Paper/light
+            // background, so it follows the same white-icon treatment as
+            // this admin's other in-card action icons rather than FormField's
+            // dedicated `#87caff` (ANA-120).
+            color="white"
             disabled={translate.translating || !translate.canTranslate}
             loading={translate.translating}
             title={
@@ -109,11 +114,10 @@ export function QuestionTextEditor({
                 ? "Add valid Arabic question text first."
                 : undefined
             }
-            leftSection={<Languages size={14} aria-hidden="true" />}
             onClick={translate.translate}
           >
-            Translate
-          </Button>
+            <Languages size={16} aria-hidden="true" />
+          </ActionIconButton>
           <LanguageSwitcher
             languages={LANGUAGES}
             value={lang}

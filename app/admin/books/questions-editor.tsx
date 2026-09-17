@@ -15,15 +15,19 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { Box, Button, Group, Paper, Text } from "@mantine/core";
+import { Box, Group, Paper, Text } from "@mantine/core";
 
 import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableList } from "@/components/ui/sortable-list";
+import type { Question } from "@/lib/questions/types";
 import {
   makeQuestionFieldEntry,
+  toQuestionFieldEntry,
   type QuestionFieldEntry,
 } from "./question-fields";
+import { QuestionBankPicker } from "./question-bank-picker";
+import styles from "./questions-editor.module.css";
 import { QuestionTextEditor } from "./question-text-editor";
 
 function questionSummary(entry: QuestionFieldEntry): string {
@@ -202,6 +206,14 @@ function QuestionCard({
 export interface QuestionsEditorProps {
   questions: QuestionFieldEntry[];
   onChange: (questions: QuestionFieldEntry[]) => void;
+  /** Every Question currently loaded for the owning Module (ANA-120) --
+   * the Insert action's Question Bank picker selects from this list (a
+   * Lesson may only reference Questions from its own Module), excluding
+   * whichever of them are already linked into `questions` below. Threaded
+   * straight through from lesson-editor.tsx's own `moduleQuestions`
+   * (already loaded to seed this list when opening an existing Lesson, see
+   * lesson-fields.ts's `toLessonFieldsValues`) rather than fetched again. */
+  moduleQuestions: Question[];
   /** Aggregates every Question card's own Translate request into one flag
    * (ANA-119: "Save must not run while a Question translation request is
    * unresolved") -- called whenever the set of currently-translating cards
@@ -209,13 +221,14 @@ export interface QuestionsEditorProps {
   onBusyChange?: (busy: boolean) => void;
 }
 
-// The Quiz/Final/Skip Lesson types' Questions configuration (ANA-119),
-// matching the old admin's Questions editor layout and interaction pattern:
-// a header (Questions label + New/Insert/Generate actions), an empty state,
-// and a sortable list of collapsible Question cards. Only New is
-// functional here -- Insert (the Question Bank picker) and Generate (AI
-// generation) are dedicated follow-up tasks, rendered disabled in their
-// correct positions. Built on the low-level `SortableList` primitive
+// The Quiz/Final/Skip Lesson types' Questions configuration (ANA-119,
+// New/Insert header styling and Insert's own Question Bank picker added in
+// ANA-120), matching the old admin's Questions editor layout and
+// interaction pattern: a header (Questions label + New/Insert/Generate
+// actions), an empty state, and a sortable list of collapsible Question
+// cards. Generate (AI generation) remains a dedicated follow-up task,
+// rendered disabled in its correct position. Built on the low-level
+// `SortableList` primitive
 // rather than `ItemList`, for the same reason lesson-break-config.tsx is:
 // each row is an always-visible, multi-field inline editor, not a
 // single-line label with a separate "Edit" step to route into. Fully
@@ -226,12 +239,17 @@ export interface QuestionsEditorProps {
 export function QuestionsEditor({
   questions,
   onChange,
+  moduleQuestions,
   onBusyChange,
 }: QuestionsEditorProps) {
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(
     () => new Set(),
   );
   const [pendingDeleteKey, setPendingDeleteKey] = useState<string | null>(null);
+  // Whether the Insert action's Question Bank picker is open (ANA-120) --
+  // local UI state only, so opening/closing it alone never marks the Lesson
+  // dirty; only an actual selection (which calls `onChange`) does.
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Which Question cards currently have a Translate request in flight --
   // a ref, not state, since nothing here needs to re-render on this
   // changing; it exists solely to aggregate each card's own busy flag
@@ -269,6 +287,18 @@ export function QuestionsEditor({
     onChange([...questions, makeQuestionFieldEntry()]);
   }
 
+  // Every persisted Question id already linked into this Lesson -- excluded
+  // from the Insert picker's results (ANA-120). A brand-new, unsaved
+  // Question draft (`id === null`) never affects this set.
+  const excludeQuestionIds = questions
+    .map((question) => question.id)
+    .filter((id): id is string => id !== null);
+
+  function handleInsert(question: Question) {
+    onChange([...questions, toQuestionFieldEntry(question)]);
+    setPickerOpen(false);
+  }
+
   const pendingDeleteIndex = pendingDeleteKey
     ? questions.findIndex((question) => question.key === pendingDeleteKey)
     : -1;
@@ -280,33 +310,22 @@ export function QuestionsEditor({
           Questions
         </Text>
         <Group gap="md">
-          <Button
-            variant="subtle"
-            size="xs"
-            px={0}
-            leftSection={<Plus size={14} aria-hidden="true" />}
-            onClick={handleAdd}
-          >
+          <button type="button" className={styles.action} onClick={handleAdd}>
+            <Plus size={14} aria-hidden="true" />
             New
-          </Button>
-          <Button
-            variant="subtle"
-            size="xs"
-            px={0}
-            disabled
-            leftSection={<ListPlus size={14} aria-hidden="true" />}
+          </button>
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() => setPickerOpen(true)}
           >
+            <ListPlus size={14} aria-hidden="true" />
             Insert
-          </Button>
-          <Button
-            variant="subtle"
-            size="xs"
-            px={0}
-            disabled
-            leftSection={<Sparkles size={14} aria-hidden="true" />}
-          >
+          </button>
+          <button type="button" className={styles.action} disabled>
+            <Sparkles size={14} aria-hidden="true" />
             Generate
-          </Button>
+          </button>
         </Group>
       </Group>
 
@@ -374,6 +393,16 @@ export function QuestionsEditor({
             );
             setPendingDeleteKey(null);
           }}
+        />
+      )}
+
+      {pickerOpen && (
+        <QuestionBankPicker
+          opened
+          questions={moduleQuestions}
+          excludeQuestionIds={excludeQuestionIds}
+          onSelect={handleInsert}
+          onClose={() => setPickerOpen(false)}
         />
       )}
     </Box>
