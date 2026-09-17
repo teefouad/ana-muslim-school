@@ -189,6 +189,7 @@ function RowChrome({
         <UnstyledButton
           type="button"
           onClick={onClick}
+          fz={14}
           onDoubleClick={onDoubleClick}
           className={contentClassName}
           style={{ textAlign: "start" }}

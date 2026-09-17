@@ -167,26 +167,12 @@ export function LessonForm({
 }: LessonFormProps) {
   return (
     <SimpleGrid
+      flex={1}
       cols={{ base: 1, sm: 2 }}
       spacing="lg"
       data-testid="lesson-form"
     >
       <Stack gap="lg">
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            Position
-          </Text>
-          <SegmentedControl<number>
-            aria-label="Position"
-            data={LESSON_POSITIONS.map((position) => ({
-              value: position,
-              label: String(position),
-            }))}
-            value={value.position}
-            onChange={(position) => onChange({ position })}
-          />
-        </Stack>
-
         <FormField
           label="Title"
           translatable
@@ -237,14 +223,42 @@ export function LessonForm({
           onBusyChange={onDescriptionBusyChange}
         />
 
-        <ToggleCard
-          label="Published"
-          checked={value.isPublished}
-          onChange={(isPublished) => onChange({ isPublished })}
-        />
+        <SimpleGrid
+          cols={{ base: 1, sm: 2 }}
+          spacing="md"
+          style={{ alignItems: "flex-end" }}
+        >
+          <ToggleCard
+            label="Published"
+            checked={value.isPublished}
+            onChange={(isPublished) => onChange({ isPublished })}
+          />
+
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Position
+            </Text>
+            <SegmentedControl<number>
+              aria-label="Position"
+              data={LESSON_POSITIONS.map((position) => ({
+                value: position,
+                label: String(position),
+              }))}
+              value={value.position}
+              onChange={(position) => onChange({ position })}
+            />
+          </Stack>
+        </SimpleGrid>
       </Stack>
 
-      <Stack gap="lg">
+      <Stack
+        gap="lg"
+        style={{
+          border: "1px dashed #fff1",
+          padding: 16,
+          borderRadius: 12,
+        }}
+      >
         <Stack gap={4}>
           <Text size="sm" fw={500}>
             Type
