@@ -19,6 +19,7 @@ import {
 import { translateArabicToEnglish } from "./import-source/translate-client";
 import { LessonBreakConfig } from "./lesson-break-config";
 import type { LessonFieldsValues } from "./lesson-fields";
+import { QuestionsEditor } from "./questions-editor";
 
 const LESSON_TYPE_LABELS: Record<LessonType, string> = {
   text: "Text",
@@ -63,19 +64,24 @@ export interface LessonFormProps {
    * Module mode. */
   onTitleBusyChange?: (busy: boolean) => void;
   onDescriptionBusyChange?: (busy: boolean) => void;
+  /** Aggregates every Question card's own Translate request (ANA-119) --
+   * same busy-gating contract as Title's/Description's own callbacks
+   * above. */
+  onQuestionsBusyChange?: (busy: boolean) => void;
 }
 
-// Renders the currently-selected Lesson type's own Configuration (ANA-118)
-// -- `content` (Text)/`videoURL`+`duration` (Video)/`azkar` (Break) are all
-// still kept in `value` regardless of `type` (see `LessonFieldsValues`'s own
-// doc), so switching types back and forth only ever changes what's shown
-// here, never what's held in the other types' fields. Quiz/Final/Skip
-// deliberately render nothing yet -- their question/reward configuration is
-// a dedicated follow-up task, explicitly out of scope here.
+// Renders the currently-selected Lesson type's own Configuration (ANA-118,
+// Quiz/Final/Skip's own Questions editor added in ANA-119) -- `content`
+// (Text)/`videoURL`+`duration` (Video)/`azkar` (Break)/`questions` (Quiz/
+// Final/Skip) are all still kept in `value` regardless of `type` (see
+// `LessonFieldsValues`'s own doc), so switching types back and forth only
+// ever changes what's shown here, never what's held in the other types'
+// fields.
 function LessonTypeConfig({
   value,
   onChange,
-}: Pick<LessonFormProps, "value" | "onChange">) {
+  onQuestionsBusyChange,
+}: Pick<LessonFormProps, "value" | "onChange" | "onQuestionsBusyChange">) {
   switch (value.type) {
     case "text":
       return (
@@ -122,24 +128,33 @@ function LessonTypeConfig({
     case "quiz":
     case "final":
     case "skip":
-      return null;
+      return (
+        <QuestionsEditor
+          questions={value.questions}
+          onChange={(questions) => onChange({ questions })}
+          onBusyChange={onQuestionsBusyChange}
+        />
+      );
   }
 }
 
 // The selected Lesson's fields form (ANA-114, expanded with type-specific
-// Configuration in ANA-118), rendered by lesson-editor.tsx once Edit
-// switches Edit Module into Lesson mode (ANA-115). Type/Position lead the
-// form as a shared responsive row (ANA-118) -- Type as a SegmentedControl
-// matching Position's own existing visual treatment, replacing the old
-// dropdown -- ahead of Title/Description, which reuse FormField's existing
-// translatable-field behavior: Translate with AI runs through the same
-// plain, context-free `translateArabicToEnglish` boundary Book's own Title
-// field already uses (book-form.tsx), while AI Assistance (ANA-116) runs
-// through `suggestLessonTitle`/`suggestLessonDescription`, grounded in the
-// owning Module's current Title/Description/Learning Material -- every
-// other edit here only ever calls `onChange`, no network request. The
-// Questions section (Quiz/Final/Skip's own reward/scoring configuration)
-// remains a later task.
+// Configuration in ANA-118, redesigned into a two-column layout with
+// Quiz/Final/Skip's own Questions editor in ANA-119), rendered by
+// lesson-editor.tsx once Edit switches Edit Module into Lesson mode
+// (ANA-115). The left column (Position -> Title -> Description -> Published)
+// covers the Lesson's own identity/visibility; the right column (Type ->
+// the selected type's Configuration) covers what the Lesson actually shows
+// learners -- equal-width on desktop, stacking to one column on narrow
+// screens via the same `SimpleGrid cols={{ base: 1, sm: 2 }}` convention
+// this form already used for its old Type/Position row and Video's URL/
+// Duration row. Title/Description reuse FormField's existing translatable-
+// field behavior: Translate with AI runs through the same plain, context-
+// free `translateArabicToEnglish` boundary Book's own Title field already
+// uses (book-form.tsx), while AI Assistance (ANA-116) runs through
+// `suggestLessonTitle`/`suggestLessonDescription`, grounded in the owning
+// Module's current Title/Description/Learning Material -- every other edit
+// here only ever calls `onChange`, no network request.
 export function LessonForm({
   value,
   onChange,
@@ -148,10 +163,88 @@ export function LessonForm({
   moduleContent,
   onTitleBusyChange,
   onDescriptionBusyChange,
+  onQuestionsBusyChange,
 }: LessonFormProps) {
   return (
-    <Stack gap="lg" data-testid="lesson-form">
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+    <SimpleGrid
+      cols={{ base: 1, sm: 2 }}
+      spacing="lg"
+      data-testid="lesson-form"
+    >
+      <Stack gap="lg">
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Position
+          </Text>
+          <SegmentedControl<number>
+            aria-label="Position"
+            data={LESSON_POSITIONS.map((position) => ({
+              value: position,
+              label: String(position),
+            }))}
+            value={value.position}
+            onChange={(position) => onChange({ position })}
+          />
+        </Stack>
+
+        <FormField
+          label="Title"
+          translatable
+          value={value.title}
+          onChange={(title) => onChange({ title })}
+          aiTranslation
+          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiAssistance
+          onAiAssist={({ text, instructions }) =>
+            suggestLessonTitle({
+              text,
+              additionalInstructions: instructions,
+              moduleTitle,
+              moduleDescription,
+              moduleContent,
+            })
+          }
+          // Suggest always generates Arabic (see suggest-lesson-title.ts's
+          // base prompt) -- pinned here so running it while the English tab
+          // is active can never write that Arabic result into `en` (ANA-116
+          // PR review). Translate with AI is unaffected: it already only
+          // ever reads `ar` and writes `en` on its own, regardless of the
+          // active tab.
+          aiAssistanceLanguage="ar"
+          onBusyChange={onTitleBusyChange}
+        />
+
+        <FormField
+          label="Description"
+          translatable
+          value={value.description}
+          onChange={(description) => onChange({ description })}
+          aiTranslation
+          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiAssistance
+          onAiAssist={({ text, instructions }) =>
+            suggestLessonDescription({
+              text,
+              additionalInstructions: instructions,
+              moduleTitle,
+              moduleDescription,
+              moduleContent,
+            })
+          }
+          // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
+          // review) -- Description's own Suggest is equally Arabic-only.
+          aiAssistanceLanguage="ar"
+          onBusyChange={onDescriptionBusyChange}
+        />
+
+        <ToggleCard
+          label="Published"
+          checked={value.isPublished}
+          onChange={(isPublished) => onChange({ isPublished })}
+        />
+      </Stack>
+
+      <Stack gap="lg">
         <Stack gap={4}>
           <Text size="sm" fw={500}>
             Type
@@ -167,79 +260,12 @@ export function LessonForm({
           />
         </Stack>
 
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            Position
-          </Text>
-          <SegmentedControl<number>
-            aria-label="Position"
-            data={LESSON_POSITIONS.map((position) => ({
-              value: position,
-              label: String(position),
-            }))}
-            value={value.position}
-            onChange={(position) => onChange({ position })}
-          />
-        </Stack>
-      </SimpleGrid>
-
-      <FormField
-        label="Title"
-        translatable
-        value={value.title}
-        onChange={(title) => onChange({ title })}
-        aiTranslation
-        onAiTranslate={({ text }) => translateArabicToEnglish(text)}
-        aiAssistance
-        onAiAssist={({ text, instructions }) =>
-          suggestLessonTitle({
-            text,
-            additionalInstructions: instructions,
-            moduleTitle,
-            moduleDescription,
-            moduleContent,
-          })
-        }
-        // Suggest always generates Arabic (see suggest-lesson-title.ts's
-        // base prompt) -- pinned here so running it while the English tab
-        // is active can never write that Arabic result into `en` (ANA-116
-        // PR review). Translate with AI is unaffected: it already only
-        // ever reads `ar` and writes `en` on its own, regardless of the
-        // active tab.
-        aiAssistanceLanguage="ar"
-        onBusyChange={onTitleBusyChange}
-      />
-
-      <FormField
-        label="Description"
-        translatable
-        value={value.description}
-        onChange={(description) => onChange({ description })}
-        aiTranslation
-        onAiTranslate={({ text }) => translateArabicToEnglish(text)}
-        aiAssistance
-        onAiAssist={({ text, instructions }) =>
-          suggestLessonDescription({
-            text,
-            additionalInstructions: instructions,
-            moduleTitle,
-            moduleDescription,
-            moduleContent,
-          })
-        }
-        // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
-        // review) -- Description's own Suggest is equally Arabic-only.
-        aiAssistanceLanguage="ar"
-        onBusyChange={onDescriptionBusyChange}
-      />
-
-      <LessonTypeConfig value={value} onChange={onChange} />
-
-      <ToggleCard
-        label="Published"
-        checked={value.isPublished}
-        onChange={(isPublished) => onChange({ isPublished })}
-      />
-    </Stack>
+        <LessonTypeConfig
+          value={value}
+          onChange={onChange}
+          onQuestionsBusyChange={onQuestionsBusyChange}
+        />
+      </Stack>
+    </SimpleGrid>
   );
 }

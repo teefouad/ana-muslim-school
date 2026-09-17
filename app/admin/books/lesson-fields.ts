@@ -8,7 +8,12 @@ import {
   type LessonType,
   type LessonWritableFields,
 } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 import { toTranslatableString } from "./module-fields";
+import {
+  toQuestionFieldEntry,
+  type QuestionFieldEntry,
+} from "./question-fields";
 
 /** One Break entry as edited in the Lesson form (ANA-118) -- `id` is a
  * client-only, locally-generated key (never persisted) that keeps each
@@ -25,13 +30,13 @@ export interface LessonAzkarFieldEntry {
 
 /**
  * The Lesson editor's controlled field values (ANA-114/ANA-115, expanded
- * with type-specific configuration in ANA-118). `content`/`videoURL`/
- * `duration`/`azkar` are all kept in state regardless of the currently
+ * with type-specific configuration in ANA-118, and with Quiz/Final/Skip's
+ * own Questions configuration in ANA-119). `content`/`videoURL`/`duration`/
+ * `azkar`/`questions` are all kept in state regardless of the currently
  * selected `type` -- only which of them the form *renders* depends on
  * `type` (see lesson-form.tsx) -- so switching types back and forth during
  * one editing session never drops whatever was already entered for another
- * type (ANA-118). Quiz/Final/Skip configuration (`reward`/`questions`/
- * `isLocked`) remains out of scope for this editor -- see
+ * type. `reward`/`isLocked` remain out of scope for this editor -- see
  * `hiddenLessonFieldDefaults` below.
  */
 export interface LessonFieldsValues {
@@ -44,13 +49,26 @@ export interface LessonFieldsValues {
   videoURL: string;
   duration: number;
   azkar: LessonAzkarFieldEntry[];
+  questions: QuestionFieldEntry[];
 }
 
 /** Seeds the Lesson editor's fields from a real, API-backed Lesson
- * (ANA-116, expanded in ANA-118). Each `azkar` entry is given a fresh
- * client-only `id` (see `LessonAzkarFieldEntry`) -- the persisted shape has
- * none, since the displayed order alone is what's preserved on save. */
-export function toLessonFieldsValues(lesson: Lesson): LessonFieldsValues {
+ * (ANA-116, expanded in ANA-118/ANA-119). Each `azkar` entry is given a
+ * fresh client-only `id` (see `LessonAzkarFieldEntry`) -- the persisted
+ * shape has none, since the displayed order alone is what's preserved on
+ * save. `questions` is seeded from `moduleQuestions` (every Question
+ * currently loaded for the owning Module, ANA-119) mapped onto
+ * `lesson.questions`' id order -- an id with no matching document (e.g. one
+ * deleted directly through the API) is silently dropped rather than
+ * crashing the editor. */
+export function toLessonFieldsValues(
+  lesson: Lesson,
+  moduleQuestions: Question[],
+): LessonFieldsValues {
+  const questionById = new Map(
+    moduleQuestions.map((question) => [question.id, question]),
+  );
+
   return {
     title: lesson.title,
     description: lesson.description,
@@ -61,14 +79,18 @@ export function toLessonFieldsValues(lesson: Lesson): LessonFieldsValues {
     videoURL: lesson.videoURL,
     duration: lesson.duration,
     azkar: lesson.azkar.map((entry) => ({ id: crypto.randomUUID(), ...entry })),
+    questions: lesson.questions
+      .map((id) => questionById.get(id))
+      .filter((question): question is Question => question !== undefined)
+      .map(toQuestionFieldEntry),
   };
 }
 
 /**
- * Blank field values for New Lesson (ANA-115, expanded in ANA-118): opens
- * the Lesson editor with no Lesson id -- this seeds its local draft only,
- * the same way `createEmptyModuleFieldsValues` seeds a brand-new Module's
- * draft before Save Module has ever been clicked.
+ * Blank field values for New Lesson (ANA-115, expanded in ANA-118/ANA-119):
+ * opens the Lesson editor with no Lesson id -- this seeds its local draft
+ * only, the same way `createEmptyModuleFieldsValues` seeds a brand-new
+ * Module's draft before Save Module has ever been clicked.
  */
 export function createEmptyLessonFieldsValues(): LessonFieldsValues {
   return {
@@ -81,23 +103,23 @@ export function createEmptyLessonFieldsValues(): LessonFieldsValues {
     videoURL: "",
     duration: 0,
     azkar: [],
+    questions: [],
   };
 }
 
 /** Temporary, schema-valid defaults for the Lesson fields this editor
- * still doesn't expose (ANA-116, narrowed in ANA-118 now that `content`/
- * `videoURL`/`duration`/`azkar` have real UI) -- Quiz/Final/Skip
- * configuration is a later task; these placeholder values only let create
- * round-trip through the real, already-stricter backend schema. A function
- * (not a shared constant) so every call gets its own fresh, mutable
- * `questions` array. */
+ * still doesn't expose (ANA-116, narrowed in ANA-118/ANA-119 now that
+ * `content`/`videoURL`/`duration`/`azkar`/`questions` all have real UI) --
+ * `reward`/`isLocked` configuration is a later task; these placeholder
+ * values only let create round-trip through the real, already-stricter
+ * backend schema. A function (not a shared constant) so every call gets
+ * its own fresh, mutable `reward` object. */
 function hiddenLessonFieldDefaults(): Pick<
   LessonWritableFields,
-  "reward" | "questions" | "isLocked"
+  "reward" | "isLocked"
 > {
   return {
     reward: { coins: 0 },
-    questions: [],
     isLocked: false,
   };
 }
@@ -112,11 +134,17 @@ function toLessonAzkar(
 }
 
 /** Builds a `POST /api/v1/books/{bookId}/modules/{moduleId}/lessons` body
- * (ANA-116, expanded in ANA-118) from the editor's fields -- every writable
- * field is required by that endpoint, so the fields this editor still
- * doesn't expose are filled with `hiddenLessonFieldDefaults()`. */
+ * (ANA-116, expanded in ANA-118/ANA-119) from the editor's fields -- every
+ * writable field is required by that endpoint, so the fields this editor
+ * still doesn't expose are filled with `hiddenLessonFieldDefaults()`.
+ * `questionIds` is the *already-persisted* ordered Question id list (ANA-119)
+ * -- resolving `fields.questions`' local drafts into real ids requires
+ * Question create/update requests this pure function can't make itself; the
+ * caller (edit-module-modal.tsx) resolves them first via
+ * `saveLessonQuestions` (questions-client.ts). */
 export function toLessonCreateFields(
   fields: LessonFieldsValues,
+  questionIds: string[],
 ): LessonWritableFields {
   return {
     title: toTranslatableString(fields.title),
@@ -128,17 +156,24 @@ export function toLessonCreateFields(
     videoURL: fields.videoURL,
     duration: fields.duration,
     azkar: toLessonAzkar(fields.azkar),
+    questions: questionIds,
     ...hiddenLessonFieldDefaults(),
   };
 }
 
 /** Builds a `PATCH .../lessons/{lessonId}` body (ANA-116, expanded in
- * ANA-118) from the editor's fields -- deliberately excludes `reward`/
- * `questions`/`isLocked`, the fields this editor still doesn't expose; that
+ * ANA-118/ANA-119) from the editor's fields -- deliberately excludes
+ * `reward`/`isLocked`, the fields this editor still doesn't expose; that
  * endpoint leaves every omitted field unchanged, so an existing Lesson's
- * still-hidden fields are never reset by a Lesson editor save. */
+ * still-hidden fields are never reset by a Lesson editor save. `questions`
+ * (ANA-119) is always included, like `azkar`/`videoURL` -- it's tracked
+ * regardless of the current `type` (see `LessonFieldsValues`'s own doc), so
+ * omitting it here would silently drop an existing Lesson's Question
+ * references whenever it's saved while a non-Quiz/Final/Skip type happens
+ * to be selected. See `toLessonCreateFields` on `questionIds`. */
 export function toLessonPatchFields(
   fields: LessonFieldsValues,
+  questionIds: string[],
 ): Partial<LessonWritableFields> {
   return {
     title: toTranslatableString(fields.title),
@@ -150,6 +185,7 @@ export function toLessonPatchFields(
     videoURL: fields.videoURL,
     duration: fields.duration,
     azkar: toLessonAzkar(fields.azkar),
+    questions: questionIds,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   type TranslatedValue,
 } from "@/components/ui/translatable-value";
 import type { Lesson } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 import { LessonForm } from "./lesson-form";
 import {
   createEmptyLessonFieldsValues,
@@ -18,6 +19,11 @@ import {
   type LessonAzkarFieldEntry,
   type LessonFieldsValues,
 } from "./lesson-fields";
+import {
+  hasInvalidQuestionText,
+  isSameQuestionEntries,
+  type QuestionFieldEntry,
+} from "./question-fields";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -33,6 +39,11 @@ export interface LessonEditorProps {
    * opened, so editing or discarding one draft can never leak into
    * another's. */
   lesson: Lesson | null;
+  /** Every Question currently loaded for the owning Module (ANA-119) --
+   * used only to seed `questions` when `lesson` is given (see
+   * `toLessonFieldsValues`); a brand-new New Lesson draft has no Questions
+   * to seed regardless of this list's contents. */
+  moduleQuestions: Question[];
   /** The owning Module's own current Arabic Title/Description/Learning
    * Material (ANA-116) -- forwarded to `LessonForm` unchanged, grounding
    * both Title's and Description's AI Assistance suggestions in
@@ -43,12 +54,27 @@ export interface LessonEditorProps {
   /** Called when Save changes is clicked with no Lesson open (`lesson` is
    * `null`) -- persists a real Lesson through the existing Lesson create
    * API (ANA-116). Awaited: resolving returns to Module mode; rejecting
-   * keeps this editor open, preserves the draft, and shows the error. */
-  onCreate: (fields: LessonFieldsValues) => Promise<void>;
+   * keeps this editor open, preserves the draft, and shows the error.
+   * `onQuestionSaved` (ANA-119 PR review) is invoked synchronously the
+   * moment each Question draft's own create/update request succeeds --
+   * *before* the overall Lesson create/update settles, so a draft that was
+   * already persisted still counts as persisted even if a later Question
+   * or the Lesson request itself then fails. Without this, retrying a
+   * partially-failed Save would re-POST an already-created Question draft
+   * (its local `id` still `null`), creating a duplicate/orphaned document
+   * each retry. */
+  onCreate: (
+    fields: LessonFieldsValues,
+    onQuestionSaved: (key: string, question: Question) => void,
+  ) => Promise<void>;
   /** Called when Save changes is clicked with an existing Lesson open --
    * same awaited resolve/reject contract as `onCreate`, but PATCHes that
-   * Lesson instead (ANA-116). */
-  onUpdate: (id: string, fields: LessonFieldsValues) => Promise<void>;
+   * Lesson instead (ANA-116). See `onCreate`'s doc on `onQuestionSaved`. */
+  onUpdate: (
+    id: string,
+    fields: LessonFieldsValues,
+    onQuestionSaved: (key: string, question: Question) => void,
+  ) => Promise<void>;
   /** Returns to Module mode without closing the Edit Module modal
    * (ANA-115). Called directly when there's no unsaved edit; gated behind
    * a "Discard unsaved changes?" confirmation (reusing the same
@@ -72,6 +98,7 @@ export interface LessonEditorProps {
 // by opening this editor, only by a successful `onCreate`.
 export function LessonEditor({
   lesson,
+  moduleQuestions,
   moduleTitle,
   moduleDescription,
   moduleContent,
@@ -80,7 +107,7 @@ export function LessonEditor({
   onBack,
 }: LessonEditorProps) {
   const initialFields = lesson
-    ? toLessonFieldsValues(lesson)
+    ? toLessonFieldsValues(lesson, moduleQuestions)
     : createEmptyLessonFieldsValues();
 
   const [title, setTitle] = useState<TranslatedValue>(initialFields.title);
@@ -98,16 +125,29 @@ export function LessonEditor({
   const [azkar, setAzkar] = useState<LessonAzkarFieldEntry[]>(
     initialFields.azkar,
   );
+  const [questions, setQuestions] = useState<QuestionFieldEntry[]>(
+    initialFields.questions,
+  );
 
   // Mirrors the Module form's own busy-gating (ANA-109): Save stays
   // disabled while Title's or Description's own Translate with AI or AI
   // Assistance request is unresolved, since saving now would persist the
   // pre-translation/pre-suggestion value and the AI result would be lost
   // once it lands after a successful save has already unmounted this
-  // editor.
+  // editor. `questionsBusy` extends this to a Question's own Translate
+  // action (ANA-119).
   const [titleBusy, setTitleBusy] = useState(false);
   const [descriptionBusy, setDescriptionBusy] = useState(false);
-  const aiBusy = titleBusy || descriptionBusy;
+  const [questionsBusy, setQuestionsBusy] = useState(false);
+  const aiBusy = titleBusy || descriptionBusy || questionsBusy;
+
+  // Blocks Save while any Question's raw textarea buffer -- in either
+  // language -- is currently unparseable (PR review, ANA-119): its
+  // structured `text`/`explanation`/`choices` are frozen at their last
+  // successfully parsed (possibly blank) state, so saving now would
+  // silently persist that stale content instead of what's on screen. See
+  // `hasInvalidQuestionText`'s own doc.
+  const questionsInvalid = hasInvalidQuestionText(questions);
 
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -122,7 +162,8 @@ export function LessonEditor({
     !isSameTranslatedValue(content, initialFields.content) ||
     videoURL !== initialFields.videoURL ||
     duration !== initialFields.duration ||
-    !isSameAzkar(azkar, initialFields.azkar);
+    !isSameAzkar(azkar, initialFields.azkar) ||
+    !isSameQuestionEntries(questions, initialFields.questions);
 
   function handleBackClick() {
     if (isDirty) {
@@ -151,16 +192,36 @@ export function LessonEditor({
       videoURL,
       duration,
       azkar,
+      questions,
     };
 
     setSaveError(null);
     setIsSaving(true);
 
+    // Promotes one Question draft's local `id` to its real, persisted id
+    // the moment its own create/update request succeeds (ANA-119 PR
+    // review) -- called by the caller from inside `saveLessonQuestions`,
+    // strictly before this whole `onCreate`/`onUpdate` call settles. Keyed
+    // by the entry's stable client-only `key` (never its `id`, which is
+    // exactly what's being filled in here for a brand-new draft). This is
+    // what makes retrying a partially-failed Save idempotent: if a later
+    // Question or the Lesson request itself then fails, this draft is
+    // already marked persisted in local state, so the next Save attempt
+    // PATCHes (or skips, if unchanged) it instead of re-POSTing a
+    // duplicate.
+    function promoteQuestion(key: string, question: Question) {
+      setQuestions((current) =>
+        current.map((entry) =>
+          entry.key === key ? { ...entry, id: question.id } : entry,
+        ),
+      );
+    }
+
     try {
       if (lesson) {
-        await onUpdate(lesson.id, fields);
+        await onUpdate(lesson.id, fields, promoteQuestion);
       } else {
-        await onCreate(fields);
+        await onCreate(fields, promoteQuestion);
       }
 
       onBack();
@@ -212,6 +273,7 @@ export function LessonEditor({
             videoURL,
             duration,
             azkar,
+            questions,
           }}
           onChange={(patch) => {
             if (patch.title !== undefined) setTitle(patch.title);
@@ -225,12 +287,14 @@ export function LessonEditor({
             if (patch.videoURL !== undefined) setVideoURL(patch.videoURL);
             if (patch.duration !== undefined) setDuration(patch.duration);
             if (patch.azkar !== undefined) setAzkar(patch.azkar);
+            if (patch.questions !== undefined) setQuestions(patch.questions);
           }}
           moduleTitle={moduleTitle}
           moduleDescription={moduleDescription}
           moduleContent={moduleContent}
           onTitleBusyChange={setTitleBusy}
           onDescriptionBusyChange={setDescriptionBusy}
+          onQuestionsBusyChange={setQuestionsBusy}
         />
 
         {saveError && (
@@ -243,7 +307,7 @@ export function LessonEditor({
       <Button
         onClick={() => void handleSave()}
         loading={isSaving}
-        disabled={aiBusy}
+        disabled={aiBusy || questionsInvalid}
         style={{ alignSelf: "flex-end" }}
       >
         Save changes

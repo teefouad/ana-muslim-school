@@ -32,6 +32,7 @@ function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
     <MantineProvider>
       <LessonEditor
         lesson={LESSON}
+        moduleQuestions={[]}
         moduleTitle="عنوان الوحدة"
         moduleDescription="وصف الوحدة"
         moduleContent="محتوى الوحدة"
@@ -111,17 +112,22 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
       await vi.waitFor(() =>
-        expect(onUpdate).toHaveBeenCalledWith("lesson-1", {
-          title: { ar: "عنوان جديد", en: "" },
-          description: { ar: "وصف قصير", en: "" },
-          type: "text",
-          position: 0,
-          isPublished: false,
-          content: { ar: "", en: "" },
-          videoURL: "",
-          duration: 0,
-          azkar: [],
-        }),
+        expect(onUpdate).toHaveBeenCalledWith(
+          "lesson-1",
+          {
+            title: { ar: "عنوان جديد", en: "" },
+            description: { ar: "وصف قصير", en: "" },
+            type: "text",
+            position: 0,
+            isPublished: false,
+            content: { ar: "", en: "" },
+            videoURL: "",
+            duration: 0,
+            azkar: [],
+            questions: [],
+          },
+          expect.any(Function),
+        ),
       );
       expect(onCreate).not.toHaveBeenCalled();
       await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
@@ -192,17 +198,21 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
       await vi.waitFor(() =>
-        expect(onCreate).toHaveBeenCalledWith({
-          title: { ar: "مقدمة جديدة" },
-          description: {},
-          type: "text",
-          position: 2,
-          isPublished: false,
-          content: {},
-          videoURL: "",
-          duration: 0,
-          azkar: [],
-        }),
+        expect(onCreate).toHaveBeenCalledWith(
+          {
+            title: { ar: "مقدمة جديدة" },
+            description: {},
+            type: "text",
+            position: 2,
+            isPublished: false,
+            content: {},
+            videoURL: "",
+            duration: 0,
+            azkar: [],
+            questions: [],
+          },
+          expect.any(Function),
+        ),
       );
       expect(onCreate).toHaveBeenCalledTimes(1);
       expect(onUpdate).not.toHaveBeenCalled();
@@ -461,6 +471,62 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
 
       fireEvent.click(screen.getByRole("radio", { name: "Break" }));
       expect(screen.getByDisplayValue("سبحان الله")).toBeInTheDocument();
+    });
+
+    it("keeps a Quiz Lesson's Questions after switching away to Text and back (ANA-119)", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      const [textarea] = screen.getAllByRole("textbox", { name: "Question" });
+      fireEvent.change(textarea, { target: { value: "ما هي الصلاة؟" } });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Text" }));
+      expect(screen.queryByText("Questions")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
+      expect(screen.getByDisplayValue("ما هي الصلاة؟")).toBeInTheDocument();
+    });
+  });
+
+  describe("Save is blocked while a Question's raw text is invalid (PR review, ANA-119)", () => {
+    it("disables Save while a Question's textarea has a malformed choice marker, and re-enables it once fixed", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      const textarea = screen.getByRole("textbox", { name: "Question" });
+
+      expect(
+        screen.getByRole("button", { name: "Save changes" }),
+      ).not.toBeDisabled();
+
+      fireEvent.change(textarea, { target: { value: "Q?\n\n[x]a" } });
+
+      expect(
+        screen.getByRole("button", { name: "Save changes" }),
+      ).toBeDisabled();
+
+      fireEvent.change(textarea, { target: { value: "Q?\n\n[x] a" } });
+
+      expect(
+        screen.getByRole("button", { name: "Save changes" }),
+      ).not.toBeDisabled();
+    });
+
+    it("never calls onCreate/onUpdate when Save is clicked while invalid (the button is disabled, not just visually)", () => {
+      const { onCreate, onUpdate } = renderEditor({ lesson: null });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Question" }), {
+        target: { value: "Q?\n\n[x]a" },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(onCreate).not.toHaveBeenCalled();
+      expect(onUpdate).not.toHaveBeenCalled();
     });
   });
 });

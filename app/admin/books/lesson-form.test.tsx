@@ -23,6 +23,7 @@ const VALUE: LessonFieldsValues = {
   videoURL: "",
   duration: 0,
   azkar: [],
+  questions: [],
 };
 
 function renderForm(overrides: Partial<LessonFormProps> = {}) {
@@ -47,26 +48,68 @@ describe("LessonForm", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("renders Type and Position as segmented controls sharing a row, ahead of Title/Description", () => {
-    renderForm();
+  describe("two-column layout (ANA-119)", () => {
+    it("renders Position -> Title -> Description -> Published in the left column", () => {
+      renderForm();
 
-    const form = screen.getByTestId("lesson-form");
-    expect(
-      screen.getByRole("radiogroup", { name: "Type" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("radiogroup", { name: "Position" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Title")).toBeInTheDocument();
-    expect(screen.getByLabelText("Description")).toBeInTheDocument();
-    expect(
-      screen.getByRole("switch", { name: "Published" }),
-    ).toBeInTheDocument();
+      const form = screen.getByTestId("lesson-form");
+      expect(
+        screen.getByRole("radiogroup", { name: "Position" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Title")).toBeInTheDocument();
+      expect(screen.getByLabelText("Description")).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: "Published" }),
+      ).toBeInTheDocument();
 
-    // Type + Position come first, before Title/Description (ANA-118).
-    const text = form.textContent ?? "";
-    expect(text.indexOf("Type")).toBeLessThan(text.indexOf("Title"));
-    expect(text.indexOf("Position")).toBeLessThan(text.indexOf("Description"));
+      const text = form.textContent ?? "";
+      expect(text.indexOf("Position")).toBeLessThan(text.indexOf("Title"));
+      expect(text.indexOf("Title")).toBeLessThan(text.indexOf("Description"));
+      expect(text.indexOf("Description")).toBeLessThan(
+        text.indexOf("Published"),
+      );
+    });
+
+    it("renders Type -> the selected type's Configuration in the right column", () => {
+      renderForm({ value: { ...VALUE, type: "video" } });
+
+      const form = screen.getByTestId("lesson-form");
+      expect(
+        screen.getByRole("radiogroup", { name: "Type" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Video URL")).toBeInTheDocument();
+
+      const text = form.textContent ?? "";
+      expect(text.indexOf("Type")).toBeLessThan(text.indexOf("Video URL"));
+    });
+
+    it("puts Type/Configuration in a different column than Position/Title/Description/Published", () => {
+      renderForm();
+
+      const form = screen.getByTestId("lesson-form");
+      const [leftColumn, rightColumn] = Array.from(form.children);
+      expect(leftColumn.textContent).toContain("Position");
+      expect(leftColumn.textContent).toContain("Title");
+      expect(leftColumn.textContent).not.toContain("Type");
+      expect(rightColumn.textContent).toContain("Type");
+      expect(rightColumn.textContent).not.toContain("Position");
+    });
+
+    it("stacks to a single column on narrow screens and splits into two equal columns from the sm breakpoint up", () => {
+      const { container } = renderForm();
+
+      const combinedCss = Array.from(
+        container.querySelectorAll("style[data-mantine-styles]"),
+      )
+        .map((style) => style.textContent ?? "")
+        .join("\n");
+
+      // Mantine's SimpleGrid (`cols={{ base: 1, sm: 2 }}`) sets `--sg-cols`
+      // unconditionally to 1, then overrides it to 2 only inside a
+      // `min-width` media query for the `sm` breakpoint.
+      expect(combinedCss).toContain("--sg-cols:1");
+      expect(combinedCss).toMatch(/min-width:[^{]*\{[^}]*--sg-cols:2/);
+    });
   });
 
   it("seeds every field from the given value", () => {
@@ -215,14 +258,25 @@ describe("LessonForm", () => {
     });
 
     it.each(["quiz", "final", "skip"] as const)(
-      "shows no configuration UI for the %s type",
+      "shows the Questions editor (and no Text/Video/Break configuration) for the %s type",
       (type) => {
         renderForm({ value: { ...VALUE, type } });
 
+        expect(screen.getByText("Questions")).toBeInTheDocument();
+        expect(screen.getByText("No questions yet.")).toBeInTheDocument();
         expect(screen.queryByText("Content")).not.toBeInTheDocument();
         expect(screen.queryByLabelText("Video URL")).not.toBeInTheDocument();
         expect(screen.queryByLabelText("Duration")).not.toBeInTheDocument();
         expect(screen.queryByText(/break entries/i)).not.toBeInTheDocument();
+      },
+    );
+
+    it.each(["text", "video", "break"] as const)(
+      "does not show the Questions editor for the %s type",
+      (type) => {
+        renderForm({ value: { ...VALUE, type } });
+
+        expect(screen.queryByText("Questions")).not.toBeInTheDocument();
       },
     );
   });
