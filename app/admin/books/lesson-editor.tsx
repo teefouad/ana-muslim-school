@@ -241,26 +241,6 @@ export function LessonEditor({
     // they're never themselves scrolled out of view when the Lesson form's
     // own content is taller than the fixed height.
     <Stack gap="lg" style={{ height: "100%" }}>
-      <Button
-        variant="subtle"
-        color="gray"
-        px={0}
-        style={{ alignSelf: "flex-start" }}
-        leftSection={<ArrowLeft size={16} aria-hidden="true" />}
-        onClick={handleBackClick}
-        // Disabled while a Save request is in flight (ANA-116 PR review),
-        // matching the Module editor's own Cancel button
-        // (edit-module-modal.tsx). Without this, backing out (past the
-        // discard confirmation, for a dirty draft) while Save is still
-        // pending unmounts this editor before its request settles -- a
-        // subsequent failure could then no longer show its error or
-        // preserve the draft, exactly the outcome ANA-116 requires on a
-        // failed save.
-        disabled={isSaving}
-      >
-        Back to Module
-      </Button>
-
       <Stack gap="lg" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <LessonForm
           value={{

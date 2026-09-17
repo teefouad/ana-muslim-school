@@ -11,8 +11,8 @@ import {
   Loader,
   Modal,
   Skeleton,
-  SimpleGrid,
   Stack,
+  Title,
 } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
@@ -51,6 +51,7 @@ import {
   type ModuleFieldsValues,
 } from "./module-fields";
 import { saveLessonQuestions } from "./questions-client";
+import { ArrowLeft } from "lucide-react";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -79,7 +80,7 @@ const LESSONS_SKELETON_ROW_COUNT = 3;
  * below `md`, where the two columns already stack instead of sitting side
  * by side -- constraining height there would fight that stacked layout's
  * own natural scroll instead of stabilizing anything. */
-const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 640 } as const;
+const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 544 } as const;
 
 // Approximates LessonsPanel/ItemList's own card chrome (ANA-116) --
 // mirrors `[id]/edit/page.tsx`'s `ModulesPanelSkeleton`, sized for this
@@ -207,7 +208,6 @@ export function EditModuleModal({
     <Modal
       opened={state !== null}
       onClose={() => requestCloseRef.current()}
-      title={state?.mode === "create" ? "Add Module" : "Edit Module"}
       // Edit mode's own fixed 900px width (ANA-115 PR review) -- the same
       // for both Module mode (Module editor + Lessons list) and Lesson
       // mode (the Lesson editor takes over that same width), so the modal
@@ -215,7 +215,7 @@ export function EditModuleModal({
       // the viewport the same way Module Builder's own wide modal is
       // (import-source-modal.tsx), rather than a fixed size that would
       // overflow a narrow viewport.
-      size={state?.mode === "edit" ? "min(900px, calc(100vw - 48px))" : "lg"}
+      size={state?.mode === "edit" ? "min(1040px, calc(100vw - 48px))" : "lg"}
       centered
     >
       {state && (
@@ -777,14 +777,18 @@ function EditModuleModalBody({
           narrow screens. Published reflects and edits this Module's own
           persisted `isPublished`, included in both create and update
           Module persistence (module-fields.ts). */}
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-        <ToggleCard
-          label="Published"
-          checked={isPublished}
-          onChange={setIsPublished}
-        />
-        <ColorField value={color} onChange={setColor} />
-      </SimpleGrid>
+      <Group align="flex-end" wrap="nowrap">
+        <div style={{ flex: 1 }}>
+          <ToggleCard
+            label="Published"
+            checked={isPublished}
+            onChange={setIsPublished}
+          />
+        </div>
+        <div style={{ flex: 2 }}>
+          <ColorField value={color} onChange={setColor} />
+        </div>
+      </Group>
 
       {saveError && (
         <Alert color="red" role="alert">
@@ -908,7 +912,7 @@ function EditModuleModalBody({
           style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
         >
           <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
-          <Box w={{ base: "100%", md: 260 }} style={{ flexShrink: 0 }}>
+          <Box w={{ base: "100%", md: 300 }} style={{ flexShrink: 0 }}>
             {lessonsLoading ? (
               <LessonsPanelSkeleton />
             ) : lessonsError ? (
@@ -932,6 +936,39 @@ function EditModuleModalBody({
 
   return (
     <>
+      <Title
+        size={18}
+        style={{
+          position: "absolute",
+          zIndex: 99999,
+          top: 20,
+        }}
+      >
+        {state?.mode === "create" ? (
+          "Add Module"
+        ) : lessonEditorTarget ? (
+          <Group gap={14}>
+            <Button
+              variant="subtle"
+              color="#fff"
+              p={0}
+              m={-6}
+              w={32}
+              h={32}
+              onClick={() => setLessonEditorTarget(null)}
+              disabled={isSaving}
+            >
+              <ArrowLeft size={14} aria-hidden="true" />
+            </Button>
+            {lessonEditorTarget.lessonId === null
+              ? "New Lesson"
+              : "Edit Lesson"}
+          </Group>
+        ) : (
+          "Edit Module"
+        )}
+      </Title>
+
       {modeContent}
       {/* Discard confirmation (PR review) -- gates every way of dismissing
           the modal (Cancel, X, Escape, backdrop click, all funneled

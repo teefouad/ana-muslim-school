@@ -524,10 +524,6 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
       {aiAssistance && (
         <ActionIconButton
           aria-label={`AI Assistance for ${label}`}
-          // Every Suggest/AI Assistance action across the admin shares this
-          // one color (ANA-117), distinguishing it at a glance from
-          // Translate's own `#87caff` below.
-          color="#eca2ff"
           disabled={assist.disabled || translate.loading}
           loading={assist.loading}
           onClick={assist.handleClick}
@@ -538,9 +534,6 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
       {aiTranslation && (
         <ActionIconButton
           aria-label={`Translate ${label} with AI`}
-          // Every Translate action across the admin shares this one color
-          // (ANA-117) -- see AI Assistance's own `#eca2ff` above.
-          color="#87caff"
           disabled={translate.disabled || assist.loading}
           loading={translate.loading}
           onClick={translate.handleClick}
