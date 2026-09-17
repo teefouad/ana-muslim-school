@@ -22,6 +22,7 @@ import {
 import {
   hasInvalidQuestionText,
   isSameQuestionEntries,
+  type ModuleQuestionGroup,
   type QuestionFieldEntry,
 } from "./question-fields";
 
@@ -44,6 +45,11 @@ export interface LessonEditorProps {
    * `toLessonFieldsValues`); a brand-new New Lesson draft has no Questions
    * to seed regardless of this list's contents. */
   moduleQuestions: Question[];
+  /** Every Question already defined in every Module before the owning one
+   * in the Book's own Module order (ANA-120) -- forwarded to `LessonForm`'s
+   * Insert action unchanged; see `QuestionsEditorProps.previousModuleQuestions`'s
+   * own doc (questions-editor.tsx). */
+  previousModuleQuestions: ModuleQuestionGroup[];
   /** The owning Module's own current Arabic Title/Description/Learning
    * Material (ANA-116) -- forwarded to `LessonForm` unchanged, grounding
    * both Title's and Description's AI Assistance suggestions in
@@ -99,6 +105,7 @@ export interface LessonEditorProps {
 export function LessonEditor({
   lesson,
   moduleQuestions,
+  previousModuleQuestions,
   moduleTitle,
   moduleDescription,
   moduleContent,
@@ -273,6 +280,7 @@ export function LessonEditor({
           moduleDescription={moduleDescription}
           moduleContent={moduleContent}
           moduleQuestions={moduleQuestions}
+          previousModuleQuestions={previousModuleQuestions}
           onTitleBusyChange={setTitleBusy}
           onDescriptionBusyChange={setDescriptionBusy}
           onQuestionsBusyChange={setQuestionsBusy}

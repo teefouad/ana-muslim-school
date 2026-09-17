@@ -69,6 +69,20 @@ const QUIZ_VALUE: LessonFieldsValues = {
   questions: [toQuestionFieldEntry(MODULE_QUESTIONS[0])],
 };
 
+// A previous Module's own Questions (ANA-120) -- also offered by Insert,
+// copied into a new draft on selection rather than referenced directly.
+const PREVIOUS_MODULE_QUESTIONS = [
+  {
+    moduleId: "module-0",
+    questions: [
+      buildQuestionFixture({
+        id: "previous-question-1",
+        text: { ar: "ما معنى الإخلاص؟", en: "What does sincerity mean?" },
+      }),
+    ],
+  },
+];
+
 // Wraps LessonForm with local state so every field edit behaves for real in
 // Storybook -- the component itself is fully controlled and has no state of
 // its own (mirrors LessonsPanelDemo, see lessons-panel.stories.tsx).
@@ -101,6 +115,7 @@ const meta = {
     moduleDescription: "مقدمة عن الصلاة",
     moduleContent: "محتوى تعليمي عن الصلاة",
     moduleQuestions: MODULE_QUESTIONS,
+    previousModuleQuestions: PREVIOUS_MODULE_QUESTIONS,
   },
   render: (args) => (
     <div style={{ width: 320 }}>

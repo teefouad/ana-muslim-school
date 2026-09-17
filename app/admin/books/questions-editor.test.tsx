@@ -34,6 +34,18 @@ const QUESTIONS: QuestionFieldEntry[] = [
 // one more available to insert.
 const MODULE_QUESTIONS = [QUESTION_1, QUESTION_2, QUESTION_3];
 
+// A previous Module's own Question bank (ANA-120) -- also offered by
+// Insert, but copied into a new draft on selection rather than referenced
+// directly (the School schema requires `Lesson.questions` ids to resolve
+// under the Lesson's own Module).
+const PREVIOUS_QUESTION = buildQuestionFixture({
+  id: "previous-question-1",
+  text: { ar: "سؤال من وحدة سابقة", en: "A previous-Module question" },
+});
+const PREVIOUS_MODULE_QUESTIONS = [
+  { moduleId: "module-0", questions: [PREVIOUS_QUESTION] },
+];
+
 // QuestionsEditor is fully controlled -- wraps it with local state so
 // reorder/collapse/delete interactions actually reflect back into what's
 // rendered, the same way lesson-break-config.test.tsx doesn't need to (its
@@ -66,6 +78,7 @@ function renderEditor(overrides: Partial<QuestionsEditorProps> = {}) {
         questions={QUESTIONS}
         onChange={onChange}
         moduleQuestions={MODULE_QUESTIONS}
+        previousModuleQuestions={PREVIOUS_MODULE_QUESTIONS}
         {...overrides}
       />
     </MantineProvider>,
@@ -325,6 +338,49 @@ describe("QuestionsEditor", () => {
       expect(screen.getAllByRole("textbox", { name: "Question" })).toHaveLength(
         3,
       );
+    });
+
+    it("also lists Questions from previous Modules alongside the current Module's own", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+
+      expect(screen.getByText("سؤال ثالث")).toBeInTheDocument();
+      expect(screen.getByText("سؤال من وحدة سابقة")).toBeInTheDocument();
+    });
+
+    it("selecting a previous-Module Question copies its content into a new, unpersisted draft", () => {
+      const { onChange } = renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+      fireEvent.click(
+        screen.getByRole("option", { name: /سؤال من وحدة سابقة/ }),
+      );
+
+      expect(onChange).toHaveBeenCalledWith([
+        ...QUESTIONS,
+        expect.objectContaining({
+          id: null,
+          text: { ar: "سؤال من وحدة سابقة", en: "A previous-Module question" },
+          sourceModuleId: "module-0",
+          sourceQuestionId: "previous-question-1",
+        }),
+      ]);
+    });
+
+    it("excludes a previous-Module Question already inserted this session from being offered again", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+      fireEvent.click(
+        screen.getByRole("option", { name: /سؤال من وحدة سابقة/ }),
+      );
+
+      // Re-open Insert -- the same source Question is no longer offered,
+      // even though its local copy still has no persisted id to exclude by.
+      fireEvent.click(screen.getByRole("button", { name: "Insert" }));
+
+      expect(screen.queryByText("سؤال من وحدة سابقة")).not.toBeInTheDocument();
     });
   });
 });

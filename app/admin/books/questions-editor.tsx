@@ -22,11 +22,16 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableList } from "@/components/ui/sortable-list";
 import type { Question } from "@/lib/questions/types";
 import {
+  copyQuestionFromPreviousModule,
   makeQuestionFieldEntry,
   toQuestionFieldEntry,
+  type ModuleQuestionGroup,
   type QuestionFieldEntry,
 } from "./question-fields";
-import { QuestionBankPicker } from "./question-bank-picker";
+import {
+  QuestionBankPicker,
+  type QuestionBankCandidate,
+} from "./question-bank-picker";
 import styles from "./questions-editor.module.css";
 import { QuestionTextEditor } from "./question-text-editor";
 
@@ -206,14 +211,27 @@ function QuestionCard({
 export interface QuestionsEditorProps {
   questions: QuestionFieldEntry[];
   onChange: (questions: QuestionFieldEntry[]) => void;
-  /** Every Question currently loaded for the owning Module (ANA-120) --
-   * the Insert action's Question Bank picker selects from this list (a
-   * Lesson may only reference Questions from its own Module), excluding
-   * whichever of them are already linked into `questions` below. Threaded
-   * straight through from lesson-editor.tsx's own `moduleQuestions`
-   * (already loaded to seed this list when opening an existing Lesson, see
-   * lesson-fields.ts's `toLessonFieldsValues`) rather than fetched again. */
+  /** Every Question currently loaded for the owning Module (ANA-119) --
+   * the Insert action's Question Bank picker offers these as-is (reusing
+   * the real id on selection), excluding whichever of them are already
+   * linked into `questions` below. Threaded straight through from
+   * lesson-editor.tsx's own `moduleQuestions` (already loaded to seed this
+   * list when opening an existing Lesson, see lesson-fields.ts's
+   * `toLessonFieldsValues`) rather than fetched again. */
   moduleQuestions: Question[];
+  /** Every Question already defined in every Module *before* the owning one
+   * in the Book's own Module order (ANA-120) -- Insert also offers these,
+   * but a selection is copied into a brand-new, unpersisted draft rather
+   * than referencing the source id directly (the School schema requires
+   * `Lesson.questions` ids to resolve under the Lesson's own Module; see
+   * `copyQuestionFromPreviousModule`). A later Module's Questions are never
+   * offered. Empty for New Lesson's owning Module when it's the Book's
+   * first, or while this Book-wide read (ANA-108's
+   * `GET /api/v1/books/{bookId}/questions`) hasn't resolved/has failed --
+   * Insert simply has fewer previous-Module results in that case, never
+   * blocking the Lesson editor the way a failed *current*-Module Questions
+   * load does. */
+  previousModuleQuestions: ModuleQuestionGroup[];
   /** Aggregates every Question card's own Translate request into one flag
    * (ANA-119: "Save must not run while a Question translation request is
    * unresolved") -- called whenever the set of currently-translating cards
@@ -240,6 +258,7 @@ export function QuestionsEditor({
   questions,
   onChange,
   moduleQuestions,
+  previousModuleQuestions,
   onBusyChange,
 }: QuestionsEditorProps) {
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(
@@ -287,15 +306,59 @@ export function QuestionsEditor({
     onChange([...questions, makeQuestionFieldEntry()]);
   }
 
-  // Every persisted Question id already linked into this Lesson -- excluded
-  // from the Insert picker's results (ANA-120). A brand-new, unsaved
-  // Question draft (`id === null`) never affects this set.
-  const excludeQuestionIds = questions
-    .map((question) => question.id)
-    .filter((id): id is string => id !== null);
+  // Every persisted current-Module Question id already linked into this
+  // Lesson -- excluded from the Insert picker's current-Module results
+  // (ANA-120). A brand-new, unsaved Question draft (`id === null`) never
+  // affects this set.
+  const excludeCurrentModuleIds = new Set(
+    questions
+      .map((question) => question.id)
+      .filter((id): id is string => id !== null),
+  );
 
-  function handleInsert(question: Question) {
-    onChange([...questions, toQuestionFieldEntry(question)]);
+  // Every previous-Module source Question already copied into this
+  // Lesson's draft this session -- excluded from the Insert picker's
+  // previous-Module results so the same source Question can't be inserted
+  // twice (ANA-120). Keyed by source identity, not the copy's own `id`
+  // (always `null` pre-Save; see `copyQuestionFromPreviousModule`).
+  const excludePreviousModuleSources = new Set(
+    questions
+      .filter(
+        (question) => question.sourceModuleId && question.sourceQuestionId,
+      )
+      .map(
+        (question) => `${question.sourceModuleId}:${question.sourceQuestionId}`,
+      ),
+  );
+
+  const insertCandidates: QuestionBankCandidate[] = [
+    ...moduleQuestions
+      .filter((question) => !excludeCurrentModuleIds.has(question.id))
+      .map((question): QuestionBankCandidate => ({
+        question,
+        isCurrentModule: true,
+      })),
+    ...previousModuleQuestions.flatMap((group) =>
+      group.questions
+        .filter(
+          (question) =>
+            !excludePreviousModuleSources.has(
+              `${group.moduleId}:${question.id}`,
+            ),
+        )
+        .map((question): QuestionBankCandidate => ({
+          question,
+          isCurrentModule: false,
+          moduleId: group.moduleId,
+        })),
+    ),
+  ];
+
+  function handleInsert(candidate: QuestionBankCandidate) {
+    const entry = candidate.isCurrentModule
+      ? toQuestionFieldEntry(candidate.question)
+      : copyQuestionFromPreviousModule(candidate.question, candidate.moduleId);
+    onChange([...questions, entry]);
     setPickerOpen(false);
   }
 
@@ -399,8 +462,7 @@ export function QuestionsEditor({
       {pickerOpen && (
         <QuestionBankPicker
           opened
-          questions={moduleQuestions}
-          excludeQuestionIds={excludeQuestionIds}
+          candidates={insertCandidates}
           onSelect={handleInsert}
           onClose={() => setPickerOpen(false)}
         />

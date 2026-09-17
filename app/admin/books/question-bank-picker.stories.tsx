@@ -1,24 +1,39 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { buildQuestionFixture } from "./question-fixtures";
-import { QuestionBankPicker } from "./question-bank-picker";
+import {
+  QuestionBankPicker,
+  type QuestionBankCandidate,
+} from "./question-bank-picker";
 
-const MODULE_QUESTIONS = [
-  buildQuestionFixture({
-    id: "question-1",
-    text: {
-      ar: "كم عدد أركان الصلاة؟",
-      en: "How many pillars does Salah have?",
-    },
-  }),
-  buildQuestionFixture({
-    id: "question-2",
-    text: { ar: "ما هو أول أركان الإسلام؟", en: "" },
-  }),
-  buildQuestionFixture({
-    id: "question-3",
-    text: { ar: "ما هي أركان الإيمان؟", en: "What are the pillars of Iman?" },
-  }),
+const CANDIDATES: QuestionBankCandidate[] = [
+  {
+    question: buildQuestionFixture({
+      id: "question-1",
+      text: {
+        ar: "كم عدد أركان الصلاة؟",
+        en: "How many pillars does Salah have?",
+      },
+    }),
+    isCurrentModule: true,
+  },
+  {
+    question: buildQuestionFixture({
+      id: "question-2",
+      text: { ar: "ما هو أول أركان الإسلام؟", en: "" },
+    }),
+    isCurrentModule: true,
+  },
+  // A previous Module's own Question (ANA-120) -- selecting it copies its
+  // content into a new draft rather than reusing its id directly.
+  {
+    question: buildQuestionFixture({
+      id: "previous-question-1",
+      text: { ar: "ما معنى الإخلاص؟", en: "What does sincerity mean?" },
+    }),
+    isCurrentModule: false,
+    moduleId: "module-0",
+  },
 ];
 
 const meta = {
@@ -27,8 +42,7 @@ const meta = {
   tags: ["autodocs"],
   args: {
     opened: true,
-    questions: MODULE_QUESTIONS,
-    excludeQuestionIds: [],
+    candidates: CANDIDATES,
     onSelect: () => {},
     onClose: () => {},
   },
@@ -39,14 +53,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-export const WithExclusions: Story = {
-  args: {
-    excludeQuestionIds: ["question-1"],
-  },
-};
-
 export const Empty: Story = {
   args: {
-    questions: [],
+    candidates: [],
   },
 };

@@ -53,6 +53,20 @@ const MODULE_QUESTIONS = [
   }),
 ];
 
+// A previous Module's own Questions (ANA-120) -- also offered by Insert,
+// copied into a new draft on selection rather than referenced directly.
+const PREVIOUS_MODULE_QUESTIONS = [
+  {
+    moduleId: "module-0",
+    questions: [
+      buildQuestionFixture({
+        id: "previous-question-1",
+        text: { ar: "ما معنى الإخلاص؟", en: "What does sincerity mean?" },
+      }),
+    ],
+  },
+];
+
 const meta = {
   title: "Books/QuestionsEditor",
   component: QuestionsEditor,
@@ -60,6 +74,7 @@ const meta = {
   args: {
     onChange: () => {},
     moduleQuestions: MODULE_QUESTIONS,
+    previousModuleQuestions: PREVIOUS_MODULE_QUESTIONS,
   },
   render: (args) => (
     <div style={{ width: 480 }}>

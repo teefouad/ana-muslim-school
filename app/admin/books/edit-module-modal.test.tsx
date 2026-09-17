@@ -80,6 +80,7 @@ function mutationCalls(): [string, RequestInit][] {
 function mockFetch({
   lessons = [],
   questions = [],
+  bookQuestions = [],
   other,
   otherStatus = 200,
   questionOther,
@@ -87,6 +88,13 @@ function mockFetch({
 }: {
   lessons?: Lesson[];
   questions?: Question[];
+  /** `GET /api/v1/books/{bookId}/questions` (ANA-108/ANA-120) -- every
+   * Module's own Questions, grouped and ordered per `Book.modules`. Read
+   * boundary for Insert's previous-Module candidates; defaults to `[]`
+   * since most tests here don't exercise cross-Module Insert and
+   * `BOOK.modules` defaults to `[]` too (so `previousModuleQuestions` would
+   * resolve empty regardless). */
+  bookQuestions?: { moduleId: string; questions: Question[] }[];
   other?: unknown;
   otherStatus?: number;
   /** Forces a specific Question POST/PATCH response (most often a failure)
@@ -105,7 +113,13 @@ function mockFetch({
       const urlStr = typeof url === "string" ? url : String(url);
       const isLessonsList = urlStr.endsWith("/lessons");
       const lessonMatch = urlStr.match(/\/lessons\/([^/]+)$/);
-      const isQuestionsList = urlStr.endsWith("/questions");
+      // The current Module's own Questions list
+      // (`.../modules/{moduleId}/questions`) -- distinct from the Book-wide
+      // `.../books/{bookId}/questions` read boundary below (ANA-120), which
+      // also ends in `/questions` but is never a mutation target.
+      const isQuestionsList = /\/modules\/[^/]+\/questions$/.test(urlStr);
+      const isBookQuestionsList =
+        urlStr.endsWith("/questions") && !isQuestionsList;
       const questionMatch = urlStr.match(/\/questions\/([^/]+)$/);
 
       if (isLessonsList && method === "GET") {
@@ -114,6 +128,10 @@ function mockFetch({
 
       if (isQuestionsList && method === "GET") {
         return Promise.resolve(jsonResponse({ data: currentQuestions }));
+      }
+
+      if (isBookQuestionsList && method === "GET") {
+        return Promise.resolve(jsonResponse({ data: bookQuestions }));
       }
 
       const isLessonMutation =
@@ -1339,12 +1357,27 @@ describe("EditModuleModal", () => {
     });
 
     async function openQuizLesson() {
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await screen.findByRole("dialog");
       fireEvent.click(
         await within(dialog).findByRole("button", { name: "Edit اختبار" }),
       );
       const form = within(within(dialog).getByTestId("lesson-form"));
       return { dialog, form };
+    }
+
+    // The Lesson editor's own back control is an icon-only button in the
+    // modal's title bar (the pre-existing "Back to Module" text button
+    // inside LessonEditor itself was removed by a later, unrelated UI-only
+    // commit merged to `main`) -- it has no accessible name, so it can only
+    // be found by its icon, unlike every other button in these tests.
+    function clickBackToModule(dialog: HTMLElement) {
+      const backButton = dialog
+        .querySelector(".lucide-arrow-left")
+        ?.closest("button");
+      if (!backButton) {
+        throw new Error("Back-to-Module icon button not found.");
+      }
+      fireEvent.click(backButton);
     }
 
     it("loads existing referenced Questions in Lesson.questions order", async () => {
@@ -1631,7 +1664,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await screen.findByRole("dialog");
       fireEvent.click(
         await within(dialog).findByRole("button", { name: "Edit اختبار" }),
       );
@@ -1677,7 +1710,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await screen.findByRole("dialog");
       fireEvent.click(
         await within(dialog).findByRole("button", { name: "Edit اختبار" }),
       );
@@ -1811,10 +1844,7 @@ describe("EditModuleModal", () => {
       fireEvent.change(firstTextarea, {
         target: { value: "سؤال ثاني معدّل" },
       });
-      fireEvent.click(
-        within(dialog).getByRole("button", { name: "Back to Module" }),
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+      clickBackToModule(dialog);
 
       expect(mutationCalls()).toHaveLength(0);
     });
@@ -1895,12 +1925,7 @@ describe("EditModuleModal", () => {
         renderModal();
 
         const { dialog } = await insertQuestion2();
-        fireEvent.click(
-          within(dialog).getByRole("button", { name: "Back to Module" }),
-        );
-        fireEvent.click(
-          screen.getByRole("button", { name: "Discard changes" }),
-        );
+        clickBackToModule(dialog);
 
         expect(mutationCalls()).toHaveLength(0);
       });
@@ -1920,6 +1945,249 @@ describe("EditModuleModal", () => {
 
         expect(within(picker).queryByText("سؤال أول")).not.toBeInTheDocument();
         expect(within(picker).getByText("سؤال ثاني")).toBeInTheDocument();
+      });
+    });
+
+    describe("cross-Module Insert (ANA-120)", () => {
+      const partialQuizLesson: Lesson = {
+        ...QUIZ_LESSON,
+        questions: [QUESTION_1.id],
+      };
+
+      // module-0 (previous), module-1 (the Lesson's own, currently edited
+      // Module -- see `renderModal`'s default `state.id`), module-2 (later)
+      // -- Insert must offer module-0's own Questions alongside module-1's,
+      // never module-2's.
+      const BOOK_WITH_MODULES: Book = {
+        ...BOOK,
+        modules: ["module-0", "module-1", "module-2"],
+      };
+
+      const PREVIOUS_QUESTION = buildQuestionFixture({
+        id: "previous-question-1",
+        text: { ar: "سؤال من وحدة سابقة", en: "A previous-Module question" },
+      });
+      const LATER_QUESTION = buildQuestionFixture({
+        id: "later-question-1",
+        text: { ar: "سؤال من وحدة لاحقة", en: "A later-Module question" },
+      });
+      const BOOK_QUESTIONS = [
+        { moduleId: "module-0", questions: [PREVIOUS_QUESTION] },
+        { moduleId: "module-2", questions: [LATER_QUESTION] },
+      ];
+
+      async function insertPreviousQuestion() {
+        const { dialog, form } = await openQuizLesson();
+        fireEvent.click(form.getByRole("button", { name: "Insert" }));
+        const picker = await screen.findByRole("dialog", {
+          name: "Insert a question",
+        });
+        fireEvent.click(
+          await within(picker).findByRole("option", {
+            name: /سؤال من وحدة سابقة/,
+          }),
+        );
+        return { dialog, form };
+      }
+
+      it("offers a previous-Module Question but never a later-Module one", async () => {
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+          bookQuestions: BOOK_QUESTIONS,
+        });
+        renderModal({ book: BOOK_WITH_MODULES });
+
+        const { form } = await openQuizLesson();
+        fireEvent.click(form.getByRole("button", { name: "Insert" }));
+        const picker = await screen.findByRole("dialog", {
+          name: "Insert a question",
+        });
+
+        expect(
+          await within(picker).findByText("سؤال من وحدة سابقة"),
+        ).toBeInTheDocument();
+        expect(
+          within(picker).queryByText("سؤال من وحدة لاحقة"),
+        ).not.toBeInTheDocument();
+      });
+
+      it("selecting a previous-Module Question copies its content into a new draft, without touching backend data", async () => {
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+          bookQuestions: BOOK_QUESTIONS,
+        });
+        renderModal({ book: BOOK_WITH_MODULES });
+
+        const { form } = await insertPreviousQuestion();
+
+        expect(
+          screen.queryByRole("dialog", { name: "Insert a question" }),
+        ).not.toBeInTheDocument();
+        const textareas = form.getAllByRole("textbox", { name: "Question" });
+        expect(
+          textareas.some((textarea) =>
+            (textarea as HTMLTextAreaElement).value.includes(
+              "سؤال من وحدة سابقة",
+            ),
+          ),
+        ).toBe(true);
+        expect(mutationCalls()).toHaveLength(0);
+      });
+
+      it("Saving a previous-Module insert creates exactly one Question under the current Module and stores its id in Lesson.questions", async () => {
+        const createdQuestion: Question = {
+          id: "question-3",
+          text: PREVIOUS_QUESTION.text,
+          explanation: PREVIOUS_QUESTION.explanation,
+          choices: PREVIOUS_QUESTION.choices,
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+          createdBy: "a@example.com",
+          updatedBy: "a@example.com",
+        };
+        const updatedLesson = {
+          ...partialQuizLesson,
+          questions: [QUESTION_1.id, createdQuestion.id],
+        };
+        mockFetch({
+          lessons: [partialQuizLesson],
+          questions: [QUESTION_1, QUESTION_2],
+          bookQuestions: BOOK_QUESTIONS,
+          other: { data: updatedLesson },
+          questionOther: { data: createdQuestion },
+          questionOtherStatus: 201,
+        });
+        renderModal({ book: BOOK_WITH_MODULES });
+
+        const { dialog } = await insertPreviousQuestion();
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+
+        await vi.waitFor(() =>
+          expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        );
+
+        // Created under the current Module (module-1) -- the source Module
+        // (module-0) is never written to.
+        const questionPost = mutationCalls().find(
+          ([url, init]) =>
+            url.endsWith("/modules/module-1/questions") &&
+            init.method === "POST",
+        );
+        expect(questionPost).toBeDefined();
+        const postBody = JSON.parse(questionPost![1].body as string);
+        expect(postBody.text).toEqual(PREVIOUS_QUESTION.text);
+        expect(
+          mutationCalls().some(([url]) => url.includes("/modules/module-0/")),
+        ).toBe(false);
+
+        const lessonPatch = mutationCalls().find(
+          ([url, init]) =>
+            url.endsWith("/lessons/lesson-1") && init.method === "PATCH",
+        )!;
+        const lessonBody = JSON.parse(lessonPatch[1].body as string);
+        expect(lessonBody.questions).toEqual(["question-1", "question-3"]);
+      });
+
+      it("retrying Save after the Lesson itself fails does not re-create the previous-Module copy", async () => {
+        let lessonPatchAttempts = 0;
+
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+          (url: RequestInfo | URL, init?: RequestInit) => {
+            const urlStr = typeof url === "string" ? url : String(url);
+            const method = (init?.method ?? "GET").toUpperCase();
+
+            if (urlStr.endsWith("/lessons") && method === "GET") {
+              return Promise.resolve(
+                jsonResponse({ data: [partialQuizLesson] }),
+              );
+            }
+            if (
+              urlStr.endsWith("/modules/module-1/questions") &&
+              method === "GET"
+            ) {
+              return Promise.resolve(
+                jsonResponse({ data: [QUESTION_1, QUESTION_2] }),
+              );
+            }
+            if (
+              urlStr.endsWith("/books/book-1/questions") &&
+              method === "GET"
+            ) {
+              return Promise.resolve(jsonResponse({ data: BOOK_QUESTIONS }));
+            }
+            if (
+              urlStr.endsWith("/modules/module-1/questions") &&
+              method === "POST"
+            ) {
+              const body = JSON.parse(init?.body as string) as {
+                text: unknown;
+                explanation: unknown;
+                choices: unknown;
+              };
+              return Promise.resolve(
+                jsonResponse(
+                  {
+                    data: {
+                      id: "question-3",
+                      text: body.text,
+                      explanation: body.explanation,
+                      choices: body.choices,
+                      createdAt: new Date(0).toISOString(),
+                      updatedAt: new Date(0).toISOString(),
+                      createdBy: "a@example.com",
+                      updatedBy: "a@example.com",
+                    },
+                  },
+                  201,
+                ),
+              );
+            }
+            if (urlStr.endsWith("/lessons/lesson-1") && method === "PATCH") {
+              lessonPatchAttempts += 1;
+              if (lessonPatchAttempts === 1) {
+                return Promise.resolve(
+                  jsonResponse({ error: "Lesson update failed." }, 500),
+                );
+              }
+              return Promise.resolve(jsonResponse({ data: partialQuizLesson }));
+            }
+            return Promise.resolve(
+              jsonResponse({ error: "Unhandled fetch in test." }, 500),
+            );
+          },
+        );
+
+        renderModal({ book: BOOK_WITH_MODULES });
+
+        const { dialog } = await insertPreviousQuestion();
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+        expect(
+          await within(dialog).findByText("Lesson update failed."),
+        ).toBeInTheDocument();
+
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        );
+        await vi.waitFor(() =>
+          expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        );
+
+        const questionPosts = (
+          fetch as ReturnType<typeof vi.fn>
+        ).mock.calls.filter(([url, init]) => {
+          const urlStr = typeof url === "string" ? url : String(url);
+          const method = ((init as RequestInit)?.method ?? "GET").toUpperCase();
+          return (
+            urlStr.endsWith("/modules/module-1/questions") && method === "POST"
+          );
+        });
+        expect(questionPosts).toHaveLength(1);
       });
     });
   });
