@@ -134,6 +134,25 @@ describe("QuestionTextEditor", () => {
     expect(screen.getByRole("button", { name: /translate/i })).toBeDisabled();
   });
 
+  it("renders Translate icon-only with Languages, no visible text label (ANA-120)", () => {
+    renderEditor();
+
+    const button = screen.getByRole("button", {
+      name: "Translate question with AI",
+    });
+    expect(button).toHaveTextContent("");
+    expect(button.querySelector("svg")).toHaveClass("lucide-languages");
+  });
+
+  it("renders Translate's icon in white, not FormField's shared blue (ANA-120)", () => {
+    renderEditor();
+
+    const button = screen.getByRole("button", {
+      name: "Translate question with AI",
+    });
+    expect(button).toHaveStyle({ "--ai-color": "white" });
+  });
+
   it("translates Arabic text/explanation/choices to English, preserving correctness flags", async () => {
     const question: QuestionFieldEntry = {
       ...makeQuestionFieldEntry(),
