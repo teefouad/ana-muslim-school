@@ -214,6 +214,27 @@ function setupFetch(
   );
 }
 
+// The custom "Edit Module" `<Title>` `ModuleEditorBody` renders (ANA-121:
+// shared between the Edit Module modal and drawer, see
+// ../../module-editor-body.tsx) is absolutely positioned over its
+// container's own header rather than passed through as Mantine's `title`
+// prop, so its `role="dialog"` element never gets an `aria-labelledby`
+// Testing Library could match a `name` against (this is pre-existing --
+// true of the modal too, not something ANA-121 introduced). Locating it
+// through the heading itself (a real `<h1>`, whose accessible name *does*
+// come from its content) and walking up to its nearest `[role="dialog"]`
+// ancestor sidesteps that gap instead of relying on it.
+async function findEditModuleDrawer(
+  name = "Edit Module",
+): Promise<HTMLElement> {
+  const heading = await screen.findByRole("heading", { name });
+  const dialog = heading.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error(`Could not find a dialog ancestor for heading "${name}"`);
+  }
+  return dialog;
+}
+
 function renderPage() {
   return render(
     <MantineProvider>
@@ -1548,8 +1569,8 @@ describe("EditBookPage", () => {
       });
     });
 
-    describe("Edit Module modal", () => {
-      it("opens seeded with the Module's Title, Description, Color, and existing Content (its Learning Material, ANA-94 PR review)", async () => {
+    describe("Edit Module drawer (ANA-121)", () => {
+      it("opens a right-side drawer, not the Edit Module modal, seeded with the Module's Title, Description, Color, and existing Content (its Learning Material, ANA-94 PR review)", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({
@@ -1572,9 +1593,16 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
+        // A Drawer, not the Edit Module modal -- Mantine names each
+        // component's own content class after it (mantine-Drawer-* vs.
+        // mantine-Modal-*), and exactly one dialog exists in the tree
+        // either way (the modal's own `state` stays `null` for an edit
+        // target -- see edit-module-modal.tsx's usage below).
+        expect(dialog.className).toContain("mantine-Drawer-content");
+        expect(dialog.className).not.toContain("mantine-Modal-content");
+        expect(screen.getAllByRole("dialog")).toHaveLength(1);
+
         expect(within(dialog).getByLabelText("Title")).toHaveValue("أ");
         expect(within(dialog).getByLabelText("Description")).toHaveValue("وصف");
         expect(
@@ -1583,6 +1611,22 @@ describe("EditBookPage", () => {
         expect(
           await within(dialog).findByText("محتوى موجود"),
         ).toBeInTheDocument();
+      });
+
+      it("uses a 500px drawer width on desktop", async () => {
+        setupFetch(buildBookFixture(), {
+          modules: [
+            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
+          ],
+        });
+        renderPage();
+
+        await screen.findByText("أ");
+        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
+        await findEditModuleDrawer();
+
+        const root = document.querySelector(".mantine-Drawer-root");
+        expect(root?.getAttribute("style")).toContain("min(500px, 100vw)");
       });
 
       it("also opens, seeded with the Module's current values, when its row is double-clicked (ANA-103)", async () => {
@@ -1608,9 +1652,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.doubleClick(screen.getByText("أ"));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         expect(within(dialog).getByLabelText("Title")).toHaveValue("أ");
         expect(within(dialog).getByLabelText("Description")).toHaveValue("وصف");
         expect(
@@ -1621,7 +1663,7 @@ describe("EditBookPage", () => {
         ).toBeInTheDocument();
       });
 
-      it("double-clicking a different module's row opens the modal for that module", async () => {
+      it("double-clicking a different module's row opens the drawer for that module", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -1633,13 +1675,11 @@ describe("EditBookPage", () => {
         await screen.findByText("ب");
         fireEvent.doubleClick(screen.getByText("ب"));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         expect(within(dialog).getByLabelText("Title")).toHaveValue("ب");
       });
 
-      it("a single click on a module row does not open the Edit Module modal", async () => {
+      it("a single click on a module row does not open the Edit Module drawer", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -1651,8 +1691,9 @@ describe("EditBookPage", () => {
         fireEvent.click(screen.getByText("أ"));
 
         expect(
-          screen.queryByRole("dialog", { name: "Edit Module" }),
+          screen.queryByRole("heading", { name: "Edit Module" }),
         ).not.toBeInTheDocument();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
 
       it("opens seeded with blank Content when the Module has no Material yet", async () => {
@@ -1667,9 +1708,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         // Content (a Markdown editor) has nothing to assert a value on
         // directly -- absence of the seeded-content case's text is enough
         // to show it started blank rather than reusing another Module's.
@@ -1702,9 +1741,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         fireEvent.change(within(dialog).getByLabelText("Title"), {
           target: { value: "المقدمة" },
         });
@@ -1749,7 +1786,7 @@ describe("EditBookPage", () => {
         expect(screen.queryByText("أ")).not.toBeInTheDocument();
         await vi.waitFor(() =>
           expect(
-            screen.queryByRole("dialog", { name: "Edit Module" }),
+            screen.queryByRole("heading", { name: "Edit Module" }),
           ).not.toBeInTheDocument(),
         );
         // isPublished is now sent as entered (ANA-117 gave the modal its
@@ -1793,9 +1830,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         fireEvent.click(
           within(dialog).getByRole("switch", { name: "Published" }),
         );
@@ -1842,9 +1877,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         await within(dialog).findByText("Introduction");
 
         // Same keyboard-drag technique as the Modules reorder tests above
@@ -1919,9 +1952,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         fireEvent.click(
           within(dialog).getByRole("button", { name: "Save changes" }),
         );
@@ -1968,9 +1999,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         expect(await within(dialog).findByText("قديم")).toBeInTheDocument();
 
         fireEvent.click(
@@ -1983,7 +2012,7 @@ describe("EditBookPage", () => {
         });
       });
 
-      it("keeps the modal open and shows the error when saving fails, without changing the displayed title", async () => {
+      it("keeps the drawer open and shows the error when saving fails, without changing the displayed title", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -1998,9 +2027,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         fireEvent.change(within(dialog).getByLabelText("Title"), {
           target: { value: "المقدمة" },
         });
@@ -2014,7 +2041,7 @@ describe("EditBookPage", () => {
         expect(screen.getByText("أ")).toBeInTheDocument();
       });
 
-      it("Cancel closes the modal without changing the displayed title or making a network request", async () => {
+      it("Cancel closes the drawer without changing the displayed title or making a network request", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -2025,9 +2052,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         fireEvent.change(within(dialog).getByLabelText("Title"), {
           target: { value: "المقدمة" },
         });
@@ -2035,14 +2060,14 @@ describe("EditBookPage", () => {
 
         // Editing Title made this draft dirty, so Cancel is gated behind
         // the discard confirmation (PR review) -- confirming is what
-        // actually closes the modal.
+        // actually closes the drawer.
         fireEvent.click(
           await screen.findByRole("button", { name: "Discard changes" }),
         );
 
         await vi.waitFor(() =>
           expect(
-            screen.queryByRole("dialog", { name: "Edit Module" }),
+            screen.queryByRole("heading", { name: "Edit Module" }),
           ).not.toBeInTheDocument(),
         );
         expect(screen.getByText("أ")).toBeInTheDocument();
@@ -2064,9 +2089,7 @@ describe("EditBookPage", () => {
         await screen.findByText("أ");
         fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
 
-        const dialog = await screen.findByRole("dialog", {
-          name: "Edit Module",
-        });
+        const dialog = await findEditModuleDrawer();
         fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
         expect(
@@ -2074,7 +2097,7 @@ describe("EditBookPage", () => {
         ).not.toBeInTheDocument();
         await vi.waitFor(() =>
           expect(
-            screen.queryByRole("dialog", { name: "Edit Module" }),
+            screen.queryByRole("heading", { name: "Edit Module" }),
           ).not.toBeInTheDocument(),
         );
       });

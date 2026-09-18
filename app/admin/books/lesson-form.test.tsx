@@ -95,7 +95,7 @@ describe("LessonForm", () => {
       expect(rightColumn.textContent).not.toContain("Position");
     });
 
-    it("stacks to a single column on narrow screens and splits into two equal columns from the sm breakpoint up", () => {
+    it("stacks to a single column below its own 640px container width, splitting into two equal columns above it (ANA-121)", () => {
       const { container } = renderForm();
 
       const combinedCss = Array.from(
@@ -104,11 +104,17 @@ describe("LessonForm", () => {
         .map((style) => style.textContent ?? "")
         .join("\n");
 
-      // Mantine's SimpleGrid (`cols={{ base: 1, sm: 2 }}`) sets `--sg-cols`
-      // unconditionally to 1, then overrides it to 2 only inside a
-      // `min-width` media query for the `sm` breakpoint.
+      // Mantine's SimpleGrid (`type="container"`, `cols={{ base: 1, "640px":
+      // 2 }}`, ANA-121) sets `--sg-cols` unconditionally to 1, then
+      // overrides it to 2 only inside an `@container` query keyed to this
+      // grid's own rendered width, not the viewport's -- see this form's own
+      // top-level `SimpleGrid` doc comment for why that distinction matters
+      // once this form can render inside the narrow Edit Module drawer, not
+      // just the wide modal.
       expect(combinedCss).toContain("--sg-cols:1");
-      expect(combinedCss).toMatch(/min-width:[^{]*\{[^}]*--sg-cols:2/);
+      expect(combinedCss).toMatch(
+        /@container simple-grid \(min-width: 640px\)[^{]*\{[^}]*--sg-cols:2/,
+      );
     });
   });
 
