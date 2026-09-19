@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Alert,
@@ -161,11 +161,11 @@ function BookFormSkeleton() {
 // the read (see books-table.tsx for why) so it doesn't need a `useEffect`.
 export default function EditBookPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const {
     data: book,
     error,
     isLoading,
+    mutate: mutateBook,
   } = useSWR(
     `/api/v1/books/${id}`,
     (url) => fetchJson<{ data: Book }>(url).then((response) => response.data),
@@ -392,6 +392,16 @@ export default function EditBookPage() {
     await mutateModules();
     await mutateMaterials();
     setModuleOrderDraft(null);
+    // Switches the drawer into edit mode for the Module just created
+    // (ANA-129 PR review: saving must never change the screen) -- the
+    // drawer itself never closes on save (module-editor-body.tsx), so
+    // without this the user would be left staring at the same blank
+    // create draft with no way to tell it had actually saved. `getModuleFields`
+    // (below) reads from `modulesData`, already revalidated above, so the
+    // freshly-mounted edit-mode `ModuleEditorBody` this triggers (a new
+    // `state.id` means a new `key`, see edit-module-drawer.tsx) seeds from
+    // the real, just-saved fields rather than a blank flash.
+    setModalTarget({ mode: "edit", id: moduleId });
   }
 
   // Persists an existing Module's edited fields through the backend
@@ -484,15 +494,29 @@ export default function EditBookPage() {
         );
       }
 
-      // Only relevant if a future change keeps the user on this page after
-      // a successful save instead of navigating away -- revalidates so the
-      // Modules panel reflects the now-persisted order rather than the
-      // (no-longer-authoritative) local draft.
+      // Revalidates so the Modules panel reflects the now-persisted order
+      // rather than the (no-longer-authoritative) local draft, then drops
+      // the draft itself -- it's persisted now, so `isDirty` (below) must
+      // stop counting it (ANA-129 PR review: this page no longer navigates
+      // away on save, so a leftover draft would otherwise read as dirty
+      // forever after a successful save).
       if (moduleOrderDraft) {
         await mutateModules();
+        setModuleOrderDraft(null);
       }
 
-      router.push("/admin/books");
+      // Revalidates the Book itself so anything else on this page reading
+      // `book` reflects the just-saved values -- not what resets BookForm's
+      // own dirty state, though (its own `baseline` is reset directly, see
+      // `onDirtyChange`'s wiring above/book-form.tsx's `handleSubmit`,
+      // since a background SWR revalidation must never silently overwrite
+      // an in-progress edit).
+      await mutateBook();
+
+      // No navigation here (ANA-129 PR review: saving must never change
+      // the screen) -- the admin stays on this same Edit Book page, Save
+      // changes reflecting back to clean once BookForm resets its own
+      // baseline (see book-form.tsx).
     } catch (err) {
       // The reordered draft (if any) is deliberately left in place here --
       // a failed save must not discard the user's chosen order, only
@@ -500,6 +524,10 @@ export default function EditBookPage() {
       setSubmitError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
+      // Rethrown so BookForm's own awaited `onSubmit` (book-form.tsx) knows
+      // this attempt failed and leaves its draft/dirty state untouched
+      // instead of optimistically marking it saved.
+      throw err;
     } finally {
       setIsSubmitting(false);
     }

@@ -229,14 +229,17 @@ used for every editor's primary save action -- Module/Lesson Save
 changes/Save Module (module-editor-body.tsx/lesson-editor.tsx), the Book
 edit page's Save changes, and the Manage Users permission form's Save
 changes/Save access. It takes the same props as `Button` plus a required
-`dirty: boolean`: black (Mantine's `color="dark"`) while `dirty` is
-`false`, this theme's usual primary green (the default, no `color`
-override) once it's `true`. Before this existed, every one of those
-buttons rendered in the same green regardless of whether there was
-anything to save -- reach for this instead of a bare `Button` for any new
-Save action so it stays consistent. The caller still owns computing
-`dirty` (comparing current field values against whatever the editor was
-seeded with, e.g. `ModuleEditorBody`'s/`LessonEditor`'s own `isDirty`) --
+`dirty: boolean`: this theme's usual primary green (the default, no
+`color` override) while `dirty` is `false`, an amber `#fd9c20` (PR review
+-- a literal hex, not one of this theme's own named colors) once it's
+`true`. `color` is omitted from this component's own props -- it fully
+owns the color, so a caller can't fight `dirty` with its own override.
+Before this existed, every one of those buttons rendered in the same
+green regardless of whether there was anything to save -- reach for this
+instead of a bare `Button` for any new Save action so it stays
+consistent. The caller still owns computing `dirty` (comparing current
+field values against whatever the editor was seeded with, e.g.
+`ModuleEditorBody`'s/`LessonEditor`'s own `isDirty`) --
 this component only renders the result.
 
 ## ListHeaderAction

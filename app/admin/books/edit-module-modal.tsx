@@ -41,9 +41,9 @@ export interface EditModuleModalProps {
   onClose: () => void;
   /** Called with the modal's current field values when Save Module is
    * clicked in create mode. The modal awaits this -- resolving creates the
-   * Module through the backend and closes the modal; rejecting keeps the
-   * modal open and shows the error, without ever calling `onClose` itself
-   * (ANA-94: "only add the Module to the list after creation succeeds"). */
+   * Module through the backend; the modal never closes itself on save
+   * (ANA-129 PR review, see `ModuleEditorBody`'s own `onCreate` doc) --
+   * rejecting also just keeps the modal open, showing the error. */
   onCreate: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the modal's current field values when Save changes is
    * clicked in edit mode. Same awaited resolve/reject contract as

@@ -31,7 +31,7 @@ const meta = {
   tags: ["autodocs"],
   args: {
     id: STORY_FORM_ID,
-    onSubmit: () => {},
+    onSubmit: async () => {},
   },
   render: (args) => (
     <div style={{ width: 560 }}>

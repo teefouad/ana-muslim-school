@@ -190,12 +190,15 @@ export interface ModuleEditorBodyProps {
   onClose: () => void;
   /** Called with the current field values when Save Module is clicked in
    * create mode. Awaited -- resolving creates the Module through the
-   * backend and closes the container; rejecting keeps it open and shows the
-   * error, without ever calling `onClose` itself (ANA-94: "only add the
-   * Module to the list after creation succeeds"). Optional because the
-   * drawer (ANA-121) never opens in create mode and so never needs to
-   * supply one -- this branch of `handlePrimaryAction` below is
-   * unreachable for a container whose `state` is always `"edit"`. */
+   * backend; this container never closes itself on save (ANA-129 PR
+   * review), so the caller is expected to switch its own `state` from
+   * `"create"` to `"edit"` for the newly created Module's id once this
+   * resolves (see `edit-module-drawer.tsx`'s `onCreate` doc), which gives
+   * this component a new `key` at the container level and remounts it
+   * fresh in edit mode. Rejecting keeps this instance open as-is and shows
+   * the error. Optional -- the modal (`edit-module-modal.tsx`) and drawer
+   * (`edit-module-drawer.tsx`) both support create mode, but a caller/test
+   * that only ever opens this body in edit mode has no use for it. */
   onCreate?: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the current field values when Save changes is clicked in
    * edit mode. Same awaited resolve/reject contract as `onCreate`.
@@ -557,6 +560,17 @@ export function ModuleEditorBody({
       }),
       { revalidate: true },
     );
+    // Switches Lesson mode into editing this now-real Lesson in place
+    // (ANA-129 PR review: saving must never change the screen) -- neither
+    // layout closes Lesson mode on save any more (see `LessonEditor`'s own
+    // `handleSave`), so without this the editor would be left showing a
+    // "New Lesson" draft with no way to tell it had actually saved. The
+    // Lessons cache already has `created` (just above), so `openLesson`
+    // resolves to it once this re-renders, giving the nested Lesson editor
+    // drawer's own `lessonEditorInner` (and the wide/Modal layout's
+    // identical usage) a new `key` -- a clean remount seeded from the
+    // real, persisted Lesson rather than a blank New Lesson draft.
+    setLessonEditorTarget({ lessonId: created.id });
   }
 
   // Persists an existing Lesson's edited fields through the existing Lesson
@@ -729,25 +743,50 @@ export function ModuleEditorBody({
       };
 
       if (state.mode === "create") {
+        // Stays open (ANA-129 PR review: saving must never change the
+        // screen) -- the caller switches this same container into edit
+        // mode for the newly created Module in place, by re-rendering with
+        // an `"edit"` `state` once its own `onCreate` resolves (see
+        // `EditModuleDrawerProps.onCreate`'s doc, edit-module-drawer.tsx).
+        // That new `state.id` gives `ModuleEditorBody` a new `key` at the
+        // container level, so this component itself simply gets remounted
+        // fresh in edit mode -- nothing further to do here.
         await onCreate?.(fields);
       } else {
         await onSave(state.id, fields, lessonOrderDraft);
 
         // PR review: promote the just-persisted Lesson order into the
-        // Lessons SWR cache immediately, before this container closes --
-        // otherwise reopening the same Module lets `useSWR` synchronously
-        // render the still-stale pre-save cached order before its
-        // background revalidation returns the newly persisted one (a
-        // visible flash). `lessons` is already this exact order (the local
-        // reorder draft layered onto the server list) whenever a reorder
-        // was actually pending; still revalidates in the background for
-        // eventual correctness against any concurrent server-side change.
+        // Lessons SWR cache immediately -- otherwise reopening the same
+        // Module lets `useSWR` synchronously render the still-stale
+        // pre-save cached order before its background revalidation returns
+        // the newly persisted one (a visible flash). `lessons` is already
+        // this exact order (the local reorder draft layered onto the
+        // server list) whenever a reorder was actually pending; still
+        // revalidates in the background for eventual correctness against
+        // any concurrent server-side change.
         if (lessonOrderDraft) {
           void mutateLessons({ data: lessons }, { revalidate: true });
         }
+
+        // Clears the pending-reorder draft now that it's persisted (ANA-129
+        // PR review) -- `isDirty` includes `lessonOrderDraft !== null`, and
+        // this container no longer closes/unmounts itself on save, so a
+        // draft left set here would otherwise keep Save changes reading as
+        // dirty forever after a successful save. `title`/`description`/etc.
+        // need no equivalent reset: `initialFields` is read fresh from
+        // `state.fields` every render (not frozen), so once the caller's
+        // own Modules SWR cache revalidates with the saved values (see
+        // `handleSaveModule`, `[id]/edit/page.tsx`), `initialFields` itself
+        // catches up to match this draft and `isDirty` clears on its own.
+        setLessonOrderDraft(null);
       }
 
-      onClose();
+      // No `onClose()` here (ANA-129 PR review) -- saving must never change
+      // the screen: an edit stays open on this same Module, showing Save
+      // changes reflect back to clean once the caller's own revalidation
+      // lands (see above); a create stays open too, switching into edit
+      // mode in place as described above. Cancel/the drawer's own dismiss
+      // controls are still the only way to actually leave.
     } catch (err) {
       setSaveError(errorMessage(err));
     } finally {

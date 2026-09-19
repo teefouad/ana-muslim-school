@@ -60,8 +60,11 @@ export interface LessonEditorProps {
   moduleContent: string;
   /** Called when Save changes is clicked with no Lesson open (`lesson` is
    * `null`) -- persists a real Lesson through the existing Lesson create
-   * API (ANA-116). Awaited: resolving returns to Module mode; rejecting
-   * keeps this editor open, preserves the draft, and shows the error.
+   * API (ANA-116). Awaited: resolving keeps this editor open, now editing
+   * the newly created Lesson in place (ANA-129 PR review -- the caller
+   * switches its own `lessonEditorTarget` to the new id, see
+   * `handleCreateLesson`, module-editor-body.tsx); rejecting also keeps
+   * this editor open, preserving the draft, and shows the error.
    * `onQuestionSaved` (ANA-119 PR review) is invoked synchronously the
    * moment each Question draft's own create/update request succeeds --
    * *before* the overall Lesson create/update settles, so a draft that was
@@ -242,11 +245,12 @@ export function LessonEditor({
   });
 
   // Persists the draft through the real Lesson create/update API (ANA-116)
-  // -- awaited: resolving returns to Module mode, matching the Module
-  // form's own Save contract in edit-module-modal.tsx. Rejecting keeps this
-  // editor open, preserves every field exactly as typed, and shows the
-  // backend error -- a failed create must never implicitly retry (the
-  // caller's `onCreate` only ever issues one POST per call, see
+  // -- awaited: resolving keeps this editor open (ANA-129 PR review: saving
+  // must never change the screen), matching the Module form's own Save
+  // contract in module-editor-body.tsx. Rejecting also keeps this editor
+  // open, preserves every field exactly as typed, and shows the backend
+  // error -- a failed create must never implicitly retry (the caller's
+  // `onCreate` only ever issues one POST per call, see
   // edit-module-modal.tsx).
   async function handleSave() {
     const fields: LessonFieldsValues = {
@@ -291,7 +295,16 @@ export function LessonEditor({
         await onCreate(fields, promoteQuestion);
       }
 
-      onBack();
+      // No `onBack()` here (ANA-129 PR review) -- saving must never change
+      // the screen: an existing Lesson stays open, Save changes reflecting
+      // back to clean once the caller's own Lessons SWR cache revalidates
+      // with the saved values (`initialFields` above is read fresh from
+      // `lesson` every render, not frozen, so it catches up on its own).
+      // A brand-new Lesson also stays open -- the caller
+      // (`handleCreateLesson`, module-editor-body.tsx) switches this same
+      // editor into editing the newly created Lesson in place by updating
+      // its own `lessonEditorTarget` once this resolves, rather than
+      // calling `onBack` to return to Module mode.
     } catch (err) {
       setSaveError(errorMessage(err));
     } finally {

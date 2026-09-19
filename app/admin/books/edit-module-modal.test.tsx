@@ -378,7 +378,7 @@ describe("EditModuleModal", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("calls onCreate with the entered fields, then onClose, once creation succeeds", async () => {
+    it("calls onCreate with the entered fields and never closes on success (ANA-129 PR review: saving must never change the screen)", async () => {
       const onCreate = vi.fn().mockResolvedValue(undefined);
       const onClose = vi.fn();
       renderModal({ state: { mode: "create" }, onCreate, onClose });
@@ -399,7 +399,13 @@ describe("EditModuleModal", () => {
           color: "pink.6",
         }),
       );
-      await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+      // Stays on this same "Add Module" screen -- switching a real caller
+      // into edit mode for the newly created Module is that caller's own
+      // responsibility (see edit-module-drawer.test.tsx's identical
+      // "stays open and switches to edit mode" test), not this modal's.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(await findEditModuleDialog("Add Module")).toBeInTheDocument();
     });
 
     it("keeps the modal open and shows the error when creation fails, without calling onClose", async () => {
@@ -435,7 +441,7 @@ describe("EditModuleModal", () => {
       ).toBeInTheDocument();
     });
 
-    it("calls onSave with the module id and edited fields, then onClose, once saving succeeds", async () => {
+    it("calls onSave with the module id and edited fields, and never closes on success (ANA-129 PR review: saving must never change the screen)", async () => {
       const onSave = vi.fn().mockResolvedValue(undefined);
       const onClose = vi.fn();
       renderModal({ onSave, onClose });
@@ -457,7 +463,9 @@ describe("EditModuleModal", () => {
           null,
         ),
       );
-      await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(await findEditModuleDialog()).toBeInTheDocument();
     });
 
     it("keeps the modal open and shows the error when saving fails, without calling onClose", async () => {
@@ -917,6 +925,14 @@ describe("EditModuleModal", () => {
       );
 
       await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+      // Stays open on save (ANA-129 PR review) -- close it explicitly
+      // (Cancel closes immediately, with no discard prompt, since the
+      // reorder that made this dirty is now persisted and Save changes
+      // reset `lessonOrderDraft`) to actually exercise close-then-reopen,
+      // proving the persisted order came from the SWR cache being
+      // promoted on save rather than this same still-open instance simply
+      // never having lost its own local state.
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await vi.waitFor(() =>
         expect(queryEditModuleDialog()).not.toBeInTheDocument(),
       );
@@ -968,7 +984,7 @@ describe("EditModuleModal", () => {
       );
     });
 
-    it("Saving a New Lesson POSTs exactly once with the visible fields plus the temporary hidden defaults, then returns to Module mode showing it (ANA-116)", async () => {
+    it("Saving a New Lesson POSTs exactly once with the visible fields plus the temporary hidden defaults, then stays in Lesson mode editing the newly created Lesson in place (ANA-116, ANA-129)", async () => {
       const created = buildLessonFixture({
         id: "lesson-3",
         title: { ar: "New lesson title", en: "" },
@@ -992,14 +1008,13 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
-      await within(dialog).findByText("3 lessons");
-      expect(within(dialog).getByText("New lesson title")).toBeInTheDocument();
-      expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
-
-      const posts = mutationCalls().filter(
-        ([, init]) => init?.method === "POST",
-      );
-      expect(posts).toHaveLength(1);
+      const posts = await vi.waitFor(() => {
+        const calls = mutationCalls().filter(
+          ([, init]) => init?.method === "POST",
+        );
+        expect(calls).toHaveLength(1);
+        return calls;
+      });
       expect(posts[0][0]).toBe("/api/v1/books/book-1/modules/module-1/lessons");
       const body = JSON.parse(posts[0][1].body as string);
       expect(body).toEqual({
@@ -1016,6 +1031,20 @@ describe("EditModuleModal", () => {
         questions: [],
         isLocked: false,
       });
+
+      // Stays in Lesson mode, now editing the just-created Lesson in place
+      // (ANA-129 PR review) -- never returns to Module mode on save.
+      expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
+      expect(within(dialog).getByLabelText("Title")).toHaveValue(
+        "New lesson title",
+      );
+
+      // Back to Module now shows the real, persisted Lesson in the list.
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Back to Module" }),
+      );
+      await within(dialog).findByText("3 lessons");
+      expect(within(dialog).getByText("New lesson title")).toBeInTheDocument();
     });
 
     it("a successful create still shows the new Lesson even when the follow-up list revalidation fails (ANA-116)", async () => {
@@ -1067,7 +1096,16 @@ describe("EditModuleModal", () => {
 
       // The write succeeded and is reflected immediately -- a background
       // revalidation failure that happens afterward must never retroactively
-      // make it look like the write itself failed.
+      // make it look like the write itself failed. Stays in Lesson mode on
+      // save (ANA-129), so the immediate reflection is this same field,
+      // not the Lessons list.
+      expect(await within(dialog).findByLabelText("Title")).toHaveValue(
+        "New lesson title",
+      );
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Back to Module" }),
+      );
       expect(
         await within(dialog).findByText("New lesson title"),
       ).toBeInTheDocument();
@@ -1276,7 +1314,7 @@ describe("EditModuleModal", () => {
       expect(form.getByDisplayValue("Prayer basics")).toBeInTheDocument();
     });
 
-    it("Save changes PATCHes this Lesson's visible fields (never the still-hidden ones), then returns to Module mode with the update reflected (ANA-116/ANA-118)", async () => {
+    it("Save changes PATCHes this Lesson's visible fields (never the still-hidden ones), staying in Lesson mode with the update reflected (ANA-116/ANA-118, ANA-129)", async () => {
       const updated = {
         ...LESSONS[0],
         title: { ar: "Introduction, edited", en: "" },
@@ -1293,8 +1331,20 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Stays in Lesson mode on save (ANA-129) -- never returns to Module
+      // mode by itself.
+      await vi.waitFor(() =>
+        expect(within(dialog).getByLabelText("Title")).toHaveValue(
+          "Introduction, edited",
+        ),
+      );
+      expect(within(dialog).getByTestId("lesson-form")).toBeInTheDocument();
+
+      // Back to Module now shows the update reflected in the list.
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Back to Module" }),
+      );
       await within(dialog).findByText("Introduction, edited");
-      expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument();
       // The Module form's own Title is untouched by the Lesson save.
       expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
 
@@ -1340,6 +1390,15 @@ describe("EditModuleModal", () => {
       });
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Save changes" }),
+      );
+      await vi.waitFor(() =>
+        expect(within(dialog).getByLabelText("Title")).toHaveValue(
+          "Introduction, edited",
+        ),
+      );
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Back to Module" }),
       );
 
       expect(
@@ -1451,8 +1510,14 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Waits for the save to actually settle (ANA-129 PR review: Save
+      // changes stays in Lesson mode now, so `lesson-form` disappearing is
+      // no longer a signal of that) via the Save button's own loading
+      // state clearing, rather than a fixed delay.
       await vi.waitFor(() =>
-        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
       );
 
       const [, patchInit] = mutationCalls().find(([url]) =>
@@ -1498,8 +1563,14 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Waits for the save to actually settle (ANA-129 PR review: Save
+      // changes stays in Lesson mode now, so `lesson-form` disappearing is
+      // no longer a signal of that) via the Save button's own loading
+      // state clearing, rather than a fixed delay.
       await vi.waitFor(() =>
-        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
       );
 
       expect(
@@ -1534,8 +1605,14 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Waits for the save to actually settle (ANA-129 PR review: Save
+      // changes stays in Lesson mode now, so `lesson-form` disappearing is
+      // no longer a signal of that) via the Save button's own loading
+      // state clearing, rather than a fixed delay.
       await vi.waitFor(() =>
-        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
       );
 
       const [, postInit] = mutationCalls().find(
@@ -1587,8 +1664,14 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Waits for the save to actually settle (ANA-129 PR review: Save
+      // changes stays in Lesson mode now, so `lesson-form` disappearing is
+      // no longer a signal of that) via the Save button's own loading
+      // state clearing, rather than a fixed delay.
       await vi.waitFor(() =>
-        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
       );
       const lessonPatch = mutationCalls().find(
         ([url, init]) =>
@@ -1621,8 +1704,14 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Waits for the save to actually settle (ANA-129 PR review: Save
+      // changes stays in Lesson mode now, so `lesson-form` disappearing is
+      // no longer a signal of that) via the Save button's own loading
+      // state clearing, rather than a fixed delay.
       await vi.waitFor(() =>
-        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
       );
       const lessonPatch = mutationCalls().find(
         ([url, init]) =>
@@ -1839,8 +1928,14 @@ describe("EditModuleModal", () => {
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
 
+      // Waits for the save to actually settle (ANA-129 PR review: Save
+      // changes stays in Lesson mode now, so `lesson-form` disappearing is
+      // no longer a signal of that) via the Save button's own loading
+      // state clearing, rather than a fixed delay.
       await vi.waitFor(() =>
-        expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+        expect(
+          within(dialog).getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
       );
 
       const questionPosts = (
@@ -1932,8 +2027,14 @@ describe("EditModuleModal", () => {
           within(dialog).getByRole("button", { name: "Save changes" }),
         );
 
+        // Waits for the save to actually settle (ANA-129 PR review: Save
+        // changes stays in Lesson mode now, so `lesson-form` disappearing
+        // is no longer a signal of that) via the Save button's own
+        // loading state clearing, rather than a fixed delay.
         await vi.waitFor(() =>
-          expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+          expect(
+            within(dialog).getByRole("button", { name: "Save changes" }),
+          ).not.toHaveAttribute("data-loading"),
         );
 
         // Unchanged since it was loaded -- reused as-is, never PATCHed or
@@ -2099,8 +2200,14 @@ describe("EditModuleModal", () => {
           within(dialog).getByRole("button", { name: "Save changes" }),
         );
 
+        // Waits for the save to actually settle (ANA-129 PR review: Save
+        // changes stays in Lesson mode now, so `lesson-form` disappearing
+        // is no longer a signal of that) via the Save button's own
+        // loading state clearing, rather than a fixed delay.
         await vi.waitFor(() =>
-          expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+          expect(
+            within(dialog).getByRole("button", { name: "Save changes" }),
+          ).not.toHaveAttribute("data-loading"),
         );
 
         // Created under the current Module (module-1) -- the source Module
@@ -2207,8 +2314,14 @@ describe("EditModuleModal", () => {
         fireEvent.click(
           within(dialog).getByRole("button", { name: "Save changes" }),
         );
+        // Waits for the save to actually settle (ANA-129 PR review: Save
+        // changes stays in Lesson mode now, so `lesson-form` disappearing
+        // is no longer a signal of that) via the Save button's own
+        // loading state clearing, rather than a fixed delay.
         await vi.waitFor(() =>
-          expect(screen.queryByTestId("lesson-form")).not.toBeInTheDocument(),
+          expect(
+            within(dialog).getByRole("button", { name: "Save changes" }),
+          ).not.toHaveAttribute("data-loading"),
         );
 
         const questionPosts = (

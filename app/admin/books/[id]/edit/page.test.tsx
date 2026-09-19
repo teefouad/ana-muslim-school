@@ -533,9 +533,16 @@ describe("EditBookPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
+    // Stays on this same Edit Book page on save (ANA-129 PR review: saving
+    // must never change the screen) -- waits for the PATCH to actually
+    // settle via the Save button's own loading state clearing, rather than
+    // a navigation that no longer happens.
     await vi.waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith("/admin/books"),
+      expect(
+        screen.getByRole("button", { name: "Save changes" }),
+      ).not.toHaveAttribute("data-loading"),
     );
+    expect(pushMock).not.toHaveBeenCalled();
 
     const patchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
       ([, init]) => init?.method === "PATCH",
@@ -819,8 +826,14 @@ describe("EditBookPage", () => {
 
         fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
+        // Stays on this same Edit Book page on save (ANA-129 PR review) --
+        // waits for the PATCH to actually settle via the Save button's own
+        // loading state clearing, rather than a navigation that no longer
+        // happens.
         await vi.waitFor(() =>
-          expect(pushMock).toHaveBeenCalledWith("/admin/books"),
+          expect(
+            screen.getByRole("button", { name: "Save changes" }),
+          ).not.toHaveAttribute("data-loading"),
         );
         const modulesGetCallsAfter = (
           fetch as ReturnType<typeof vi.fn>
@@ -1771,11 +1784,12 @@ describe("EditBookPage", () => {
 
         expect(await screen.findByText("المقدمة")).toBeInTheDocument();
         expect(screen.queryByText("أ")).not.toBeInTheDocument();
-        await vi.waitFor(() =>
-          expect(
-            screen.queryByRole("heading", { name: "Edit Module" }),
-          ).not.toBeInTheDocument(),
-        );
+        // Stays open on save (ANA-129 PR review: saving must never change
+        // the screen) -- still the same drawer, now reflecting the saved
+        // title in both the list behind it and its own Title field.
+        expect(
+          screen.getByRole("heading", { name: "Edit Module" }),
+        ).toBeInTheDocument();
         // isPublished is now sent as entered (ANA-117 gave the modal its
         // own Published toggle) -- this Module's seeded value, `false`,
         // untouched in this test.

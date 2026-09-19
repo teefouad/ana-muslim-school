@@ -3,7 +3,13 @@
 import { Button, type ButtonProps } from "@mantine/core";
 import type { ComponentPropsWithoutRef } from "react";
 
-export type SaveButtonProps = ButtonProps &
+// Unsaved-changes color (ANA-129 PR review) -- not one of this theme's own
+// named colors (see `--mantine-primary-color-filled` in globals.css), so a
+// literal hex is passed straight through to Mantine's `color` prop, which
+// accepts any valid CSS color, not just a theme color name.
+const DIRTY_COLOR = "#fd9c20";
+
+export type SaveButtonProps = Omit<ButtonProps, "color"> &
   Omit<ComponentPropsWithoutRef<"button">, keyof ButtonProps> & {
     /** Whether the form/editor this button saves currently has unsaved
      * changes (ANA-129). It was previously impossible to tell an editor's
@@ -13,15 +19,17 @@ export type SaveButtonProps = ButtonProps &
      * state. This wraps the plain `Button` used for every "Save changes"/
      * "Save Module"/"Save access" action across the admin so they all
      * reflect it the same way instead of each screen reinventing the same
-     * `color` branch: black (Mantine's "dark" filled color) while there's
-     * nothing to save, the theme's usual primary green once something has
-     * changed. */
+     * `color` branch: `DIRTY_COLOR` while there are unsaved changes, the
+     * theme's usual primary green (the default, no override) once there's
+     * nothing left to save. `color` is omitted from this component's own
+     * props -- it fully owns the color, so a caller can't accidentally
+     * fight `dirty` with its own override. */
     dirty: boolean;
   };
 
 // Shared Save button for every editor's primary save action (ANA-129) --
 // see `dirty`'s own doc above for why this exists as one component rather
 // than each caller branching `color` itself.
-export function SaveButton({ dirty, color, ...props }: SaveButtonProps) {
-  return <Button color={dirty ? color : "dark"} {...props} />;
+export function SaveButton({ dirty, ...props }: SaveButtonProps) {
+  return <Button color={dirty ? DIRTY_COLOR : undefined} {...props} />;
 }

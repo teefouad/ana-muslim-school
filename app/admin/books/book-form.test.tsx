@@ -356,6 +356,94 @@ describe("BookForm", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  describe("Dirty state (ANA-129)", () => {
+    it("reports dirty once a field diverges from initialValues, and clean again once it's reverted", () => {
+      const onDirtyChange = vi.fn();
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={{
+            ...createEmptyBookFormValues(),
+            imageId: "original",
+          }}
+          onSubmit={vi.fn()}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("In-app image ID"), {
+        target: { value: "edited" },
+      });
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+      fireEvent.change(screen.getByLabelText("In-app image ID"), {
+        target: { value: "original" },
+      });
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it("resets to clean once onSubmit resolves, reflecting the just-submitted values as the new baseline", async () => {
+      const onDirtyChange = vi.fn();
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      renderWithExternalSubmit(
+        <BookForm
+          id={FORM_ID}
+          initialValues={createEmptyBookFormValues()}
+          onSubmit={onSubmit}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("In-app image ID"), {
+        target: { value: "edited" },
+      });
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+      await vi.waitFor(() =>
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false),
+      );
+
+      // The new baseline is the just-submitted values -- editing back to
+      // them now reads as clean again, not "still dirty relative to the
+      // original blank draft".
+      fireEvent.change(screen.getByLabelText("In-app image ID"), {
+        target: { value: "something else" },
+      });
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+      fireEvent.change(screen.getByLabelText("In-app image ID"), {
+        target: { value: "edited" },
+      });
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it("leaves the draft dirty when onSubmit rejects, instead of optimistically marking it saved", async () => {
+      const onDirtyChange = vi.fn();
+      const onSubmit = vi.fn().mockRejectedValue(new Error("Save failed."));
+      renderWithExternalSubmit(
+        <BookForm
+          id={FORM_ID}
+          initialValues={createEmptyBookFormValues()}
+          onSubmit={onSubmit}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("In-app image ID"), {
+        target: { value: "edited" },
+      });
+      onDirtyChange.mockClear();
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+      await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled());
+      // No further `onDirtyChange` call -- the failed attempt never reset
+      // the baseline, so the draft is exactly as dirty as before Submit.
+      expect(onDirtyChange).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Book field AI actions (ANA-100)", () => {
     const FILLED_VALUES = {
       ...createEmptyBookFormValues(),

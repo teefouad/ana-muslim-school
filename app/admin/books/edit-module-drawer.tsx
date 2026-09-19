@@ -26,10 +26,18 @@ export interface EditModuleDrawerProps {
   book: Book;
   onClose: () => void;
   /** Called with the drawer's current field values when Save Module is
-   * clicked in create mode (ANA-129) -- same awaited resolve/reject
-   * contract as `EditModuleModal`'s own `onCreate`. Optional, mirroring
+   * clicked in create mode -- same awaited resolve/reject contract as
+   * `EditModuleModal`'s own `onCreate`. Optional, mirroring
    * `ModuleEditorBody`'s own optional `onCreate`, for a caller/test that
-   * only ever opens this drawer in edit mode. */
+   * only ever opens this drawer in edit mode.
+   *
+   * Saving never closes this drawer (ANA-129 PR review) -- once this
+   * resolves, the caller is expected to switch `state` from `"create"` to
+   * `"edit"` for the newly created Module's real id (see `[id]/edit/
+   * page.tsx`'s `handleCreateModule`), rather than nulling it. That gives
+   * `ModuleEditorBody` a new `key` (this component's own render below),
+   * so it remounts fresh in edit mode -- the drawer stays open throughout,
+   * now showing the just-created Module instead of a blank create draft. */
   onCreate?: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the drawer's current field values when Save changes is
    * clicked -- same awaited resolve/reject contract as `EditModuleModal`'s

@@ -575,7 +575,7 @@ describe("EditModuleDrawer", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("calls onCreate with the entered fields, then onClose, once creation succeeds", async () => {
+    it("calls onCreate with the entered fields and never closes on success (ANA-129 PR review: saving must never change the screen)", async () => {
       const onCreate = vi.fn().mockResolvedValue(undefined);
       const onClose = vi.fn();
       renderDrawer({ state: { mode: "create" }, onCreate, onClose });
@@ -594,7 +594,64 @@ describe("EditModuleDrawer", () => {
           title: expect.objectContaining({ ar: "وحدة جديدة" }),
         }),
       );
-      await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+      // Stays open on the same "Add Module" screen -- this test's own
+      // `onCreate` never updates `state`, unlike a real caller (see the
+      // next test) -- the point here is only that this component itself
+      // never calls `onClose` on a successful save.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("stays open and switches to edit mode for the newly created Module once creation succeeds (ANA-129)", async () => {
+      function ControlledCreateDrawer() {
+        const [state, setState] = useState<EditModuleDrawerState>({
+          mode: "create",
+        });
+        return (
+          <MantineProvider>
+            <SWRConfig
+              value={{ provider: () => new Map(), dedupingInterval: 0 }}
+            >
+              <EditModuleDrawer
+                state={state}
+                book={BOOK}
+                onClose={() => setState(null)}
+                onCreate={async () => {
+                  // Mirrors the real caller's own behavior once creation
+                  // succeeds (`[id]/edit/page.tsx`'s `handleCreateModule`):
+                  // switches this same drawer into edit mode for the
+                  // newly created Module's real id, never closing it.
+                  setState({
+                    mode: "edit",
+                    id: "module-new",
+                    fields: EDIT_FIELDS,
+                  });
+                }}
+                onSave={vi.fn().mockResolvedValue(undefined)}
+              />
+            </SWRConfig>
+          </MantineProvider>
+        );
+      }
+
+      render(<ControlledCreateDrawer />);
+
+      const dialog = await findDrawerDialog("Add Module");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Save Module" }),
+      );
+
+      // Never blanks out or closes -- one dialog throughout, now titled
+      // "Edit Module" and seeded from the Module the caller says was just
+      // created, with the Lessons action now available.
+      await findDrawerDialog("Edit Module");
+      expect(
+        screen.queryByRole("dialog", { name: "Add Module" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(
+        screen.getByRole("button", { name: "Lessons" }),
+      ).toBeInTheDocument();
     });
   });
 

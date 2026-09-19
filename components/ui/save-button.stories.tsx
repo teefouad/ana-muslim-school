@@ -17,14 +17,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Nothing unsaved yet -- black (Mantine's "dark" filled color).
+// Nothing unsaved yet -- the theme's usual primary green.
 export const Clean: Story = {
   args: {
     dirty: false,
   },
 };
 
-// Unsaved changes waiting -- the theme's usual primary green.
+// Unsaved changes waiting -- the dirty color.
 export const Dirty: Story = {
   args: {
     dirty: true,

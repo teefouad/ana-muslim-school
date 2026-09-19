@@ -16,24 +16,11 @@ function renderButton(dirty: boolean, onClick = vi.fn()) {
 }
 
 describe("SaveButton", () => {
-  it("renders Mantine's dark color (reads as black) when there are no unsaved changes", () => {
+  it("leaves color at Button's own default (the theme's usual primary green) when there are no unsaved changes", () => {
     renderButton(false);
 
     const button = screen.getByRole("button", { name: "Save changes" });
     expect(button).toHaveClass("mantine-Button-root");
-    // Mantine sets an explicit `color` prop's resolved background as an
-    // inline CSS custom property (Button.mjs's own `varsResolver`) --
-    // asserting on the exact variable name pins this to the "dark" color
-    // specifically, not merely "some color was set".
-    expect(button.style.getPropertyValue("--button-bg")).toBe(
-      "var(--mantine-color-dark-filled)",
-    );
-  });
-
-  it("leaves color at Button's own default (the theme's usual primary green) once there are unsaved changes", () => {
-    renderButton(true);
-
-    const button = screen.getByRole("button", { name: "Save changes" });
     // No explicit `color` prop here -- Mantine's `varsResolver` only sets
     // `--button-bg` inline when a `color`/`variant` prop is actually given
     // (Button.mjs), so its absence means Button falls back to its own
@@ -41,6 +28,18 @@ describe("SaveButton", () => {
     // (`--mantine-primary-color-filled`, globals.css) -- the same "no
     // override" case every other primary Button in this app already gets.
     expect(button.style.getPropertyValue("--button-bg")).toBe("");
+  });
+
+  it("renders the dirty color once there are unsaved changes", () => {
+    renderButton(true);
+
+    const button = screen.getByRole("button", { name: "Save changes" });
+    // Mantine accepts any valid CSS color, not just a theme color name, and
+    // sets an explicit `color` prop's resolved background as an inline CSS
+    // custom property (Button.mjs's own `varsResolver`) -- asserting on the
+    // literal hex pins this to the dirty color specifically, not merely
+    // "some color was set".
+    expect(button.style.getPropertyValue("--button-bg")).toBe("#fd9c20");
   });
 
   it("calls onClick when clicked", () => {

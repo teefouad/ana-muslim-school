@@ -118,7 +118,15 @@ export function BookForm({
    * ref/imperative submit call needed. */
   id: string;
   initialValues?: BookFormValues;
-  onSubmit: (values: BookFormValues) => void;
+  /** Awaited (ANA-129 PR review): resolving means the save succeeded, and
+   * this form resets its own `baseline` to the just-submitted `values` so
+   * Save changes reflects back to clean -- this form is never unmounted or
+   * re-seeded by the caller on save (unlike `ModuleEditorBody`'s own
+   * create-mode remount), so nothing else would otherwise clear its dirty
+   * state. Rejecting leaves the draft (and its dirty state) exactly as the
+   * user left it, so a failed save never looks like it succeeded; the
+   * caller owns surfacing the actual error. */
+  onSubmit: (values: BookFormValues) => Promise<void>;
   /** Reports whether the current draft has diverged from `initialValues`
    * (ANA-129) -- the caller's own Save changes button (rendered outside
    * this form, see this file's own top-level doc) uses it to reflect
@@ -142,7 +150,12 @@ export function BookForm({
   // style render-time computations elsewhere in this file (`updateValues`
   // below), and this project's `react-hooks/refs` lint rule flags a ref's
   // `.current` read that way (permission-form.tsx hit this identically).
-  const [baseline] = useState(values);
+  // Reset directly to the just-saved `values` on a successful submit
+  // (`handleSubmit` below, ANA-129 PR review) -- unlike `values`' own
+  // initial state, this one *does* get updated after mount, exactly once
+  // per successful save, which is what "seed once" was guarding against a
+  // stray background revalidation doing instead.
+  const [baseline, setBaseline] = useState(values);
 
   function updateValues(patch: Partial<BookFormValues>) {
     const next = { ...values, ...patch };
@@ -150,9 +163,18 @@ export function BookForm({
     onDirtyChange?.(!isSameBookFormValues(next, baseline));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit(values);
+
+    try {
+      await onSubmit(values);
+      setBaseline(values);
+      onDirtyChange?.(false);
+    } catch {
+      // The caller (`[id]/edit/page.tsx`) already surfaces its own error
+      // state -- this form just leaves the draft (and its dirty state)
+      // exactly as the user left it, so a failed save never looks saved.
+    }
   }
 
   return (
