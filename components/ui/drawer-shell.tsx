@@ -116,33 +116,48 @@ export function DrawerShell({
   return (
     <Drawer.Root opened={opened} onClose={onClose} position="right" size={size}>
       <Drawer.Overlay />
-      <Drawer.Content className={styles.content}>
-        <Drawer.Header className={styles.header}>
-          <Group gap="xs" wrap="nowrap">
-            <ActionIconButton aria-label="Back" onClick={onBack ?? onClose}>
-              <ArrowLeft size={18} aria-hidden="true" />
-            </ActionIconButton>
-            {/* `Drawer.Title` (not a plain element) so Mantine links the
-                dialog's `aria-labelledby` to it automatically -- the actual
-                visible typography comes from the nested `Title order={2}
-                component="span"`, so there's exactly one real heading
-                element (this one) with no nested h2-in-h2. */}
-            <Drawer.Title>
-              <Title order={2} component="span">
-                {title}
-              </Title>
-            </Drawer.Title>
-          </Group>
-        </Drawer.Header>
+      {/* `Drawer.Content` itself is left without a `className`/`style` of
+          our own -- Mantine's own `DrawerContent` reuses whichever of
+          those two props is passed here for *two* different elements: the
+          visible panel (its own "content" slot, a `Paper`) and the
+          invisible flex wrapper around it that actually right-aligns/
+          full-height-stretches that panel (its "inner" slot). Passing our
+          own flex-column layout there landed on both and broke that
+          positioning (verified empirically -- the class showed up on both
+          elements' `classList`). The plain `div` below carries that layout
+          instead, entirely inside the unmodified `Paper`. */}
+      <Drawer.Content>
+        <div className={styles.content}>
+          <Drawer.Header className={styles.header}>
+            <Group gap="xs" wrap="nowrap">
+              <ActionIconButton aria-label="Back" onClick={onBack ?? onClose}>
+                <ArrowLeft size={18} aria-hidden="true" />
+              </ActionIconButton>
+              {/* `Drawer.Title` (not a plain element) so Mantine links the
+                  dialog's `aria-labelledby` to it automatically -- the actual
+                  visible typography comes from the nested `Title order={2}
+                  component="span"`, so there's exactly one real heading
+                  element (this one) with no nested h2-in-h2. */}
+              <Drawer.Title>
+                <Title order={2} component="span">
+                  {title}
+                </Title>
+              </Drawer.Title>
+            </Group>
+          </Drawer.Header>
 
-        <Drawer.Body className={styles.body} data-testid="drawer-scroll-region">
-          <DrawerFooterTargetContext.Provider value={footerTarget}>
-            {children}
-          </DrawerFooterTargetContext.Provider>
-        </Drawer.Body>
+          <Drawer.Body
+            className={styles.body}
+            data-testid="drawer-scroll-region"
+          >
+            <DrawerFooterTargetContext.Provider value={footerTarget}>
+              {children}
+            </DrawerFooterTargetContext.Provider>
+          </Drawer.Body>
 
-        <div ref={setFooterTarget} className={styles.footer}>
-          {footer}
+          <div ref={setFooterTarget} className={styles.footer}>
+            {footer}
+          </div>
         </div>
       </Drawer.Content>
     </Drawer.Root>
