@@ -51,7 +51,7 @@ describe("LessonForm", () => {
   });
 
   describe("two-column layout (ANA-119)", () => {
-    it("renders Position -> Title -> Description -> Published in the left column", () => {
+    it("renders Title -> Description -> Published -> Position in the left column", () => {
       renderForm();
 
       const form = screen.getByTestId("lesson-form");
@@ -65,11 +65,11 @@ describe("LessonForm", () => {
       ).toBeInTheDocument();
 
       const text = form.textContent ?? "";
-      expect(text.indexOf("Position")).toBeLessThan(text.indexOf("Title"));
       expect(text.indexOf("Title")).toBeLessThan(text.indexOf("Description"));
       expect(text.indexOf("Description")).toBeLessThan(
         text.indexOf("Published"),
       );
+      expect(text.indexOf("Published")).toBeLessThan(text.indexOf("Position"));
     });
 
     it("renders Type -> the selected type's Configuration in the right column", () => {

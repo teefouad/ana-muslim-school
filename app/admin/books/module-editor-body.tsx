@@ -990,6 +990,7 @@ export function ModuleEditorBody({
               h={32}
               onClick={() => setLessonEditorTarget(null)}
               disabled={isSaving}
+              aria-label="Back to Module"
             >
               <ArrowLeft size={14} aria-hidden="true" />
             </Button>

@@ -93,13 +93,13 @@ export function EditModuleModal({
     <Modal
       opened={state !== null}
       onClose={() => requestCloseRef.current()}
-      // Edit mode's own fixed 900px width (ANA-115 PR review) -- the same
-      // for both Module mode (Module editor + Lessons list) and Lesson
-      // mode (the Lesson editor takes over that same width), so the modal
-      // never grows/shrinks when switching between them. Capped against
-      // the viewport the same way Module Builder's own wide modal is
-      // (import-source-modal.tsx), rather than a fixed size that would
-      // overflow a narrow viewport.
+      // Edit mode's own fixed 1040px width (ANA-115 PR review; widened from
+      // 900px in a later UI pass) -- the same for both Module mode (Module
+      // editor + Lessons list) and Lesson mode (the Lesson editor takes over
+      // that same width), so the modal never grows/shrinks when switching
+      // between them. Capped against the viewport the same way Module
+      // Builder's own wide modal is (import-source-modal.tsx), rather than
+      // a fixed size that would overflow a narrow viewport.
       size={state?.mode === "edit" ? "min(1040px, calc(100vw - 48px))" : "lg"}
       centered
     >

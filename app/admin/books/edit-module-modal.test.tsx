@@ -274,6 +274,37 @@ function stubItemRects(order: string[], itemHeight = 60) {
   );
 }
 
+// `EditModuleModal` renders its own "Edit Module"/"Add Module" heading as a
+// custom, absolutely-positioned `<Title>` (see module-editor-body.tsx)
+// rather than passing it through Mantine's `Modal` `title` prop the way
+// every other modal in the app does (ConfirmDialog, AiInstructionsModal,
+// QuestionBankPicker, ImportSourceModal) -- so, unlike those, its own
+// `role="dialog"` element never gets an `aria-labelledby` Testing Library
+// could match a `name` against. Locating it through the heading itself (a
+// real `<h1>`, whose accessible name *does* come from its content) and
+// walking up to its nearest `[role="dialog"]` ancestor sidesteps that gap
+// instead of relying on it -- same technique edit-module-drawer.test.tsx and
+// `[id]/edit/page.test.tsx`'s "Edit Module drawer" section already use.
+async function findEditModuleDialog(
+  name = "Edit Module",
+): Promise<HTMLElement> {
+  const heading = await screen.findByRole("heading", { name });
+  const dialog = heading.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error(`Could not find a dialog ancestor for heading "${name}"`);
+  }
+  return dialog;
+}
+
+function queryEditModuleDialog(name = "Edit Module"): HTMLElement | null {
+  const heading = screen.queryByRole("heading", { name });
+  if (!heading) {
+    return null;
+  }
+  const dialog = heading.closest('[role="dialog"]');
+  return dialog instanceof HTMLElement ? dialog : null;
+}
+
 const BOOK: Book = {
   id: "book-1",
   title: { ar: "عنوان الكتاب", en: "Book Title" },
@@ -327,16 +358,14 @@ describe("EditModuleModal", () => {
   it("renders nothing when state is null", () => {
     renderModal({ state: null });
 
-    expect(
-      screen.queryByRole("dialog", { name: "Edit Module" }),
-    ).not.toBeInTheDocument();
+    expect(queryEditModuleDialog()).not.toBeInTheDocument();
   });
 
   describe("create mode (ANA-94)", () => {
     it("opens titled 'Add Module' with every field blank, primary action 'Save Module'", async () => {
       renderModal({ state: { mode: "create" } });
 
-      const dialog = await screen.findByRole("dialog", { name: "Add Module" });
+      const dialog = await findEditModuleDialog("Add Module");
       expect(within(dialog).getByLabelText("Title")).toHaveValue("");
       expect(
         within(dialog).getByRole("combobox", { name: "Color" }),
@@ -354,7 +383,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ state: { mode: "create" }, onCreate, onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Add Module" });
+      const dialog = await findEditModuleDialog("Add Module");
       fireEvent.change(within(dialog).getByLabelText("Title"), {
         target: { value: "وحدة جديدة" },
       });
@@ -378,7 +407,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ state: { mode: "create" }, onCreate, onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Add Module" });
+      const dialog = await findEditModuleDialog("Add Module");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Save Module" }),
       );
@@ -394,7 +423,7 @@ describe("EditModuleModal", () => {
     it("opens titled 'Edit Module', seeded with Title, Description, Color, and Content", async () => {
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
       expect(within(dialog).getByLabelText("Description")).toHaveValue("وصف");
       expect(await within(dialog).findByText("محتوى")).toBeInTheDocument();
@@ -411,7 +440,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onSave, onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.change(within(dialog).getByLabelText("Title"), {
         target: { value: "عنوان جديد" },
       });
@@ -436,7 +465,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onSave, onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Save changes" }),
       );
@@ -453,7 +482,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onCreate, onSave, onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
       expect(onClose).toHaveBeenCalled();
@@ -470,7 +499,7 @@ describe("EditModuleModal", () => {
         },
       });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(within(dialog).getByLabelText("Title")).toHaveValue("");
     });
   });
@@ -485,7 +514,7 @@ describe("EditModuleModal", () => {
         },
       });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         within(dialog).getByRole("switch", { name: "Published" }),
       ).toBeChecked();
@@ -495,7 +524,7 @@ describe("EditModuleModal", () => {
       const onSave = vi.fn().mockResolvedValue(undefined);
       renderModal({ onSave });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         within(dialog).getByRole("switch", { name: "Published" }),
       ).not.toBeChecked();
@@ -524,7 +553,7 @@ describe("EditModuleModal", () => {
         },
       });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         within(dialog).getByRole("switch", { name: "Published" }),
       ).not.toBeChecked();
@@ -537,15 +566,15 @@ describe("EditModuleModal", () => {
       return root?.getAttribute("style") ?? "";
     }
 
-    it("uses a 900px modal width in Module mode", async () => {
+    it("uses a 1040px modal width in Module mode", async () => {
       mockFetch({ lessons: [buildLessonFixture({ id: "lesson-1" })] });
       renderModal();
 
-      await screen.findByRole("dialog", { name: "Edit Module" });
-      expect(modalSizeStyle()).toContain("min(900px, calc(100vw - 48px))");
+      await findEditModuleDialog();
+      expect(modalSizeStyle()).toContain("min(1040px, calc(100vw - 48px))");
     });
 
-    it("keeps the same 900px modal width in Lesson mode -- the modal never grows when switching modes", async () => {
+    it("keeps the same 1040px modal width in Lesson mode -- the modal never grows when switching modes", async () => {
       mockFetch({
         lessons: [
           buildLessonFixture({ id: "lesson-1", title: { ar: "أ", en: "" } }),
@@ -553,20 +582,20 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         await within(dialog).findByRole("button", { name: "Edit أ" }),
       );
 
       await within(dialog).findByTestId("lesson-form");
-      expect(modalSizeStyle()).toContain("min(900px, calc(100vw - 48px))");
+      expect(modalSizeStyle()).toContain("min(1040px, calc(100vw - 48px))");
     });
 
     it("does not use the modal's own default width in create mode", async () => {
       renderModal({ state: { mode: "create" } });
 
-      await screen.findByRole("dialog", { name: "Add Module" });
-      expect(modalSizeStyle()).not.toContain("900px");
+      await findEditModuleDialog("Add Module");
+      expect(modalSizeStyle()).not.toContain("1040px");
     });
   });
 
@@ -616,7 +645,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         within(dialog).getByRole("status", { name: "Loading lessons" }),
       ).toBeInTheDocument();
@@ -647,7 +676,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         await within(dialog).findByText("Something went wrong."),
       ).toBeInTheDocument();
@@ -679,7 +708,7 @@ describe("EditModuleModal", () => {
     it("shows the Module editor and Lessons list together (never a third, simultaneous Lesson editor)", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(within(dialog).getByLabelText("Title")).toBeInTheDocument();
       expect(within(dialog).getByText("Lessons")).toBeInTheDocument();
       expect(
@@ -694,14 +723,14 @@ describe("EditModuleModal", () => {
     it("does not render the Lessons list in create mode", async () => {
       renderModal({ state: { mode: "create" } });
 
-      const dialog = await screen.findByRole("dialog", { name: "Add Module" });
+      const dialog = await findEditModuleDialog("Add Module");
       expect(within(dialog).queryByText("Lessons")).not.toBeInTheDocument();
     });
 
     it("renders Lessons in the loaded order", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       const rows = within(dialog).getAllByTestId(/^list-item-/);
       expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
@@ -714,7 +743,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: [] });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         await within(dialog).findByText("This module has no lessons yet."),
       ).toBeInTheDocument();
@@ -723,7 +752,7 @@ describe("EditModuleModal", () => {
     it("exposes Edit and Delete actions on every row, matching the Modules list pattern", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         await within(dialog).findByRole("button", {
           name: "Edit Introduction",
@@ -737,7 +766,7 @@ describe("EditModuleModal", () => {
     it("a single click on a Lesson row no longer opens its form (Edit is the only entry point)", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       fireEvent.click(within(dialog).getByText("Introduction"));
 
@@ -747,7 +776,7 @@ describe("EditModuleModal", () => {
     it("reorders Lessons locally via the Lessons list, without a persistence request", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
       const grip = within(dialog)
@@ -770,7 +799,7 @@ describe("EditModuleModal", () => {
       const onSave = vi.fn().mockResolvedValue(undefined);
       renderWithLessons({ onSave });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       stubItemRects(["lesson-1", "lesson-2"]);
       const grip = within(dialog)
@@ -851,7 +880,7 @@ describe("EditModuleModal", () => {
         </MantineProvider>,
       );
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       stubItemRects(["lesson-1", "lesson-2"]);
       const grip = within(dialog)
@@ -889,16 +918,12 @@ describe("EditModuleModal", () => {
 
       await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
       await vi.waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "Edit Module" }),
-        ).not.toBeInTheDocument(),
+        expect(queryEditModuleDialog()).not.toBeInTheDocument(),
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
 
-      const reopenedDialog = await screen.findByRole("dialog", {
-        name: "Edit Module",
-      });
+      const reopenedDialog = await findEditModuleDialog();
       const rows = within(reopenedDialog).getAllByTestId(/^list-item-/);
       expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
         "list-item-lesson-2",
@@ -909,7 +934,7 @@ describe("EditModuleModal", () => {
     it("New Lesson switches into Lesson mode with a blank, id-less draft and makes no create request", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
       fireEvent.click(
@@ -926,7 +951,7 @@ describe("EditModuleModal", () => {
     it("backing out of New Lesson without saving adds nothing to the Lessons list and makes no request", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       const callsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
       fireEvent.click(
@@ -955,7 +980,7 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "New Lesson" }),
@@ -1028,7 +1053,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "New Lesson" }),
@@ -1053,7 +1078,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS, other: { ok: true } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Delete Introduction" }),
@@ -1086,7 +1111,7 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Delete Introduction" }),
@@ -1100,7 +1125,7 @@ describe("EditModuleModal", () => {
     it("Cancel on the delete confirmation leaves the Lesson in the list, with no DELETE call", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Delete Introduction" }),
@@ -1151,7 +1176,7 @@ describe("EditModuleModal", () => {
     it("switches from Module mode to Lesson mode when Edit is clicked, replacing the Module editor/Lessons list entirely", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await openLesson(dialog, "Introduction");
 
       expect(within(dialog).queryByText("Lessons")).not.toBeInTheDocument();
@@ -1176,7 +1201,7 @@ describe("EditModuleModal", () => {
     it("seeds the Lesson editor from the clicked Lesson's fields", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
 
       expect(form.getByDisplayValue("Introduction")).toBeInTheDocument();
@@ -1191,7 +1216,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderWithLessons({ onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await openLesson(dialog, "Introduction");
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Back to Module" }),
@@ -1205,7 +1230,7 @@ describe("EditModuleModal", () => {
     it("preserves an unsaved Module field edit across entering and leaving Lesson mode", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.change(within(dialog).getByLabelText("Title"), {
         target: { value: "Module title, edited" },
       });
@@ -1223,18 +1248,21 @@ describe("EditModuleModal", () => {
     it("editing one Lesson never leaks into another's fields", async () => {
       renderWithLessons();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       let form = within(await openLesson(dialog, "Introduction"));
       fireEvent.change(form.getByLabelText("Title"), {
         target: { value: "Introduction, edited" },
       });
+      // Back to Module (the container's own Title-bar control, see
+      // module-editor-body.tsx) returns to Module mode directly, with no
+      // discard confirmation of its own -- unlike Cancel/Escape/backdrop on
+      // the Edit Module dialog itself, which still are gated (see "Dirty
+      // state and close guard" above). What this test actually cares about
+      // -- a still-open editor's draft never bleeding into a different
+      // Lesson's -- holds regardless.
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Back to Module" }),
       );
-      // The discard confirmation is a separate Modal, not nested inside the
-      // Edit Module dialog's own DOM subtree -- unscoped, matching
-      // lesson-editor.test.tsx's identical interaction.
-      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
 
       form = within(await openLesson(dialog, "Prayer basics"));
       expect(
@@ -1251,7 +1279,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS, other: { data: updated } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
       fireEvent.change(form.getByLabelText("Title"), {
         target: { value: "Introduction, edited" },
@@ -1300,7 +1328,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS, other: { data: updated } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
       fireEvent.change(form.getByLabelText("Title"), {
         target: { value: "Introduction, edited" },
@@ -1322,7 +1350,7 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
 
       fireEvent.click(
@@ -2212,7 +2240,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
 
       expect(
@@ -2227,7 +2255,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
 
       expect(
@@ -2246,7 +2274,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS, other: { data: { text: "اقتراح" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.change(within(dialog).getByLabelText("Title"), {
         target: { value: "وحدة معدلة" },
       });
@@ -2279,7 +2307,7 @@ describe("EditModuleModal", () => {
       mockFetch({ lessons: LESSONS, other: { data: { text: "اقتراح" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
       fireEvent.click(
         form.getByRole("button", {
@@ -2310,7 +2338,7 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
       fireEvent.click(
         form.getByRole("button", { name: "AI Assistance for Title" }),
@@ -2333,7 +2361,7 @@ describe("EditModuleModal", () => {
       let resolveAssist: (value: Response) => void = () => {};
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       const form = within(await openLesson(dialog, "Introduction"));
       (fetch as ReturnType<typeof vi.fn>).mockImplementation(
         () => new Promise((resolve) => (resolveAssist = resolve)),
@@ -2373,7 +2401,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Title with AI",
@@ -2424,7 +2452,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Description with AI",
@@ -2462,7 +2490,7 @@ describe("EditModuleModal", () => {
       );
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Content with AI",
@@ -2506,7 +2534,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onSave, onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Title with AI",
@@ -2556,7 +2584,7 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Title with AI",
@@ -2575,7 +2603,7 @@ describe("EditModuleModal", () => {
       });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "AI Assistance for Title",
@@ -2598,7 +2626,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Result" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
 
       fireEvent.click(
         within(dialog).getByRole("button", {
@@ -2613,7 +2641,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Result" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
 
       fireEvent.click(
         within(dialog).getByRole("button", {
@@ -2633,7 +2661,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Suggested title" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", { name: "AI Assistance for Title" }),
       );
@@ -2661,7 +2689,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Introduction" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Title with AI",
@@ -2680,7 +2708,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Suggested title" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", { name: "AI Assistance for Title" }),
       );
@@ -2702,7 +2730,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "وصف محسّن" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "AI Assistance for Description",
@@ -2729,7 +2757,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Description" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Description with AI",
@@ -2749,7 +2777,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "وصف محسّن" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "AI Assistance for Description",
@@ -2772,7 +2800,7 @@ describe("EditModuleModal", () => {
     it("exposes both AI Assistance and Translate with AI (previously missing)", async () => {
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       expect(
         within(dialog).getByRole("button", {
           name: "AI Assistance for Content",
@@ -2789,7 +2817,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "محتوى محسّن" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "AI Assistance for Content",
@@ -2823,7 +2851,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "جزء محسّن" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       // Title and Description are plain text inputs (also role "textbox");
       // the Content field's own contenteditable Markdown editor -- the
       // only one with a non-empty selection to make -- renders last.
@@ -2872,7 +2900,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Content" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Content with AI",
@@ -2892,7 +2920,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "محتوى محسّن" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "AI Assistance for Content",
@@ -2916,7 +2944,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Suggested title" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", { name: "AI Assistance for Title" }),
       );
@@ -2943,7 +2971,7 @@ describe("EditModuleModal", () => {
       mockFetch({ other: { data: { text: "Introduction" } } });
       renderModal();
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(
         within(dialog).getByRole("button", {
           name: "Translate Title with AI",
@@ -2963,7 +2991,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
       expect(
@@ -2976,7 +3004,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.change(within(dialog).getByLabelText("Title"), {
         target: { value: "عنوان جديد" },
       });
@@ -3021,7 +3049,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       await within(dialog).findByText("Introduction");
       stubItemRects(["lesson-1", "lesson-2"]);
       const grip = within(dialog)
@@ -3051,7 +3079,7 @@ describe("EditModuleModal", () => {
       const onClose = vi.fn();
       renderModal({ onClose });
 
-      const dialog = await screen.findByRole("dialog", { name: "Edit Module" });
+      const dialog = await findEditModuleDialog();
       fireEvent.change(within(dialog).getByLabelText("Title"), {
         target: { value: "عنوان جديد" },
       });
