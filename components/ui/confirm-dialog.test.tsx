@@ -81,6 +81,17 @@ describe("ConfirmDialog", () => {
     expect(confirmButton).toHaveAttribute("data-loading", "true");
   });
 
+  it("forwards a supplied zIndex to the underlying Modal", () => {
+    renderDialog({ zIndex: 300 });
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Discard unsaved changes?",
+    });
+    expect(
+      dialog.closest(".mantine-Modal-root")?.getAttribute("style"),
+    ).toContain("--mb-z-index: 300");
+  });
+
   it("disables the cancel button and blocks Escape while confirming", () => {
     const onCancel = vi.fn();
     renderDialog({ isConfirming: true, onCancel });

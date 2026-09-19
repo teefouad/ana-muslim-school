@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   Flex,
+  getDefaultZIndex,
   Group,
   Loader,
   Skeleton,
@@ -1059,7 +1060,15 @@ export function ModuleEditorBody({
           `modeContent`'s own three branches, so it isn't tied to whichever
           mode happens to be showing when the dismiss was attempted -- same
           copy as LessonEditor's own identical guard (lesson-editor.tsx) and
-          Module Builder's (import-source-modal.tsx). */}
+          Module Builder's (import-source-modal.tsx).
+          `zIndex` (ANA-123 PR review) pins this above Mantine's own "popover"
+          elevation tier -- the drawer container's own `DrawerShell` gets a
+          *stacked* z-index once `layout="narrow"` (`stackId="module"`,
+          edit-module-drawer.tsx), which sits above Mantine's default modal
+          tier this dialog would otherwise use, burying it underneath the
+          drawer's own overlay instead of on top of it. The modal container
+          never stacks, so this is a no-op there -- still safely above its
+          own default-tier Modal either way. */}
       {confirmingDiscard && (
         <ConfirmDialog
           opened
@@ -1072,6 +1081,7 @@ export function ModuleEditorBody({
             setConfirmingDiscard(false);
             onClose();
           }}
+          zIndex={getDefaultZIndex("popover")}
         />
       )}
     </>

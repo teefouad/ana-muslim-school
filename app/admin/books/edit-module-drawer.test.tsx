@@ -172,6 +172,44 @@ describe("EditModuleDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // ANA-123 PR review: once the Module drawer got a `stackId` (for the
+  // Lessons nested drawer), Mantine's `Drawer.Stack` assigns it a z-index
+  // *above* the default modal tier (`calc(200 + stack index + 1)` = 201) --
+  // higher than the discard confirmation's own unstacked Modal, which sits
+  // at Mantine's default modal z-index (200) unless told otherwise. Without
+  // `ConfirmDialog`'s `zIndex` override, the confirmation would render
+  // underneath the drawer's own overlay instead of on top of it.
+  it("renders the discard confirmation above the Module drawer's own overlay z-index", async () => {
+    renderDrawer();
+    const dialog = await findDrawerDialog("Edit Module");
+    fireEvent.change(within(dialog).getByLabelText("Title"), {
+      target: { value: "عنوان جديد" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Discard unsaved changes?",
+    });
+
+    const confirmZIndex = Number(
+      confirmDialog
+        .closest(".mantine-Modal-root")
+        ?.getAttribute("style")
+        ?.match(/--mb-z-index:\s*(\d+)/)?.[1],
+    );
+    // The Module drawer's own stacked z-index is `calc(200 + 0 + 1)` --
+    // parsed as its two numeric operands rather than hard-coding the
+    // combined value, so this doesn't silently stop testing anything if
+    // Mantine's own formula (or its base "modal" elevation) ever changes.
+    const drawerZIndexMatch = document
+      .querySelector(".mantine-Drawer-root")
+      ?.getAttribute("style")
+      ?.match(/--mb-z-index:\s*calc\((\d+)\s*\+\s*(\d+)\s*\+\s*1\)/);
+    const drawerZIndex =
+      Number(drawerZIndexMatch?.[1]) + Number(drawerZIndexMatch?.[2]) + 1;
+
+    expect(confirmZIndex).toBeGreaterThan(drawerZIndex);
+  });
+
   it("Cancel closes immediately, without confirmation, when nothing was edited", async () => {
     const onClose = vi.fn();
     renderDrawer({ onClose });
