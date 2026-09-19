@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
@@ -6,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EditModuleDrawer,
   type EditModuleDrawerProps,
+  type EditModuleDrawerState,
 } from "./edit-module-drawer";
 import { buildLessonFixture } from "./lesson-fixtures";
 import type { Book } from "@/lib/books/types";
@@ -161,6 +163,64 @@ describe("EditModuleDrawer", () => {
 
     const root = document.querySelector(".mantine-Drawer-root");
     expect(root?.getAttribute("style")).toContain("min(560px, 100vw)");
+  });
+
+  // PR review: `renderDrawer`'s own default `onClose: vi.fn()` never
+  // actually nulls `state` (it's a mock, not real state), so it can't
+  // exercise what happens to this drawer's own content while `state`
+  // *really* transitions to `null` -- which is exactly how a real caller
+  // (`[id]/edit/page.tsx`) closes it. This small wrapper manages `state`
+  // itself instead, mirroring that.
+  function ControlledDrawer() {
+    const [state, setState] = useState<EditModuleDrawerState>({
+      id: "module-1",
+      fields: EDIT_FIELDS,
+    });
+    return (
+      <MantineProvider>
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <EditModuleDrawer
+            state={state}
+            book={BOOK}
+            onClose={() => setState(null)}
+            onSave={vi.fn().mockResolvedValue(undefined)}
+          />
+        </SWRConfig>
+      </MantineProvider>
+    );
+  }
+
+  // Same bug/fix as the nested Lesson editor drawer's own
+  // `lessonEditorTarget`/`lessonEditorDrawerOpened` split (module-editor-
+  // body.tsx): `state` used to be this drawer's *only* signal for both
+  // "is it open" and "what to render inside it", so a real caller nulling
+  // it to close also wiped `ModuleEditorBody` in that same render --
+  // Mantine's own exit transition kept the drawer panel sliding away, but
+  // over an empty body.
+  it("keeps the Module's own fields visible while the drawer is still animating closed, instead of blanking out on the first frame", async () => {
+    render(<ControlledDrawer />);
+
+    const dialog = await findDrawerDialog("Edit Module");
+    expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    // Synchronously after triggering close, before Mantine's own exit
+    // transition has had a chance to finish -- the dialog is still in the
+    // tree (same "animates out rather than unmounting immediately" contract
+    // used throughout this file), and, unlike before this fix, still shows
+    // the real Module it was editing rather than going blank.
+    expect(
+      within(
+        screen.getByRole("dialog", { name: "Edit Module" }),
+      ).getByLabelText("Title"),
+    ).toHaveValue("المقدمة");
+
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Edit Module" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("Save changes calls onSave with the Module's id, edited fields, and a null Lesson order when nothing was reordered", async () => {
@@ -426,6 +486,22 @@ describe("EditModuleDrawer", () => {
       screen.getByRole("dialog", { name: "Edit Module" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Title")).toHaveValue("المقدمة");
+  });
+
+  it("uses a 500px Lessons drawer width on desktop (ANA-125)", async () => {
+    renderDrawer();
+    const moduleDialog = await findDrawerDialog("Edit Module");
+
+    fireEvent.click(
+      within(moduleDialog).getByRole("button", { name: "Lessons" }),
+    );
+    await findDrawerDialog("Lessons");
+
+    const roots = document.querySelectorAll(".mantine-Drawer-root");
+    const widths = Array.from(roots).map((root) => root.getAttribute("style"));
+    expect(widths.some((style) => style?.includes("min(500px, 100vw)"))).toBe(
+      true,
+    );
   });
 
   it("backing out of the nested Lessons drawer returns to the Module editor", async () => {
@@ -726,7 +802,11 @@ describe("EditModuleDrawer", () => {
       ).toBeInTheDocument();
     });
 
-    it("New Lesson wires the existing New Lesson behavior and hides the Lessons drawer so the Module drawer's Lesson editor is visible", async () => {
+    // ANA-125: New Lesson/Edit now open the existing Lesson configuration UI
+    // in their own nested Lesson editor drawer, stacked above the Lessons
+    // drawer -- which stays mounted/open underneath, rather than being
+    // hidden the way ANA-124 hid it.
+    it("New Lesson opens a nested Lesson editor drawer above the Lessons drawer, which stays open underneath", async () => {
       mockFetch({ lessons: LESSONS });
       renderDrawer();
       const { lessonsDialog } = await openLessonsDrawer();
@@ -735,20 +815,26 @@ describe("EditModuleDrawer", () => {
         within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
       );
 
-      await vi.waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
-        ).not.toBeInTheDocument(),
-      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+      expect(lessonEditorDialog).toBeInTheDocument();
+      // The Lessons drawer is still mounted underneath, list intact.
       expect(
-        within(screen.getByRole("dialog", { name: "Edit Module" })).getByRole(
-          "heading",
-          { name: "New Lesson" },
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog", { name: "Lessons" })).getByText(
+          "الدرس الأول",
         ),
       ).toBeInTheDocument();
+      // The Module editor is still mounted underneath both, fields intact.
+      const moduleDialog = screen.getByRole("dialog", { name: "Edit Module" });
+      expect(moduleDialog).toBeInTheDocument();
+      expect(within(moduleDialog).getByLabelText("Title")).toHaveValue(
+        "المقدمة",
+      );
     });
 
-    it("Edit wires the existing Edit Lesson behavior and hides the Lessons drawer", async () => {
+    it("Edit opens a nested Lesson editor drawer above the Lessons drawer, which stays open underneath", async () => {
       mockFetch({ lessons: LESSONS });
       renderDrawer();
       const { lessonsDialog } = await openLessonsDrawer();
@@ -759,17 +845,139 @@ describe("EditModuleDrawer", () => {
         }),
       );
 
+      const lessonEditorDialog = await findDrawerDialog("Edit Lesson");
+      expect(lessonEditorDialog).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+    });
+
+    it("backing out of the nested Lesson editor drawer reveals the still-open Lessons drawer underneath", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+
+      fireEvent.click(
+        within(lessonEditorDialog).getByRole("button", { name: "Back" }),
+      );
+
       await vi.waitFor(() =>
         expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
+          screen.queryByRole("dialog", { name: "New Lesson" }),
         ).not.toBeInTheDocument(),
       );
       expect(
-        within(screen.getByRole("dialog", { name: "Edit Module" })).getByRole(
-          "heading",
-          { name: "Edit Lesson" },
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog", { name: "Lessons" })).getByText(
+          "الدرس الأول",
         ),
       ).toBeInTheDocument();
+    });
+
+    // PR review: `lessonEditorTarget` used to be nulled the instant the
+    // Lesson editor drawer's own close was triggered, which also emptied
+    // out `lessonEditorInner` (the `LessonEditor` it renders) in that same
+    // render -- Mantine's own exit transition kept the drawer's *panel*
+    // sliding away, but with nothing real left inside it, wiping the
+    // animation of any visible content the moment it started. Closing now
+    // only flips `lessonEditorDrawerOpened`, leaving `lessonEditorTarget`
+    // (and so this Lesson's own fields) in place until the drawer is
+    // actually gone.
+    it("keeps the edited Lesson's own fields visible while its drawer is still animating closed, instead of blanking out on the first frame", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", {
+          name: "Edit الدرس الأول",
+        }),
+      );
+      const lessonEditorDialog = await findDrawerDialog("Edit Lesson");
+      expect(within(lessonEditorDialog).getByLabelText("Title")).toHaveValue(
+        "الدرس الأول",
+      );
+
+      fireEvent.click(
+        within(lessonEditorDialog).getByRole("button", { name: "Back" }),
+      );
+
+      // Synchronously after triggering close, before Mantine's own exit
+      // transition has had a chance to finish -- the dialog is still in the
+      // tree (same "animates out rather than unmounting immediately"
+      // contract as the Lessons drawer, above), and, unlike before this fix,
+      // still shows the real Lesson it was editing rather than going blank.
+      expect(
+        within(
+          screen.getByRole("dialog", { name: "Edit Lesson" }),
+        ).getByLabelText("Title"),
+      ).toHaveValue("الدرس الأول");
+
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Edit Lesson" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    // PR review: keeping `lessonEditorTarget` set after closing (the fix
+    // above) means `openLesson`/its own `lessonId` alone can no longer tell
+    // two separate New Lesson sessions apart -- both are `{ lessonId: null
+    // }`. Without a fresh mount forced some other way, reopening New Lesson
+    // would silently resurrect whatever unsaved draft was left in the first
+    // session's still-mounted `LessonEditor` instance.
+    it("New Lesson starts with a fresh, blank draft each time, even right after an unsaved previous attempt", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const firstDialog = await findDrawerDialog("New Lesson");
+      fireEvent.change(within(firstDialog).getByLabelText("Title"), {
+        target: { value: "مسودة غير محفوظة" },
+      });
+      fireEvent.click(
+        within(firstDialog).getByRole("button", { name: "Back" }),
+      );
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "New Lesson" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const secondDialog = await findDrawerDialog("New Lesson");
+      expect(within(secondDialog).getByLabelText("Title")).toHaveValue("");
+    });
+
+    it("uses a 460px Lesson editor drawer width on desktop, opening from the right", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      await findDrawerDialog("New Lesson");
+
+      const roots = document.querySelectorAll(".mantine-Drawer-root");
+      const widths = Array.from(roots).map((root) =>
+        root.getAttribute("style"),
+      );
+      expect(widths.some((style) => style?.includes("min(460px, 100vw)"))).toBe(
+        true,
+      );
     });
 
     it("closing the Lessons drawer (clean) reveals the unchanged Module editor drawer and does not mark it dirty", async () => {

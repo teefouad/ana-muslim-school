@@ -51,7 +51,7 @@ describe("LessonForm", () => {
   });
 
   describe("two-column layout (ANA-119)", () => {
-    it("renders Title -> Description -> Published -> Position in the left column", () => {
+    it("renders Title -> Description -> Position in the left column", () => {
       renderForm();
 
       const form = screen.getByTestId("lesson-form");
@@ -60,16 +60,34 @@ describe("LessonForm", () => {
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Title")).toBeInTheDocument();
       expect(screen.getByLabelText("Description")).toBeInTheDocument();
-      expect(
-        screen.getByRole("switch", { name: "Published" }),
-      ).toBeInTheDocument();
 
       const text = form.textContent ?? "";
       expect(text.indexOf("Title")).toBeLessThan(text.indexOf("Description"));
       expect(text.indexOf("Description")).toBeLessThan(
-        text.indexOf("Published"),
+        text.indexOf("Position"),
       );
-      expect(text.indexOf("Published")).toBeLessThan(text.indexOf("Position"));
+    });
+
+    // PR review: Position and Published used to share a row inside the left
+    // column -- each now gets its own full-width row, and Published moves
+    // below both columns entirely, so it stays this form's own last field
+    // regardless of which column ends up taller.
+    it("gives Position and Published each their own row, with Published rendered as this form's own last field, below both columns", () => {
+      renderForm();
+
+      const form = screen.getByTestId("lesson-form");
+      const published = screen.getByRole("switch", { name: "Published" });
+
+      // Published no longer renders inside the two-column grid at all --
+      // proves it isn't sharing a row with Position (or anything else)
+      // inside the left column.
+      expect(form.textContent ?? "").not.toContain("Published");
+      // ...and instead follows the whole grid in the DOM, as a sibling
+      // rather than a descendant -- the exact bitmask (not just a truthy
+      // check) rules out Published having been nested back inside it.
+      expect(form.compareDocumentPosition(published)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
     });
 
     it("renders Type -> the selected type's Configuration in the right column", () => {
@@ -85,7 +103,7 @@ describe("LessonForm", () => {
       expect(text.indexOf("Type")).toBeLessThan(text.indexOf("Video URL"));
     });
 
-    it("puts Type/Configuration in a different column than Position/Title/Description/Published", () => {
+    it("puts Type/Configuration in a different column than Position/Title/Description", () => {
       renderForm();
 
       const form = screen.getByTestId("lesson-form");
@@ -93,6 +111,9 @@ describe("LessonForm", () => {
       expect(leftColumn.textContent).toContain("Position");
       expect(leftColumn.textContent).toContain("Title");
       expect(leftColumn.textContent).not.toContain("Type");
+      // Published isn't in either column -- it renders below the grid
+      // entirely (see this form's own "own row"/"last field" test above).
+      expect(leftColumn.textContent).not.toContain("Published");
       expect(rightColumn.textContent).toContain("Type");
       expect(rightColumn.textContent).not.toContain("Position");
     });

@@ -176,12 +176,12 @@ function LessonTypeConfig({
 // Configuration in ANA-118, redesigned into a two-column layout with
 // Quiz/Final/Skip's own Questions editor in ANA-119), rendered by
 // lesson-editor.tsx once Edit switches Edit Module into Lesson mode
-// (ANA-115). The left column (Position -> Title -> Description -> Published)
-// covers the Lesson's own identity/visibility; the right column (Type ->
-// the selected type's Configuration) covers what the Lesson actually shows
-// learners -- equal-width on desktop, stacking to one column on narrow
-// screens via the same two-column `SimpleGrid` convention this form already
-// used for its old Type/Position row and Video's URL/Duration row -- except
+// (ANA-115). The left column (Title -> Description -> Position) covers the
+// Lesson's own identity; the right column (Type -> the selected type's
+// Configuration) covers what the Lesson actually shows learners -- equal-
+// width on desktop, stacking to one column on narrow screens via the same
+// two-column `SimpleGrid` convention this form already used for its old
+// Type/Position row and Video's URL/Duration row -- except
 // `type="container"` (ANA-121), so it responds to this form's own actual
 // rendered width instead of the viewport's: this form renders unchanged
 // inside the ~1000px-wide Edit Module modal (still comfortably over
@@ -202,17 +202,21 @@ function LessonTypeConfig({
 // silently pins this grid to its `base` (single-column) value at every
 // width -- caught by comparing rendered `grid-template-columns` inside and
 // outside the drawer in Storybook, not by any test. The Video URL/Duration
-// and Published/Position rows below stay on `type="media"` (viewport)
-// unchanged -- each already gets its column's *own* full width once this
-// outer grid has stacked to one column in the drawer, the same room the
-// modal's ~500px-wide columns already give them today. Title/Description
-// reuse FormField's existing translatable-
+// row below stays on `type="media"` (viewport) unchanged -- it already gets
+// its column's *own* full width once this outer grid has stacked to one
+// column in the drawer, the same room the modal's ~500px-wide column already
+// gives it today. Title/Description reuse FormField's existing translatable-
 // field behavior: Translate with AI runs through the same plain, context-
 // free `translateArabicToEnglish` boundary Book's own Title field already
 // uses (book-form.tsx), while AI Assistance (ANA-116) runs through
 // `suggestLessonTitle`/`suggestLessonDescription`, grounded in the owning
 // Module's current Title/Description/Learning Material -- every other edit
-// here only ever calls `onChange`, no network request.
+// here only ever calls `onChange`, no network request. Position and
+// Published each get their own full-width row rather than sharing one
+// (PR review) -- Position sits at the end of the left column (Title ->
+// Description -> Position), and Published renders below both columns, as
+// this form's own last field, rather than inside either column, so it stays
+// last regardless of which column ends up taller.
 export function LessonForm({
   value,
   onChange,
@@ -226,73 +230,62 @@ export function LessonForm({
   onQuestionsBusyChange,
 }: LessonFormProps) {
   return (
-    <SimpleGrid
-      type="container"
-      flex={1}
-      cols={{ base: 1, [LESSON_FORM_CONTAINER_BREAKPOINT]: 2 }}
-      spacing="lg"
-      data-testid="lesson-form"
-    >
-      <Stack gap="lg">
-        <FormField
-          label="Title"
-          translatable
-          value={value.title}
-          onChange={(title) => onChange({ title })}
-          aiTranslation
-          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
-          aiAssistance
-          onAiAssist={({ text, instructions }) =>
-            suggestLessonTitle({
-              text,
-              additionalInstructions: instructions,
-              moduleTitle,
-              moduleDescription,
-              moduleContent,
-            })
-          }
-          // Suggest always generates Arabic (see suggest-lesson-title.ts's
-          // base prompt) -- pinned here so running it while the English tab
-          // is active can never write that Arabic result into `en` (ANA-116
-          // PR review). Translate with AI is unaffected: it already only
-          // ever reads `ar` and writes `en` on its own, regardless of the
-          // active tab.
-          aiAssistanceLanguage="ar"
-          onBusyChange={onTitleBusyChange}
-        />
+    <Stack gap="lg" flex={1}>
+      <SimpleGrid
+        type="container"
+        cols={{ base: 1, [LESSON_FORM_CONTAINER_BREAKPOINT]: 2 }}
+        spacing="lg"
+        data-testid="lesson-form"
+      >
+        <Stack gap="lg">
+          <FormField
+            label="Title"
+            translatable
+            value={value.title}
+            onChange={(title) => onChange({ title })}
+            aiTranslation
+            onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+            aiAssistance
+            onAiAssist={({ text, instructions }) =>
+              suggestLessonTitle({
+                text,
+                additionalInstructions: instructions,
+                moduleTitle,
+                moduleDescription,
+                moduleContent,
+              })
+            }
+            // Suggest always generates Arabic (see suggest-lesson-title.ts's
+            // base prompt) -- pinned here so running it while the English tab
+            // is active can never write that Arabic result into `en`
+            // (ANA-116 PR review). Translate with AI is unaffected: it
+            // already only ever reads `ar` and writes `en` on its own,
+            // regardless of the active tab.
+            aiAssistanceLanguage="ar"
+            onBusyChange={onTitleBusyChange}
+          />
 
-        <FormField
-          label="Description"
-          translatable
-          value={value.description}
-          onChange={(description) => onChange({ description })}
-          aiTranslation
-          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
-          aiAssistance
-          onAiAssist={({ text, instructions }) =>
-            suggestLessonDescription({
-              text,
-              additionalInstructions: instructions,
-              moduleTitle,
-              moduleDescription,
-              moduleContent,
-            })
-          }
-          // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
-          // review) -- Description's own Suggest is equally Arabic-only.
-          aiAssistanceLanguage="ar"
-          onBusyChange={onDescriptionBusyChange}
-        />
-
-        <SimpleGrid
-          cols={{ base: 1, sm: 2 }}
-          spacing="md"
-          style={{ alignItems: "flex-end" }}
-        >
-          <ToggleCard
-            label="Published"
-            checked={value.isPublished}
-            onChange={(isPublished) => onChange({ isPublished })}
+          <FormField
+            label="Description"
+            translatable
+            value={value.description}
+            onChange={(description) => onChange({ description })}
+            aiTranslation
+            onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+            aiAssistance
+            onAiAssist={({ text, instructions }) =>
+              suggestLessonDescription({
+                text,
+                additionalInstructions: instructions,
+                moduleTitle,
+                moduleDescription,
+                moduleContent,
+              })
+            }
+            // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
+            // review) -- Description's own Suggest is equally Arabic-only.
+            aiAssistanceLanguage="ar"
+            onBusyChange={onDescriptionBusyChange}
           />
 
           <Stack gap={4}>
@@ -309,40 +302,50 @@ export function LessonForm({
               onChange={(position) => onChange({ position })}
             />
           </Stack>
-        </SimpleGrid>
-      </Stack>
-
-      <Stack
-        gap="lg"
-        style={{
-          border: "1px dashed #fff1",
-          padding: 16,
-          borderRadius: 12,
-        }}
-      >
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            Type
-          </Text>
-          <SegmentedControl<LessonType>
-            aria-label="Type"
-            data={LESSON_TYPES.map((type) => ({
-              value: type,
-              label: LESSON_TYPE_LABELS[type],
-            }))}
-            value={value.type}
-            onChange={(type) => onChange({ type })}
-          />
         </Stack>
 
-        <LessonTypeConfig
-          value={value}
-          onChange={onChange}
-          moduleQuestions={moduleQuestions}
-          previousModuleQuestions={previousModuleQuestions}
-          onQuestionsBusyChange={onQuestionsBusyChange}
-        />
-      </Stack>
-    </SimpleGrid>
+        <Stack
+          gap="lg"
+          style={{
+            border: "1px dashed #fff1",
+            padding: 16,
+            borderRadius: 12,
+          }}
+        >
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Type
+            </Text>
+            <SegmentedControl<LessonType>
+              aria-label="Type"
+              data={LESSON_TYPES.map((type) => ({
+                value: type,
+                label: LESSON_TYPE_LABELS[type],
+              }))}
+              value={value.type}
+              onChange={(type) => onChange({ type })}
+            />
+          </Stack>
+
+          <LessonTypeConfig
+            value={value}
+            onChange={onChange}
+            moduleQuestions={moduleQuestions}
+            previousModuleQuestions={previousModuleQuestions}
+            onQuestionsBusyChange={onQuestionsBusyChange}
+          />
+        </Stack>
+      </SimpleGrid>
+
+      {/* Rendered below both columns, rather than inside the left column
+          alongside Position (PR review), so Published stays this form's own
+          last field regardless of which column ends up taller -- see this
+          file's own top-level doc comment. */}
+      <ToggleCard
+        label="Published"
+        checked={value.isPublished}
+        onChange={(isPublished) => onChange({ isPublished })}
+      />
+    </Stack>
   );
 }

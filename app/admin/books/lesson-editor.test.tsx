@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DrawerShell } from "@/components/ui/drawer-shell";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { LessonEditor, type LessonEditorProps } from "./lesson-editor";
 
@@ -24,24 +25,40 @@ const LESSON = buildLessonFixture({
   description: { ar: "وصف قصير", en: "" },
 });
 
-function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
+/** `inDrawer` wraps the editor in a real `DrawerShell` (ANA-125 PR review) --
+ * every real `layout="narrow"` caller (module-editor-body.tsx) always
+ * renders `LessonEditor` inside one, so `layout="narrow"`'s own tests reuse
+ * this instead of re-declaring the same wrapper per test. */
+function renderEditor(
+  overrides: Partial<LessonEditorProps> = {},
+  { inDrawer = false }: { inDrawer?: boolean } = {},
+) {
   const onCreate = vi.fn().mockResolvedValue(undefined);
   const onUpdate = vi.fn().mockResolvedValue(undefined);
   const onBack = vi.fn();
+  const editor = (
+    <LessonEditor
+      lesson={LESSON}
+      moduleQuestions={[]}
+      previousModuleQuestions={[]}
+      moduleTitle="عنوان الوحدة"
+      moduleDescription="وصف الوحدة"
+      moduleContent="محتوى الوحدة"
+      onCreate={onCreate}
+      onUpdate={onUpdate}
+      onBack={onBack}
+      {...overrides}
+    />
+  );
   const utils = render(
     <MantineProvider>
-      <LessonEditor
-        lesson={LESSON}
-        moduleQuestions={[]}
-        previousModuleQuestions={[]}
-        moduleTitle="عنوان الوحدة"
-        moduleDescription="وصف الوحدة"
-        moduleContent="محتوى الوحدة"
-        onCreate={onCreate}
-        onUpdate={onUpdate}
-        onBack={onBack}
-        {...overrides}
-      />
+      {inDrawer ? (
+        <DrawerShell opened title="Edit Lesson" onClose={vi.fn()}>
+          {editor}
+        </DrawerShell>
+      ) : (
+        editor
+      )}
     </MantineProvider>,
   );
   return { onCreate, onUpdate, onBack, ...utils };
@@ -370,6 +387,52 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
 
       fireEvent.click(screen.getByRole("radio", { name: "Quiz" }));
       expect(screen.getByDisplayValue("ما هي الصلاة؟")).toBeInTheDocument();
+    });
+  });
+
+  // ANA-125 PR review: `layout="narrow"` (the Edit Module drawer's own
+  // nested Lesson editor drawer) portals Save changes into the owning
+  // `DrawerShell`'s real footer via `DrawerFooter`, instead of rendering it
+  // inline the way the default `layout="wide"` (the Edit Module modal) still
+  // does -- the same mechanism/footer Module mode's own Save changes already
+  // uses in that drawer, not a second, bespoke sticky/pinned section.
+  describe("narrow/Drawer layout (ANA-125 PR review)", () => {
+    function renderInDrawer(overrides: Partial<LessonEditorProps> = {}) {
+      return renderEditor(
+        { layout: "narrow", ...overrides },
+        { inDrawer: true },
+      );
+    }
+
+    it("portals Save changes into the owning DrawerShell's own fixed footer, outside the scrollable content region", () => {
+      renderInDrawer();
+
+      const scrollRegion = screen.getByTestId("drawer-scroll-region");
+      expect(
+        within(scrollRegion).queryByRole("button", { name: "Save changes" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Save changes" }),
+      ).toBeInTheDocument();
+    });
+
+    it("still saves through the same onUpdate contract as the wide/Modal layout", async () => {
+      const { onCreate, onUpdate, onBack } = renderInDrawer();
+
+      fireEvent.change(screen.getByLabelText("Title"), {
+        target: { value: "عنوان جديد" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await vi.waitFor(() =>
+        expect(onUpdate).toHaveBeenCalledWith(
+          "lesson-1",
+          expect.objectContaining({ title: { ar: "عنوان جديد", en: "" } }),
+          expect.any(Function),
+        ),
+      );
+      expect(onCreate).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
     });
   });
 

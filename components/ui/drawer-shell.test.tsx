@@ -253,6 +253,41 @@ describe("DrawerShell stacking (Drawer.Stack/stackId, ANA-122 PR review)", () =>
     expect(onParentClose).toHaveBeenCalledTimes(1);
   });
 
+  // PR review: the registration effect below deregisters a closing drawer
+  // (`removeModal`) the instant `opened` flips to `false`, immediately
+  // (the "second Escape" test above depends on this) -- but Mantine's own
+  // exit transition keeps that same `Drawer.Root` rendered/animating for
+  // its own configured duration regardless. `getZIndex` derives its value
+  // from live stack membership, so without this fix the just-deregistered
+  // (but still visually closing) child's z-index would drop below its
+  // still-open parent underneath it, burying the still-sliding-out panel
+  // instead of letting it finish its own close animation on top of it --
+  // it would just look like it vanished instead of sliding away.
+  it("keeps a closing stacked drawer's z-index above its still-open sibling underneath, instead of dropping the instant it starts closing", () => {
+    const onParentClose = vi.fn();
+    const onChildClose = vi.fn();
+    renderStackedDrawers({ onParentClose, onChildClose });
+
+    function zIndexOf(name: string): number {
+      const dialog = screen.getByRole("dialog", { name });
+      const root = dialog.closest(".mantine-Drawer-root");
+      const match = root
+        ?.getAttribute("style")
+        ?.match(/--mb-z-index:\s*calc\((\d+)\s*\+\s*(-?\d+)\s*\+\s*1\)/);
+      return Number(match?.[1]) + Number(match?.[2]) + 1;
+    }
+
+    const childZIndexBeforeClose = zIndexOf("Child");
+    expect(childZIndexBeforeClose).toBeGreaterThan(zIndexOf("Parent"));
+
+    fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+
+    // Synchronously after triggering close -- the exact point `removeModal`
+    // fires and, before this fix, dropped the closing drawer's z-index.
+    expect(zIndexOf("Child")).toBe(childZIndexBeforeClose);
+    expect(zIndexOf("Child")).toBeGreaterThan(zIndexOf("Parent"));
+  });
+
   it("only the topmost drawer's overlay is visible/clickable -- clicking it dismisses only the child", async () => {
     const onParentClose = vi.fn();
     const onChildClose = vi.fn();

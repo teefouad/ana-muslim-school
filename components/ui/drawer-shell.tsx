@@ -164,6 +164,29 @@ export function DrawerShell({
   // always left at `Drawer.Root`'s own regular defaults.
   const isTopmost = !isStacked || stackCtx.currentId === stackId;
 
+  // `stackCtx.getZIndex(stackId)` derives its value from this drawer's own
+  // position in `Drawer.Stack`'s own `stack` array (PR review) -- fine while
+  // genuinely open, but the registration effect below deregisters
+  // (`removeModal`) the instant `opened` flips to `false`, *before* Mantine's
+  // own exit transition has actually finished (that transition keeps this
+  // `Drawer.Root` rendered/animating for its own configured duration
+  // regardless). Once deregistered, `stack.indexOf(stackId)` is `-1`, and
+  // the live z-index this closing drawer would get drops below whatever's
+  // still open underneath it -- so the still-sliding-out panel gets visually
+  // buried by that opaque sibling instead of finishing its animation on top
+  // of it (looks like the drawer "just vanishes" rather than sliding away).
+  // This freezes the last real z-index this drawer had *while it was still
+  // open*, and stops tracking the live value once it's not, so the closing
+  // animation keeps rendering above whatever's underneath for its entire
+  // duration. Same "adjust state during render" pattern as
+  // `edit-module-drawer.tsx`'s own `renderedState` -- a conditional
+  // `setState` call directly in the render body, not a ref or an effect.
+  const liveZIndex = isStacked ? stackCtx.getZIndex(stackId) : undefined;
+  const [renderedZIndex, setRenderedZIndex] = useState(liveZIndex);
+  if (opened && liveZIndex !== renderedZIndex) {
+    setRenderedZIndex(liveZIndex);
+  }
+
   // Registers/deregisters this drawer with the ancestor `Drawer.Stack` (if
   // any) so it can compute stacking order and which drawer is currently
   // topmost -- mirrors Mantine's own `<Drawer>` shorthand's identical
@@ -204,7 +227,7 @@ export function DrawerShell({
       onClose={onClose}
       position="right"
       size={size}
-      zIndex={isStacked ? stackCtx.getZIndex(stackId) : undefined}
+      zIndex={renderedZIndex}
       closeOnEscape={isStacked ? isTopmost : undefined}
       trapFocus={isStacked ? isTopmost : undefined}
     >
