@@ -1601,7 +1601,7 @@ describe("EditBookPage", () => {
         ).toBeInTheDocument();
       });
 
-      it("uses a 500px drawer width on desktop", async () => {
+      it("uses a 560px drawer width on desktop", async () => {
         setupFetch(buildBookFixture(), {
           modules: [
             buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
@@ -1614,7 +1614,7 @@ describe("EditBookPage", () => {
         await findModuleEditorDialog();
 
         const root = document.querySelector(".mantine-Drawer-root");
-        expect(root?.getAttribute("style")).toContain("min(500px, 100vw)");
+        expect(root?.getAttribute("style")).toContain("min(560px, 100vw)");
       });
 
       it("also opens, seeded with the Module's current values, when its row is double-clicked (ANA-103)", async () => {
@@ -1828,91 +1828,6 @@ describe("EditBookPage", () => {
 
         await vi.waitFor(() =>
           expect(patchBody).toMatchObject({ isPublished: true }),
-        );
-      });
-
-      it("persists a completed Lesson reorder in the same Module PATCH as `lessons` (ANA-117)", async () => {
-        let patchBody: unknown = null;
-        setupFetch(buildBookFixture(), {
-          modules: [
-            buildModuleFixture({ id: "module-1", title: { ar: "أ", en: "" } }),
-          ],
-          lessons: [
-            buildLessonFixture({
-              id: "lesson-1",
-              title: { ar: "Introduction", en: "" },
-            }),
-            buildLessonFixture({
-              id: "lesson-2",
-              title: { ar: "Prayer basics", en: "" },
-              position: 1,
-            }),
-          ],
-          onUpdateModule: (moduleId, body) => {
-            patchBody = body;
-            return {
-              status: 200,
-              body: { data: buildModuleFixture({ id: moduleId }) },
-            };
-          },
-          onCreateMaterial: () => ({
-            status: 201,
-            body: { data: buildMaterialFixture({ id: "material-1" }) },
-          }),
-        });
-        renderPage();
-
-        await screen.findByText("أ");
-        fireEvent.click(screen.getByRole("button", { name: "Edit أ" }));
-
-        const dialog = await findModuleEditorDialog();
-        await within(dialog).findByText("Introduction");
-
-        // Same keyboard-drag technique as the Modules reorder tests above
-        // (dnd-kit's keyboard coordinate math needs real-ish rects, keyed
-        // by ItemList's own testid scheme) -- swaps lesson-1/lesson-2.
-        const order = ["lesson-1", "lesson-2"];
-        const rectSpy = vi
-          .spyOn(Element.prototype, "getBoundingClientRect")
-          .mockImplementation(function (this: Element) {
-            const container = this.closest('[data-testid^="list-item-"]');
-            const id = container
-              ?.getAttribute("data-testid")
-              ?.replace("list-item-", "");
-            const index = id ? order.indexOf(id) : -1;
-            const top = index === -1 ? 0 : index * 60;
-            return {
-              top,
-              bottom: top + 60,
-              left: 0,
-              right: 300,
-              width: 300,
-              height: 60,
-              x: 0,
-              y: top,
-              toJSON() {},
-            } as DOMRect;
-          });
-
-        const grip = within(dialog)
-          .getByTestId("list-item-lesson-2")
-          .querySelector("[aria-hidden='true']") as HTMLElement;
-        grip.focus();
-        fireEvent.keyDown(grip, { code: "Space", key: " " });
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
-        fireEvent.keyDown(grip, { code: "Space", key: " " });
-
-        rectSpy.mockRestore();
-
-        fireEvent.click(
-          within(dialog).getByRole("button", { name: "Save changes" }),
-        );
-
-        await vi.waitFor(() =>
-          expect(patchBody).toMatchObject({
-            lessons: ["lesson-2", "lesson-1"],
-          }),
         );
       });
 

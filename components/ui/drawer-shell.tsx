@@ -96,6 +96,14 @@ export interface DrawerShellProps {
    * an existing consumer that doesn't pass it (e.g. the Edit Module
    * drawer). */
   stackId?: string;
+  /** Rendered in the header, right-aligned opposite the back button/title
+   * (ANA-123) -- e.g. the Edit Module drawer's own Lessons button, which
+   * opens a nested drawer stacked above this one. Mantine's own
+   * `ModalBaseHeader` is already `justify-content: space-between`, so this
+   * needs no layout wrapper of its own to land on the opposite side from
+   * the back button/title `Group`. Omit for a header with no actions beyond
+   * the back button. */
+  headerActions?: ReactNode;
 }
 
 // Reusable right-side drawer shell for admin editor panels (ANA-122): a
@@ -131,6 +139,7 @@ export function DrawerShell({
   footer,
   size,
   stackId,
+  headerActions,
 }: DrawerShellProps) {
   // A callback ref, not a plain `useRef` -- `DrawerFooter` (rendered by
   // whatever's inside `children`, arbitrarily deep) needs a render to see
@@ -231,6 +240,7 @@ export function DrawerShell({
                 </Title>
               </Drawer.Title>
             </Group>
+            {headerActions}
           </Drawer.Header>
 
           <Drawer.Body

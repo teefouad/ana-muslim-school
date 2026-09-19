@@ -100,6 +100,20 @@ describe("DrawerShell", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("renders supplied header actions, distinct from the back button", () => {
+    renderDrawer({
+      headerActions: <button type="button">Lessons</button>,
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "Edit Module" });
+    expect(
+      within(dialog).getByRole("button", { name: "Lessons" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Back" }),
+    ).toBeInTheDocument();
+  });
+
   it("renders supplied footer content", () => {
     renderDrawer({ footer: <button type="button">Save changes</button> });
 
