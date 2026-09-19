@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Alert, Button, Stack } from "@mantine/core";
+import { Alert, Button, Group, Stack } from "@mantine/core";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DrawerFooter } from "@/components/ui/drawer-shell";
 import {
   isSameTranslatedValue,
   type TranslatedValue,
@@ -90,6 +91,20 @@ export interface LessonEditorProps {
    * untouched New Lesson draft backs out with no confirmation and no
    * Lesson is ever added to the list. */
   onBack: () => void;
+  /** Mirrors `ModuleEditorBody`'s own identically-named/valued `layout` prop
+   * (ANA-121) -- `"wide"` (the default, and the only value the Edit Module
+   * modal's inline Lesson mode ever passes) keeps Save changes inline,
+   * pinned below an internally-scrolled fields region via this component's
+   * own fixed-height layout, unchanged since ANA-115/ANA-116. `"narrow"`
+   * (the Edit Module drawer's own nested Lesson editor drawer, ANA-125 PR
+   * review) instead portals Save changes into that drawer's real fixed
+   * footer via `DrawerFooter` -- the same mechanism Module mode's own Save
+   * changes already uses in that drawer (module-editor-body.tsx's
+   * `moduleFormFooterSlot`) -- and lets the fields above render at their own
+   * natural height instead, so the drawer's own body scrolls them as a
+   * whole rather than this component managing a second, nested scroll
+   * region inside it. */
+  layout?: "wide" | "narrow";
 }
 
 // Lesson mode's editor (ANA-115, wired to the real Lesson backend in
@@ -112,7 +127,10 @@ export function LessonEditor({
   onCreate,
   onUpdate,
   onBack,
+  layout = "wide",
 }: LessonEditorProps) {
+  const isNarrow = layout === "narrow";
+
   const initialFields = lesson
     ? toLessonFieldsValues(lesson, moduleQuestions)
     : createEmptyLessonFieldsValues();
@@ -239,68 +257,104 @@ export function LessonEditor({
     }
   }
 
+  // The fields/error-banner region, identical for both layouts -- only its
+  // wrapper (below) and Save changes' own placement differ.
+  const fields = (
+    <>
+      <LessonForm
+        value={{
+          title,
+          description,
+          type,
+          position,
+          isPublished,
+          content,
+          videoURL,
+          duration,
+          azkar,
+          questions,
+        }}
+        onChange={(patch) => {
+          if (patch.title !== undefined) setTitle(patch.title);
+          if (patch.description !== undefined)
+            setDescription(patch.description);
+          if (patch.type !== undefined) setType(patch.type);
+          if (patch.position !== undefined) setPosition(patch.position);
+          if (patch.isPublished !== undefined)
+            setIsPublished(patch.isPublished);
+          if (patch.content !== undefined) setContent(patch.content);
+          if (patch.videoURL !== undefined) setVideoURL(patch.videoURL);
+          if (patch.duration !== undefined) setDuration(patch.duration);
+          if (patch.azkar !== undefined) setAzkar(patch.azkar);
+          if (patch.questions !== undefined) setQuestions(patch.questions);
+        }}
+        moduleTitle={moduleTitle}
+        moduleDescription={moduleDescription}
+        moduleContent={moduleContent}
+        moduleQuestions={moduleQuestions}
+        previousModuleQuestions={previousModuleQuestions}
+        onTitleBusyChange={setTitleBusy}
+        onDescriptionBusyChange={setDescriptionBusy}
+        onQuestionsBusyChange={setQuestionsBusy}
+      />
+
+      {saveError && (
+        <Alert color="red" role="alert">
+          {saveError}
+        </Alert>
+      )}
+    </>
+  );
+
+  const saveButton = (
+    <Button
+      onClick={() => void handleSave()}
+      loading={isSaving}
+      disabled={aiBusy || questionsInvalid}
+      style={{ alignSelf: "flex-end" }}
+    >
+      Save changes
+    </Button>
+  );
+
   return (
-    // `height: "100%"` (ANA-117) -- this editor always renders inside a
-    // fixed-height wrapper the caller sizes to match Module mode's own
-    // content height, so switching between modes never resizes the modal
-    // itself (edit-module-modal.tsx). Back/Save stay pinned outside the
-    // scrollable middle `Stack` below rather than living inside it, so
-    // they're never themselves scrolled out of view when the Lesson form's
-    // own content is taller than the fixed height.
-    <Stack gap="lg" style={{ height: "100%" }}>
-      <Stack gap="lg" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-        <LessonForm
-          value={{
-            title,
-            description,
-            type,
-            position,
-            isPublished,
-            content,
-            videoURL,
-            duration,
-            azkar,
-            questions,
-          }}
-          onChange={(patch) => {
-            if (patch.title !== undefined) setTitle(patch.title);
-            if (patch.description !== undefined)
-              setDescription(patch.description);
-            if (patch.type !== undefined) setType(patch.type);
-            if (patch.position !== undefined) setPosition(patch.position);
-            if (patch.isPublished !== undefined)
-              setIsPublished(patch.isPublished);
-            if (patch.content !== undefined) setContent(patch.content);
-            if (patch.videoURL !== undefined) setVideoURL(patch.videoURL);
-            if (patch.duration !== undefined) setDuration(patch.duration);
-            if (patch.azkar !== undefined) setAzkar(patch.azkar);
-            if (patch.questions !== undefined) setQuestions(patch.questions);
-          }}
-          moduleTitle={moduleTitle}
-          moduleDescription={moduleDescription}
-          moduleContent={moduleContent}
-          moduleQuestions={moduleQuestions}
-          previousModuleQuestions={previousModuleQuestions}
-          onTitleBusyChange={setTitleBusy}
-          onDescriptionBusyChange={setDescriptionBusy}
-          onQuestionsBusyChange={setQuestionsBusy}
-        />
+    <>
+      {isNarrow ? (
+        // The narrow/Drawer layout (ANA-125 PR review) renders the fields at
+        // their own natural height -- no internal fixed-height scroll region
+        // -- so the owning `DrawerShell`'s own body scrolls them as a whole,
+        // same as Module mode's own fields in that same drawer. Save changes
+        // portals into that drawer's real footer below instead of rendering
+        // here.
+        <Stack gap="lg">{fields}</Stack>
+      ) : (
+        // `height: "100%"` (ANA-117) -- this editor always renders inside a
+        // fixed-height wrapper the caller sizes to match Module mode's own
+        // content height, so switching between modes never resizes the modal
+        // itself (edit-module-modal.tsx). Save stays pinned outside the
+        // scrollable middle `Stack` below rather than living inside it, so
+        // it's never itself scrolled out of view when the Lesson form's own
+        // content is taller than the fixed height.
+        <Stack gap="lg" style={{ height: "100%" }}>
+          <Stack gap="lg" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            {fields}
+          </Stack>
+          {saveButton}
+        </Stack>
+      )}
 
-        {saveError && (
-          <Alert color="red" role="alert">
-            {saveError}
-          </Alert>
-        )}
-      </Stack>
-
-      <Button
-        onClick={() => void handleSave()}
-        loading={isSaving}
-        disabled={aiBusy || questionsInvalid}
-        style={{ alignSelf: "flex-end" }}
-      >
-        Save changes
-      </Button>
+      {/* Save changes for the narrow/Drawer layout (ANA-125 PR review):
+          portaled into the owning `DrawerShell`'s own fixed footer via
+          `DrawerFooter`, the same mechanism (and the same footer, since the
+          nested Lesson editor drawer renders no `footer` prop of its own)
+          Module mode's own Save changes already uses in that drawer
+          (module-editor-body.tsx's `moduleFormFooterSlot`), rather than a
+          second, bespoke sticky/pinned section. */}
+      {isNarrow && (
+        <DrawerFooter>
+          <Group justify="flex-end">{saveButton}</Group>
+        </DrawerFooter>
+      )}
 
       {confirmingDiscard && (
         <ConfirmDialog
@@ -316,6 +370,6 @@ export function LessonEditor({
           }}
         />
       )}
-    </Stack>
+    </>
   );
 }

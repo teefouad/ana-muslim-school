@@ -1076,6 +1076,14 @@ export function ModuleEditorBody({
               onCreate={handleCreateLesson}
               onUpdate={handleUpdateLesson}
               onBack={() => setLessonEditorTarget(null)}
+              // Same `layout` this body itself received (ANA-125 PR review)
+              // -- `lessonEditorInner` is shared between the wide/Modal
+              // layout's own inline usage below and the narrow/Drawer
+              // layout's nested Lesson editor drawer further down, and only
+              // the branch matching this body's own `layout` ever actually
+              // renders, so passing it straight through here is always
+              // correct for whichever one does.
+              layout={layout}
             />
           </Box>
         </Stack>
@@ -1348,6 +1356,13 @@ export function ModuleEditorBody({
           onClose={() => setLessonEditorTarget(null)}
           size={LESSON_EDITOR_DRAWER_WIDTH}
           stackId="lesson-editor"
+          // No `footer` prop here (PR review) -- `LessonEditor` itself
+          // portals its own Save changes into this drawer's footer region
+          // via `DrawerFooter` once `layout="narrow"` (see `lessonEditorInner`'s
+          // own `<LessonEditor>` call above), the same "the deeply-nested
+          // consumer that owns the action's state portals it in" pattern
+          // `moduleFormFooterSlot` already uses for Module mode's own Save
+          // changes in this same drawer.
         >
           {lessonEditorInner}
         </DrawerShell>
