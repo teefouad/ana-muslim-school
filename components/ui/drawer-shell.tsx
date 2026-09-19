@@ -131,7 +131,7 @@ export function DrawerShell({
           <Drawer.Header className={styles.header}>
             <Group gap="xs" wrap="nowrap">
               <ActionIconButton aria-label="Back" onClick={onBack ?? onClose}>
-                <ArrowLeft size={18} aria-hidden="true" />
+                <ArrowLeft size={21} aria-hidden="true" />
               </ActionIconButton>
               {/* `Drawer.Title` (not a plain element) so Mantine links the
                   dialog's `aria-labelledby` to it automatically -- the actual
@@ -139,7 +139,7 @@ export function DrawerShell({
                   component="span"`, so there's exactly one real heading
                   element (this one) with no nested h2-in-h2. */}
               <Drawer.Title>
-                <Title order={2} component="span">
+                <Title order={4} component="span">
                   {title}
                 </Title>
               </Drawer.Title>

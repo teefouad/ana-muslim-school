@@ -3,16 +3,20 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background-color: #121212;
 }
 
 .header {
   flex: 0 0 auto;
+  border-bottom: 1px solid #202020;
+  background-color: #121212 !important;
 }
 
 .body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding-block: 30px;
 }
 
 .footer {
@@ -25,6 +29,6 @@
    Save action instead) -- otherwise this would render an empty bordered/
    padded bar at the bottom of the drawer. */
 .footer:not(:empty) {
-  border-top: 1px solid var(--mantine-color-default-border);
+  border-top: 1px solid #202020;
   padding: var(--mantine-spacing-md);
 }
