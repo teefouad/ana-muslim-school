@@ -428,6 +428,22 @@ describe("EditModuleDrawer", () => {
     expect(screen.getByLabelText("Title")).toHaveValue("المقدمة");
   });
 
+  it("uses a 500px Lessons drawer width on desktop (ANA-125)", async () => {
+    renderDrawer();
+    const moduleDialog = await findDrawerDialog("Edit Module");
+
+    fireEvent.click(
+      within(moduleDialog).getByRole("button", { name: "Lessons" }),
+    );
+    await findDrawerDialog("Lessons");
+
+    const roots = document.querySelectorAll(".mantine-Drawer-root");
+    const widths = Array.from(roots).map((root) => root.getAttribute("style"));
+    expect(widths.some((style) => style?.includes("min(500px, 100vw)"))).toBe(
+      true,
+    );
+  });
+
   it("backing out of the nested Lessons drawer returns to the Module editor", async () => {
     renderDrawer();
     const moduleDialog = await findDrawerDialog("Edit Module");
@@ -726,7 +742,11 @@ describe("EditModuleDrawer", () => {
       ).toBeInTheDocument();
     });
 
-    it("New Lesson wires the existing New Lesson behavior and hides the Lessons drawer so the Module drawer's Lesson editor is visible", async () => {
+    // ANA-125: New Lesson/Edit now open the existing Lesson configuration UI
+    // in their own nested Lesson editor drawer, stacked above the Lessons
+    // drawer -- which stays mounted/open underneath, rather than being
+    // hidden the way ANA-124 hid it.
+    it("New Lesson opens a nested Lesson editor drawer above the Lessons drawer, which stays open underneath", async () => {
       mockFetch({ lessons: LESSONS });
       renderDrawer();
       const { lessonsDialog } = await openLessonsDrawer();
@@ -735,20 +755,26 @@ describe("EditModuleDrawer", () => {
         within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
       );
 
-      await vi.waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
-        ).not.toBeInTheDocument(),
-      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+      expect(lessonEditorDialog).toBeInTheDocument();
+      // The Lessons drawer is still mounted underneath, list intact.
       expect(
-        within(screen.getByRole("dialog", { name: "Edit Module" })).getByRole(
-          "heading",
-          { name: "New Lesson" },
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog", { name: "Lessons" })).getByText(
+          "الدرس الأول",
         ),
       ).toBeInTheDocument();
+      // The Module editor is still mounted underneath both, fields intact.
+      const moduleDialog = screen.getByRole("dialog", { name: "Edit Module" });
+      expect(moduleDialog).toBeInTheDocument();
+      expect(within(moduleDialog).getByLabelText("Title")).toHaveValue(
+        "المقدمة",
+      );
     });
 
-    it("Edit wires the existing Edit Lesson behavior and hides the Lessons drawer", async () => {
+    it("Edit opens a nested Lesson editor drawer above the Lessons drawer, which stays open underneath", async () => {
       mockFetch({ lessons: LESSONS });
       renderDrawer();
       const { lessonsDialog } = await openLessonsDrawer();
@@ -759,17 +785,59 @@ describe("EditModuleDrawer", () => {
         }),
       );
 
+      const lessonEditorDialog = await findDrawerDialog("Edit Lesson");
+      expect(lessonEditorDialog).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+    });
+
+    it("backing out of the nested Lesson editor drawer reveals the still-open Lessons drawer underneath", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+
+      fireEvent.click(
+        within(lessonEditorDialog).getByRole("button", { name: "Back" }),
+      );
+
       await vi.waitFor(() =>
         expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
+          screen.queryByRole("dialog", { name: "New Lesson" }),
         ).not.toBeInTheDocument(),
       );
       expect(
-        within(screen.getByRole("dialog", { name: "Edit Module" })).getByRole(
-          "heading",
-          { name: "Edit Lesson" },
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog", { name: "Lessons" })).getByText(
+          "الدرس الأول",
         ),
       ).toBeInTheDocument();
+    });
+
+    it("uses a 460px Lesson editor drawer width on desktop, opening from the right", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      await findDrawerDialog("New Lesson");
+
+      const roots = document.querySelectorAll(".mantine-Drawer-root");
+      const widths = Array.from(roots).map((root) =>
+        root.getAttribute("style"),
+      );
+      expect(widths.some((style) => style?.includes("min(460px, 100vw)"))).toBe(
+        true,
+      );
     });
 
     it("closing the Lessons drawer (clean) reveals the unchanged Module editor drawer and does not mark it dirty", async () => {

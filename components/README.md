@@ -246,12 +246,17 @@ Color/Published render as a single side-by-side row or, in the drawer,
 Color then Published each on their own full row (ANA-123, narrower width
 has no room for the side-by-side row); whether Module mode's own Cancel/
 Save changes render inline or through `DrawerFooter` into the drawer's
-shared footer; and whether the body's own fixed-pixel-positioned title
-(kept only for the modal) or an ordinary in-flow one (Lesson mode, reached
-from either container -- the drawer's own route into it is New Lesson/Edit
-inside the nested Lessons drawer, ANA-124, which hides that drawer first so
-this body's existing Lesson-mode UI underneath becomes visible) is used --
-never the underlying fields/behavior themselves. Reach for this same split
+shared footer; and whether Lesson mode's `LessonEditor` content renders
+inline, replacing the modal's own Module-mode content (reached via the
+modal's fixed-pixel-positioned title, kept only for the modal), or -- the
+drawer, ANA-125 -- in its own third nested `DrawerShell` (`stackId=
+"lesson-editor"`, its own header/title from `DrawerShell` itself) stacked
+above the Lessons drawer, opened by New Lesson/Edit inside that Lessons
+drawer, which stays mounted/open underneath rather than being hidden (see
+`DrawerShell`'s `stackId` doc above for the same "child stays a JSX sibling,
+not a DOM descendant, and only the topmost drawer responds to Escape/
+outside click" mechanics one level deeper) -- never the underlying fields/
+behavior themselves. Reach for this same split
 -- a shared `*-body.tsx` plus thin container wrappers -- before duplicating
 an existing editor's logic into a second container; don't special-case a
 single monolithic component to support two visual shells instead.
