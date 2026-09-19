@@ -135,6 +135,28 @@ action added to this component) render through the shared `ActionIconButton`
 consumer visually consistent with the rest of the admin's action buttons
 (ANA-100, generalized into a shared component in ANA-105).
 
+## Modal vs. Drawer presentation containers
+
+`app/admin/books/edit-module-modal.tsx` (the Edit Module modal, centered,
+900-1040px) and `app/admin/books/edit-module-drawer.tsx` (the Edit Module
+drawer, right-side, fixed 500px on desktop, ANA-121) are two different
+presentation containers around the exact same editing experience --
+`app/admin/books/module-editor-body.tsx`'s `ModuleEditorBody`, which owns
+every field, AI action, the Lessons list/editor, loading state, and
+save/discard behavior. Neither container duplicates that logic: each is a
+thin wrapper that mounts `ModuleEditorBody` inside its own Mantine `Modal`/
+`Drawer`, bridges every way that container can be dismissed (X/close button,
+Escape, backdrop/outside click) through the body's own unsaved-changes guard
+via a shared `requestCloseRef` pattern, and otherwise gets out of the way.
+`ModuleEditorBody`'s own `layout` prop (`"wide"`, the default the modal never
+overrides, vs. `"narrow"`) is the only thing that differs between the two --
+it only affects whether Module mode's Module-editor+Lessons-list split sits
+side by side or stacks, never the fields/behavior themselves. Reach for this
+same split -- a shared `*-body.tsx` plus thin container wrappers -- before
+duplicating an existing editor's logic into a second container; don't
+special-case a single monolithic component to support two visual shells
+instead.
+
 ## Conventions
 
 - **Location**: `components/ui/<kebab-case-name>.tsx`.

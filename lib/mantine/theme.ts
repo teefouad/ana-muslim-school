@@ -43,6 +43,16 @@ export const theme = createTheme({
         },
       },
     },
+    // Drawer shares Modal's own header/body structure (both built on
+    // Mantine's ModalBase) and so has the same darker-header mismatch --
+    // same fix (ANA-121, the Edit Module drawer).
+    Drawer: {
+      styles: {
+        header: {
+          backgroundColor: "var(--mantine-color-dark-7)",
+        },
+      },
+    },
     NavLink: {
       styles: {
         root: {

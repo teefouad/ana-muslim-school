@@ -52,55 +52,20 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("shows a Back to Module control and the Lesson's fields, seeded from the given Lesson", () => {
+  it("shows the Lesson's fields, seeded from the given Lesson", () => {
+    // No "Back to Module" control of its own (unlike its earlier ANA-115
+    // design) -- that's now the owning container's own Title-bar control
+    // (`module-editor-body.tsx`'s `ArrowLeft` button, ANA-121), which calls
+    // this editor's `onBack` prop directly rather than through any dirty
+    // check of its own; see edit-module-modal.test.tsx's "Lesson mode"
+    // tests for coverage of that control (and module-editor-body.tsx's own
+    // comments for why it isn't gated the way Cancel/Escape on the owning
+    // Edit Module dialog itself still are).
     renderEditor();
 
-    expect(
-      screen.getByRole("button", { name: "Back to Module" }),
-    ).toBeInTheDocument();
     expect(screen.getByTestId("lesson-form")).toBeInTheDocument();
     expect(screen.getByDisplayValue("المقدمة")).toBeInTheDocument();
     expect(screen.getByDisplayValue("وصف قصير")).toBeInTheDocument();
-  });
-
-  it("goes back immediately when there are no unsaved edits", () => {
-    const { onBack } = renderEditor();
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
-
-    expect(onBack).toHaveBeenCalled();
-    expect(
-      screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("confirms before discarding when a field has been edited, and stays open on Keep editing", () => {
-    const { onBack } = renderEditor();
-
-    fireEvent.click(screen.getByRole("switch", { name: "Published" }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
-
-    const dialog = screen.getByRole("dialog", {
-      name: "Discard unsaved changes?",
-    });
-    expect(onBack).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Keep editing" }),
-    );
-
-    expect(onBack).not.toHaveBeenCalled();
-    expect(screen.getByRole("switch", { name: "Published" })).toBeChecked();
-  });
-
-  it("goes back once Discard changes is confirmed", () => {
-    const { onBack } = renderEditor();
-
-    fireEvent.click(screen.getByRole("radio", { name: "4" }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-
-    expect(onBack).toHaveBeenCalled();
   });
 
   describe("existing Lesson (update)", () => {
@@ -171,19 +136,6 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       ).toBeInTheDocument();
     });
 
-    it("goes back with no confirmation and no request when untouched (backing out leaves nothing added)", () => {
-      const { onCreate, onBack } = renderNewLessonEditor();
-
-      fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
-
-      expect(onBack).toHaveBeenCalled();
-      expect(onCreate).not.toHaveBeenCalled();
-      expect(fetch).not.toHaveBeenCalled();
-      expect(
-        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
-      ).not.toBeInTheDocument();
-    });
-
     it("never calls onCreate merely by being rendered", () => {
       const { onCreate } = renderNewLessonEditor();
 
@@ -238,75 +190,6 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       // as a fresh, explicit user action -- never automatically.
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
       expect(onCreate).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("Back to Module is disabled while Save is pending (ANA-116 PR review)", () => {
-    it("cannot be clicked past a pending Save, so a failure can still show its error and preserve the draft", async () => {
-      let rejectSave: (err: Error) => void = () => {};
-      const onCreate = vi.fn(
-        () =>
-          new Promise<void>((_resolve, reject) => {
-            rejectSave = reject;
-          }),
-      );
-      const { onBack } = renderEditor({ lesson: null, onCreate });
-
-      fireEvent.change(screen.getByLabelText("Title"), {
-        target: { value: "مقدمة جديدة" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-      await vi.waitFor(() =>
-        expect(
-          screen.getByRole("button", { name: "Back to Module" }),
-        ).toBeDisabled(),
-      );
-
-      // A disabled native button ignores clicks -- backing out (which would
-      // otherwise show the discard confirmation, since the draft is dirty)
-      // must not be reachable while the save it triggered is still
-      // unresolved.
-      fireEvent.click(screen.getByRole("button", { name: "Back to Module" }));
-      expect(onBack).not.toHaveBeenCalled();
-      expect(
-        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
-      ).not.toBeInTheDocument();
-
-      rejectSave(new Error("Book not found."));
-
-      expect(await screen.findByText("Book not found.")).toBeInTheDocument();
-      expect(onBack).not.toHaveBeenCalled();
-      expect(screen.getByDisplayValue("مقدمة جديدة")).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Back to Module" }),
-      ).not.toBeDisabled();
-    });
-
-    it("re-enables once a pending Save resolves successfully, after already returning to Module mode", async () => {
-      let resolveSave: () => void = () => {};
-      const onUpdate = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveSave = resolve;
-          }),
-      );
-      const { onBack } = renderEditor({ onUpdate });
-
-      fireEvent.change(screen.getByLabelText("Title"), {
-        target: { value: "عنوان جديد" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-      await vi.waitFor(() =>
-        expect(
-          screen.getByRole("button", { name: "Back to Module" }),
-        ).toBeDisabled(),
-      );
-
-      resolveSave();
-
-      await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
     });
   });
 

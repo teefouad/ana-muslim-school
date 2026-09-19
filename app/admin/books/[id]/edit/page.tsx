@@ -24,6 +24,7 @@ import {
   toBookWritableFields,
   type BookFormValues,
 } from "../../book-form";
+import { EditModuleDrawer } from "../../edit-module-drawer";
 import { EditModuleModal } from "../../edit-module-modal";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
@@ -59,10 +60,13 @@ function getModuleLabel(module: Module): string {
   return module.title.ar || module.title.en || "";
 }
 
-/** Which Module modal (ANA-94) is open, if any -- `"create"` needs nothing
- * else; `"edit"` only carries the target Module's id, since its current
- * fields are read fresh from `modulesData` at render time (see
- * `getModuleFields` below) rather than snapshotted into this state. */
+/** Which Module editing container (ANA-94) is open, if any -- `"create"`
+ * needs nothing else and opens the Edit Module modal (Add Module); `"edit"`
+ * only carries the target Module's id, since its current fields are read
+ * fresh from `modulesData` at render time (see `getModuleFields` below)
+ * rather than snapshotted into this state, and opens the Edit Module drawer
+ * instead of that same modal (ANA-121) -- see the two containers rendered
+ * near the bottom of this component. */
 type ModuleModalTarget = { mode: "create" } | { mode: "edit"; id: string };
 
 const BOOK_FORM_ID = "edit-book-form";
@@ -608,21 +612,33 @@ export default function EditBookPage() {
       )}
 
       {book && (
+        // Add Module only (ANA-121) -- editing an existing Module now opens
+        // the drawer below instead; this modal's own "edit" mode is never
+        // reached from here anymore, but is left fully intact (see
+        // edit-module-modal.tsx).
         <EditModuleModal
-          state={
-            modalTarget === null
-              ? null
-              : modalTarget.mode === "create"
-                ? { mode: "create" }
-                : {
-                    mode: "edit",
-                    id: modalTarget.id,
-                    fields: getModuleFields(modalTarget.id),
-                  }
-          }
+          state={modalTarget?.mode === "create" ? { mode: "create" } : null}
           book={book}
           onClose={() => setModalTarget(null)}
           onCreate={handleCreateModule}
+          onSave={handleSaveModule}
+        />
+      )}
+
+      {book && (
+        // Edit Module (ANA-121): the pencil action opens this right-side
+        // drawer instead of the Edit Module modal above -- same fields, AI
+        // actions, validation, Lesson list/editor, and save/discard
+        // behavior, via the same `ModuleEditorBody` the modal's own edit
+        // mode renders (see edit-module-drawer.tsx).
+        <EditModuleDrawer
+          state={
+            modalTarget?.mode === "edit"
+              ? { id: modalTarget.id, fields: getModuleFields(modalTarget.id) }
+              : null
+          }
+          book={book}
+          onClose={() => setModalTarget(null)}
           onSave={handleSaveModule}
         />
       )}
