@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef } from "react";
-import { Drawer } from "@mantine/core";
 
+import { DrawerShell } from "@/components/ui/drawer-shell";
 import type { Book } from "@/lib/books/types";
 import { ModuleEditorBody } from "./module-editor-body";
 import type { ModuleFieldsValues } from "./module-fields";
@@ -53,6 +53,16 @@ const DRAWER_WIDTH = "min(500px, 100vw)";
 // "narrow"` so `ModuleEditorBody`'s Module-editor+Lessons-list split stacks
 // in one column instead of trying to fit side by side in 500px. The modal
 // component itself (`edit-module-modal.tsx`) is left completely intact.
+//
+// The drawer's own chrome (header/footer) is the shared `DrawerShell`
+// (ANA-122) -- its "Edit Module" title and back button replace the fixed-
+// pixel-positioned `Title` `ModuleEditorBody` used to render for this
+// container, and its footer is where `ModuleEditorBody`'s own Cancel/Save
+// changes actions render via `DrawerFooter`, once `layout="narrow"` (see
+// that component's own `isNarrow` branches). Lesson mode's own inline
+// back-to-Module/title and Save action are untouched -- neither moves into
+// this shared chrome; ANA-122 doesn't implement a real nested Module ->
+// Lesson drawer.
 export function EditModuleDrawer({
   state,
   book,
@@ -60,17 +70,17 @@ export function EditModuleDrawer({
   onSave,
 }: EditModuleDrawerProps) {
   // Same Modal/Drawer-dismiss bridge as `EditModuleModal` -- see that
-  // component's identical `requestCloseRef` doc. Every way Mantine's Drawer
-  // can be dismissed (close button, Escape, outside click) funnels through
+  // component's identical `requestCloseRef` doc. Every way `DrawerShell`
+  // can be dismissed (back button, Escape, outside click) funnels through
   // this one `onClose` prop, which `ModuleEditorBody` routes through its own
   // unsaved-changes guard before ever actually closing.
   const requestCloseRef = useRef(onClose);
 
   return (
-    <Drawer
+    <DrawerShell
       opened={state !== null}
+      title="Edit Module"
       onClose={() => requestCloseRef.current()}
-      position="right"
       size={DRAWER_WIDTH}
     >
       {state && (
@@ -86,6 +96,6 @@ export function EditModuleDrawer({
           layout="narrow"
         />
       )}
-    </Drawer>
+    </DrawerShell>
   );
 }

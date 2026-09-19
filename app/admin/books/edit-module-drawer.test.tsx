@@ -82,22 +82,14 @@ function renderDrawer(overrides: Partial<EditModuleDrawerProps> = {}) {
   );
 }
 
-// The custom "Edit Module" `<Title>` `ModuleEditorBody` renders (ANA-121:
-// shared with the modal, see module-editor-body.tsx) is absolutely
-// positioned over the Drawer's own header rather than passed through as
-// Mantine's `title` prop -- so, same as the pre-existing Edit Module modal,
-// the drawer's own `role="dialog"` element never gets an `aria-labelledby`
-// Testing Library could match a `name` against. Locating it through the
-// heading itself (a real `<h1>`, whose accessible name *does* come from its
-// content) and walking up to its nearest `[role="dialog"]` ancestor sidesteps
-// that gap instead of relying on it.
+// `DrawerShell`'s own header (ANA-122) renders through Mantine's
+// `Drawer.Title`, which wires the drawer's `role="dialog"` element's
+// `aria-labelledby` automatically -- so, unlike the pre-existing Edit
+// Module modal (still its own separate, unmigrated component), the name
+// can be matched directly instead of locating the heading and walking up
+// to its nearest `[role="dialog"]` ancestor.
 async function findDrawerDialog(name: string): Promise<HTMLElement> {
-  const heading = await screen.findByRole("heading", { name });
-  const dialog = heading.closest('[role="dialog"]');
-  if (!(dialog instanceof HTMLElement)) {
-    throw new Error(`Could not find a dialog ancestor for heading "${name}"`);
-  }
-  return dialog;
+  return screen.findByRole("dialog", { name });
 }
 
 describe("EditModuleDrawer", () => {
@@ -214,6 +206,79 @@ describe("EditModuleDrawer", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // The shared `DrawerShell`'s own back arrow (ANA-122) is the drawer's
+  // visible way to leave it, same as Cancel -- it must route through the
+  // exact same guarded `handleRequestClose` path, not close immediately.
+  it("the header's own Back button is gated behind the same discard confirmation as Cancel once a field has been edited", async () => {
+    const onClose = vi.fn();
+    renderDrawer({ onClose });
+
+    const dialog = await findDrawerDialog("Edit Module");
+    fireEvent.change(within(dialog).getByLabelText("Title"), {
+      target: { value: "عنوان جديد" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("the header's own Back button closes immediately, without confirmation, when nothing was edited", async () => {
+    const onClose = vi.fn();
+    renderDrawer({ onClose });
+
+    const dialog = await findDrawerDialog("Edit Module");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back" }));
+
+    expect(
+      screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+    ).not.toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // ANA-122: Mantine's own close/X button is never rendered -- Back is the
+  // header's only control, and Cancel/Save changes are the footer's only
+  // controls (both routed through the drawer's shared chrome instead of
+  // duplicated inside the scrollable body).
+  it("never renders Mantine's own close/X button", async () => {
+    renderDrawer();
+    const dialog = await findDrawerDialog("Edit Module");
+
+    expect(
+      within(dialog).getByRole("button", { name: "Back" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    ).toBeInTheDocument();
+  });
+
+  // Cancel/Save changes render in the shared drawer's own fixed footer
+  // (ANA-122, via `DrawerFooter`) rather than inside `ModuleEditorBody`'s
+  // scrollable content -- they must never end up inside the same scrollable
+  // region as the Module fields above them.
+  it("renders Cancel/Save changes outside the scrollable content region", async () => {
+    renderDrawer();
+    await findDrawerDialog("Edit Module");
+
+    const scrollRegion = screen.getByTestId("drawer-scroll-region");
+
+    expect(
+      within(scrollRegion).queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(scrollRegion).queryByRole("button", { name: "Save changes" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("still opens and edits Lessons from inside the drawer (ANA-116/ANA-121)", async () => {
     mockFetch({
       lessons: [
@@ -237,5 +302,20 @@ describe("EditModuleDrawer", () => {
       await within(dialog).findByTestId("lesson-form"),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Title")).toHaveValue("الدرس الأول");
+
+    // ANA-122: Lesson mode's own back-to-Module control renders in-flow
+    // now, not absolutely positioned over the drawer's header (there's no
+    // longer an empty header region to fake being sticky over -- the
+    // drawer's own real header still reads "Edit Module" throughout).
+    // Still gets back to Module mode the same way as before.
+    expect(
+      within(dialog).getByRole("heading", { name: "Edit Module" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Back to Module" }),
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    ).toBeInTheDocument();
   });
 });
