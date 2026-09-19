@@ -48,12 +48,40 @@ const BREAK_VALUE: LessonFieldsValues = {
   ],
 };
 
+// The owning Module's own Question bank (ANA-120) -- includes the Question
+// already linked into `QUIZ_VALUE` below plus one more, available for the
+// Insert action to demonstrate.
+const MODULE_QUESTIONS = [
+  buildQuestionFixture(),
+  buildQuestionFixture({
+    id: "question-2",
+    text: {
+      ar: "ما هو أول أركان الإسلام؟",
+      en: "What is the first pillar of Islam?",
+    },
+  }),
+];
+
 const QUIZ_VALUE: LessonFieldsValues = {
   ...SAMPLE_VALUE,
   type: "quiz",
   content: {},
-  questions: [toQuestionFieldEntry(buildQuestionFixture())],
+  questions: [toQuestionFieldEntry(MODULE_QUESTIONS[0])],
 };
+
+// A previous Module's own Questions (ANA-120) -- also offered by Insert,
+// copied into a new draft on selection rather than referenced directly.
+const PREVIOUS_MODULE_QUESTIONS = [
+  {
+    moduleId: "module-0",
+    questions: [
+      buildQuestionFixture({
+        id: "previous-question-1",
+        text: { ar: "ما معنى الإخلاص؟", en: "What does sincerity mean?" },
+      }),
+    ],
+  },
+];
 
 // Wraps LessonForm with local state so every field edit behaves for real in
 // Storybook -- the component itself is fully controlled and has no state of
@@ -86,6 +114,8 @@ const meta = {
     moduleTitle: "الصلاة",
     moduleDescription: "مقدمة عن الصلاة",
     moduleContent: "محتوى تعليمي عن الصلاة",
+    moduleQuestions: MODULE_QUESTIONS,
+    previousModuleQuestions: PREVIOUS_MODULE_QUESTIONS,
   },
   render: (args) => (
     <div style={{ width: 320 }}>

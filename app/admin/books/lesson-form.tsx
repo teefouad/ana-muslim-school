@@ -12,6 +12,7 @@ import {
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
 import { LESSON_TYPES, type LessonType } from "@/lib/lessons/types";
+import type { Question } from "@/lib/questions/types";
 import {
   suggestLessonDescription,
   suggestLessonTitle,
@@ -19,6 +20,7 @@ import {
 import { translateArabicToEnglish } from "./import-source/translate-client";
 import { LessonBreakConfig } from "./lesson-break-config";
 import type { LessonFieldsValues } from "./lesson-fields";
+import type { ModuleQuestionGroup } from "./question-fields";
 import { QuestionsEditor } from "./questions-editor";
 
 const LESSON_TYPE_LABELS: Record<LessonType, string> = {
@@ -68,6 +70,15 @@ export interface LessonFormProps {
   moduleTitle: string;
   moduleDescription: string;
   moduleContent: string;
+  /** Every Question currently loaded for the owning Module (ANA-119) --
+   * forwarded to the Quiz/Final/Skip Questions editor's own Insert action,
+   * unused by every other Lesson type's Configuration. */
+  moduleQuestions: Question[];
+  /** Every Question already defined in every Module before the owning one
+   * in the Book's own Module order (ANA-120) -- also forwarded to Insert;
+   * see `QuestionsEditorProps.previousModuleQuestions`'s own doc
+   * (questions-editor.tsx). */
+  previousModuleQuestions: ModuleQuestionGroup[];
   /** Mirrors Title's/Description's own Translate with AI and AI
    * Assistance request in-flight state (ANA-109/ANA-116), so the caller can
    * keep Save disabled while either is unresolved -- saving now would
@@ -92,8 +103,17 @@ export interface LessonFormProps {
 function LessonTypeConfig({
   value,
   onChange,
+  moduleQuestions,
+  previousModuleQuestions,
   onQuestionsBusyChange,
-}: Pick<LessonFormProps, "value" | "onChange" | "onQuestionsBusyChange">) {
+}: Pick<
+  LessonFormProps,
+  | "value"
+  | "onChange"
+  | "moduleQuestions"
+  | "previousModuleQuestions"
+  | "onQuestionsBusyChange"
+>) {
   switch (value.type) {
     case "text":
       return (
@@ -144,6 +164,8 @@ function LessonTypeConfig({
         <QuestionsEditor
           questions={value.questions}
           onChange={(questions) => onChange({ questions })}
+          moduleQuestions={moduleQuestions}
+          previousModuleQuestions={previousModuleQuestions}
           onBusyChange={onQuestionsBusyChange}
         />
       );
@@ -197,6 +219,8 @@ export function LessonForm({
   moduleTitle,
   moduleDescription,
   moduleContent,
+  moduleQuestions,
+  previousModuleQuestions,
   onTitleBusyChange,
   onDescriptionBusyChange,
   onQuestionsBusyChange,
@@ -314,6 +338,8 @@ export function LessonForm({
         <LessonTypeConfig
           value={value}
           onChange={onChange}
+          moduleQuestions={moduleQuestions}
+          previousModuleQuestions={previousModuleQuestions}
           onQuestionsBusyChange={onQuestionsBusyChange}
         />
       </Stack>

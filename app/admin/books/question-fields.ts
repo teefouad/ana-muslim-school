@@ -32,7 +32,20 @@ export interface QuestionChoiceFieldValue {
  * below); a currently-invalid `rawText` buffer never discards, normalizes,
  * or replaces them. `rawText` is deliberately excluded from
  * `toQuestionWritableFields` (the server payload) -- the persisted Question
- * model never gains a `rawText` field, only these structured fields. */
+ * model never gains a `rawText` field, only these structured fields.
+ *
+ * `sourceModuleId`/`sourceQuestionId` (ANA-120) are set only for a draft
+ * copied from a *previous* Module via Insert (see
+ * `copyQuestionFromPreviousModule` below) -- the School schema requires
+ * `Lesson.questions` ids to resolve under the Lesson's own Module, so a
+ * previous-Module Question can never be referenced directly and is instead
+ * copied in as a brand-new, unpersisted draft (`id: null`) for the current
+ * Module. These two fields exist purely to keep enough client-side source
+ * identity to stop the *same* previous-Module Question from being inserted
+ * twice into one Lesson draft (questions-editor.tsx's own exclusion check) --
+ * they're deliberately excluded from `toQuestionWritableFields` alongside
+ * `key`/`rawText`, so this source identity never reaches the canonical
+ * Question document. */
 export interface QuestionFieldEntry {
   key: string;
   id: string | null;
@@ -40,6 +53,18 @@ export interface QuestionFieldEntry {
   explanation: TranslatedValue;
   choices: QuestionChoiceFieldValue[];
   rawText: TranslatedValue;
+  sourceModuleId?: string;
+  sourceQuestionId?: string;
+}
+
+/** Every Question currently defined for one Module, as returned by the
+ * Book-wide `GET /api/v1/books/{bookId}/questions` endpoint (ANA-108),
+ * grouped and ordered per `Book.modules` -- the read boundary Insert's
+ * Question Bank picker uses for every Module *before* the Lesson's own
+ * (ANA-120). */
+export interface ModuleQuestionGroup {
+  moduleId: string;
+  questions: Question[];
 }
 
 function makeKey(): string {
@@ -84,22 +109,53 @@ function rawTextFromContent(
   };
 }
 
-/** Seeds a Question editor entry from a real, API-backed Question --
- * `rawText` is derived from its current structured content so it opens
- * pre-formatted in the structured editor. */
-export function toQuestionFieldEntry(question: Question): QuestionFieldEntry {
+function buildQuestionFieldEntry(
+  question: Question,
+  id: string | null,
+  source?: { moduleId: string; questionId: string },
+): QuestionFieldEntry {
   const choices: QuestionChoiceFieldValue[] = question.choices.map(
     (choice) => ({ text: { ...choice.text }, isCorrect: choice.isCorrect }),
   );
 
   return {
     key: makeKey(),
-    id: question.id,
+    id,
     text: { ...question.text },
     explanation: { ...question.explanation },
     choices,
     rawText: rawTextFromContent(question.text, question.explanation, choices),
+    sourceModuleId: source?.moduleId,
+    sourceQuestionId: source?.questionId,
   };
+}
+
+/** Seeds a Question editor entry from a real, API-backed Question --
+ * `rawText` is derived from its current structured content so it opens
+ * pre-formatted in the structured editor. Used both to hydrate an existing
+ * Lesson's own Questions (lesson-fields.ts) and to Insert an existing
+ * *current*-Module Question (questions-editor.tsx, ANA-120), both of which
+ * reuse the real Question id as-is. */
+export function toQuestionFieldEntry(question: Question): QuestionFieldEntry {
+  return buildQuestionFieldEntry(question, question.id);
+}
+
+/** Copies a *previous*-Module Question into a brand-new, unpersisted draft
+ * for the current Module (Insert, ANA-120) -- `id: null`, exactly like a
+ * blank New entry, so the existing Save flow (`saveLessonQuestions`) creates
+ * it under the current Module the same way it already creates any other new
+ * draft, with the same retry-safe idempotency (ANA-119 PR review). The
+ * source Question/Module are never mutated; only their current content is
+ * copied. See `QuestionFieldEntry`'s own doc on why `sourceModuleId`/
+ * `sourceQuestionId` are attached here. */
+export function copyQuestionFromPreviousModule(
+  question: Question,
+  moduleId: string,
+): QuestionFieldEntry {
+  return buildQuestionFieldEntry(question, null, {
+    moduleId,
+    questionId: question.id,
+  });
 }
 
 /** Applies a *successful* parse of one language's raw textarea buffer onto

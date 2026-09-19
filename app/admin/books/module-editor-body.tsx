@@ -49,6 +49,7 @@ import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
 } from "./module-fields";
+import type { ModuleQuestionGroup } from "./question-fields";
 import { saveLessonQuestions } from "./questions-client";
 import { ArrowLeft } from "lucide-react";
 
@@ -305,6 +306,35 @@ export function ModuleEditorBody({
   // `questions: []`, detaching every one of them.
   const questionsUnavailable = questionsError !== undefined && !questionsData;
   const moduleQuestions: Question[] = questionsData?.data ?? [];
+
+  // Every Question already defined in every Module *before* this one in the
+  // Book's own Module order (ANA-120) -- the read boundary Insert's Question
+  // Bank picker uses to also offer previous-Module Questions (the School
+  // schema requires `Lesson.questions` ids to resolve under the Lesson's
+  // own Module, so a previous-Module selection is copied into a new local
+  // draft instead of referencing its id directly; see
+  // `copyQuestionFromPreviousModule`, question-fields.ts). Reuses the
+  // Book-wide, per-Book-cached endpoint from ANA-108 -- it already returns
+  // every Module's Questions grouped and ordered per `Book.modules` in one
+  // request, rather than a fetch per previous Module. Deliberately
+  // non-blocking on failure/while loading (unlike `moduleQuestions` above):
+  // nothing here is required to open or save a Lesson, so Insert simply
+  // offers fewer previous-Module results rather than the whole editor
+  // gating on it.
+  const bookQuestionsKey =
+    state.mode === "edit" ? `/api/v1/books/${book.id}/questions` : null;
+  const { data: bookQuestionsData } = useSWR<{ data: ModuleQuestionGroup[] }>(
+    bookQuestionsKey,
+    fetchJson,
+    { shouldRetryOnError: false },
+  );
+  const currentModuleIndex =
+    state.mode === "edit" ? book.modules.indexOf(state.id) : -1;
+  const previousModuleQuestions: ModuleQuestionGroup[] = (
+    bookQuestionsData?.data ?? []
+  ).filter(
+    (group) => book.modules.indexOf(group.moduleId) < currentModuleIndex,
+  );
 
   // A pending drag-and-drop reorder, not yet persisted -- mirrors
   // `[id]/edit/page.tsx`'s own `moduleOrderDraft` for `Book.modules`.
@@ -867,6 +897,7 @@ export function ModuleEditorBody({
                 key={openLesson?.id ?? "new"}
                 lesson={openLesson}
                 moduleQuestions={moduleQuestions}
+                previousModuleQuestions={previousModuleQuestions}
                 moduleTitle={title.ar ?? ""}
                 moduleDescription={description.ar ?? ""}
                 moduleContent={content.ar ?? ""}

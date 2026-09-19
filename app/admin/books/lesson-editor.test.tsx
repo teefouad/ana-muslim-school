@@ -33,6 +33,7 @@ function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
       <LessonEditor
         lesson={LESSON}
         moduleQuestions={[]}
+        previousModuleQuestions={[]}
         moduleTitle="عنوان الوحدة"
         moduleDescription="وصف الوحدة"
         moduleContent="محتوى الوحدة"

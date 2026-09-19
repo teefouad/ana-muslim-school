@@ -36,6 +36,8 @@ function renderForm(overrides: Partial<LessonFormProps> = {}) {
         moduleTitle="عنوان الوحدة"
         moduleDescription="وصف الوحدة"
         moduleContent="محتوى الوحدة"
+        moduleQuestions={[]}
+        previousModuleQuestions={[]}
         {...overrides}
       />
     </MantineProvider>,

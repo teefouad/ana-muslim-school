@@ -1,0 +1,14 @@
+.option {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--mantine-radius-sm);
+  text-align: start;
+  transition: background-color 120ms ease;
+}
+
+@media (hover: hover) {
+  .option:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+}
