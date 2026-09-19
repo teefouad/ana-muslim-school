@@ -142,7 +142,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       renderNewLessonEditor();
 
       expect(
-        screen.getByRole("radio", { name: "Text", checked: true }),
+        screen.getByRole("radio", { name: "Quiz", checked: true }),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Title")).toHaveValue("");
       expect(
@@ -172,7 +172,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
           {
             title: { ar: "مقدمة جديدة" },
             description: {},
-            type: "text",
+            type: "quiz",
             position: 2,
             isPublished: false,
             content: {},

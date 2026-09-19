@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Button,
+  getDefaultZIndex,
   Group,
   Modal,
   ScrollArea,
@@ -83,7 +84,22 @@ export function QuestionBankPicker({
   );
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Insert a question" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Insert a question"
+      centered
+      // Pinned above Mantine's own "popover" elevation tier (ANA-127) --
+      // this picker is opened from Questions editors rendered inside the
+      // narrow/Drawer layout's nested Lesson editor drawer, which gets a
+      // *stacked* z-index (`stackId="lesson-editor"`,
+      // module-editor-body.tsx) at or above this Modal's own default
+      // "modal" tier. Without this override the picker rendered underneath
+      // that drawer's overlay instead of above it -- the same fix pattern
+      // `ConfirmDialog`'s own `zIndex` override uses elsewhere (see e.g.
+      // lesson-editor.tsx's discard confirmation).
+      zIndex={getDefaultZIndex("popover")}
+    >
       <Stack gap="sm">
         <TextInput
           autoFocus

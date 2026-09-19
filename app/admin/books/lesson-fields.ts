@@ -3,7 +3,6 @@ import {
   type TranslatedValue,
 } from "@/components/ui/translatable-value";
 import {
-  LESSON_TYPES,
   type Lesson,
   type LessonType,
   type LessonWritableFields,
@@ -96,7 +95,11 @@ export function createEmptyLessonFieldsValues(): LessonFieldsValues {
   return {
     title: {},
     description: {},
-    type: LESSON_TYPES[0],
+    // "quiz", not `LESSON_TYPES[0]` ("text") -- New Lesson's default type
+    // (ANA-127). Hardcoded rather than reordering `LESSON_TYPES` (lib/
+    // lessons/types.ts) to start with "quiz", since that list doubles as
+    // the canonical/validation order and this default is its own concern.
+    type: "quiz",
     position: 2,
     isPublished: false,
     content: {},

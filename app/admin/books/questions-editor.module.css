@@ -1,12 +1,11 @@
-/* The Questions header's New/Insert/Generate actions (ANA-120) -- plain
-   compact text actions matching the old admin's own Questions header
-   (`teefouad/ana-muslim-admin/.../questions-editor.tsx`: `text-primary
-   hover:text-primary-hover ... text-xs font-medium ... disabled:opacity-50`)
-   rather than a filled/light Mantine `Button`, which reads as too heavy
-   (pill shape, background, larger padding) for a lightweight header action.
-   `--mantine-color-anchor` is this theme's own link/action foreground token
-   (the same one Mantine's `Anchor` uses), so this follows the current
-   theme rather than a hardcoded color. */
+/* The Questions header's New/Insert/Generate actions (ANA-120, colors
+   updated in ANA-127) -- plain compact text actions rather than a filled/
+   light Mantine `Button`, which reads as too heavy (pill shape, background,
+   larger padding) for a lightweight header action. Default state is white
+   at 70% opacity; hover goes to full opacity in this theme's own primary
+   green (`--mantine-primary-color-filled` in globals.css, the same token
+   Save/primary buttons use, e.g. edit-module-drawer.tsx's own Lessons
+   button). */
 .action {
   display: inline-flex;
   align-items: center;
@@ -16,14 +15,18 @@
   padding: 0;
   font-size: var(--mantine-font-size-xs);
   font-weight: 500;
-  color: var(--mantine-color-anchor);
+  color: #fff;
+  opacity: 0.7;
   cursor: pointer;
-  transition: color 150ms ease;
+  transition:
+    color 150ms ease,
+    opacity 150ms ease;
 }
 
 @media (hover: hover) {
   .action:hover:not(:disabled) {
-    color: var(--mantine-color-blue-3);
+    color: var(--mantine-primary-color-filled);
+    opacity: 1;
   }
 }
 
