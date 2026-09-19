@@ -1,0 +1,75 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  background-color: #171717;
+  border: 1px solid #262626;
+  border-radius: 12px;
+  color: #ededed;
+  font-size: 14px;
+  transition: background-color 120ms ease;
+  /* Padding lives on the grip/label/actions children, not this row, so the
+     grip's own hit box stays flush with the card's edge (same reasoning as
+     item-list.module.css's identical `.row`). */
+  padding-right: 12px;
+}
+
+.card:hover {
+  background-color: #262626;
+}
+
+.cardDragging {
+  opacity: 0;
+}
+
+.grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: stretch;
+  padding: 10px 8px 10px 12px;
+  color: #a3a3a3;
+  cursor: grab;
+  touch-action: none;
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  flex-shrink: 0;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.card:hover .actions,
+.card:focus-within .actions {
+  opacity: 1;
+}
+
+.emptyState {
+  padding: 16px;
+  font-size: 13px;
+  color: #a3a3a3;
+  text-align: center;
+}

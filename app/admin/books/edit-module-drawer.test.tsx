@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   EditModuleDrawer,
@@ -92,10 +92,42 @@ async function findDrawerDialog(name: string): Promise<HTMLElement> {
   return screen.findByRole("dialog", { name });
 }
 
+// dnd-kit's collision detection/keyboard coordinate getter is driven by real
+// element geometry, which jsdom always reports as a zeroed-out rect --
+// ported from lessons-panel.test.tsx's/lessons-drawer-list.test.tsx's
+// identical helper, keyed off the Lessons drawer's own card testid.
+function stubLessonCardRects(order: string[], itemHeight = 60) {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const container = this.closest('[data-testid^="lessons-drawer-card-"]');
+      const id = container
+        ?.getAttribute("data-testid")
+        ?.replace("lessons-drawer-card-", "");
+      const index = id ? order.indexOf(id) : -1;
+      const top = index === -1 ? 0 : index * itemHeight;
+      return {
+        top,
+        bottom: top + itemHeight,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: itemHeight,
+        x: 0,
+        y: top,
+        toJSON() {},
+      } as DOMRect;
+    },
+  );
+}
+
 describe("EditModuleDrawer", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     mockFetch();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders nothing when state is null", () => {
@@ -368,7 +400,15 @@ describe("EditModuleDrawer", () => {
     expect(lessonsButton.querySelector("svg")).toBeInTheDocument();
   });
 
-  it("clicking Lessons opens an empty nested drawer above the Module editor, which stays mounted underneath it", async () => {
+  it("clicking Lessons opens a nested drawer above the Module editor, which stays mounted underneath it", async () => {
+    mockFetch({
+      lessons: [
+        buildLessonFixture({
+          id: "lesson-1",
+          title: { ar: "الدرس الأول", en: "" },
+        }),
+      ],
+    });
     renderDrawer();
     const moduleDialog = await findDrawerDialog("Edit Module");
 
@@ -378,6 +418,9 @@ describe("EditModuleDrawer", () => {
 
     const lessonsDialog = await findDrawerDialog("Lessons");
     expect(lessonsDialog).toBeInTheDocument();
+    expect(
+      await within(lessonsDialog).findByText("الدرس الأول"),
+    ).toBeInTheDocument();
     // The Module editor is still mounted underneath, fields intact.
     expect(
       screen.getByRole("dialog", { name: "Edit Module" }),
@@ -434,5 +477,326 @@ describe("EditModuleDrawer", () => {
       screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
     ).not.toBeInTheDocument();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // ANA-124: the nested Lessons drawer's real content (list/sort/save),
+  // replacing ANA-123's `{null}` placeholder.
+  describe("Lessons drawer content (ANA-124)", () => {
+    const LESSONS: Lesson[] = [
+      buildLessonFixture({
+        id: "lesson-1",
+        title: { ar: "الدرس الأول", en: "" },
+        position: 0,
+      }),
+      buildLessonFixture({
+        id: "lesson-2",
+        title: { ar: "الدرس الثاني", en: "" },
+        position: 1,
+      }),
+    ];
+
+    async function openLessonsDrawer() {
+      const moduleDialog = await findDrawerDialog("Edit Module");
+      fireEvent.click(
+        within(moduleDialog).getByRole("button", { name: "Lessons" }),
+      );
+      const lessonsDialog = await findDrawerDialog("Lessons");
+      await within(lessonsDialog).findByText("الدرس الأول");
+      return { moduleDialog, lessonsDialog };
+    }
+
+    async function reorderLessons() {
+      stubLessonCardRects(["lesson-1", "lesson-2"]);
+      const grip = screen
+        .getByTestId("lessons-drawer-card-lesson-2")
+        .querySelector('[aria-hidden="true"]') as HTMLElement;
+      grip.focus();
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.keyDown(grip, { code: "ArrowUp", key: "ArrowUp" });
+      fireEvent.keyDown(grip, { code: "Space", key: " " });
+    }
+
+    it("header has Lessons title, a Back action, and New Lesson on the right -- no separate list header", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      expect(
+        within(lessonsDialog).getByRole("button", { name: "Back" }),
+      ).toBeInTheDocument();
+      expect(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      ).toBeInTheDocument();
+      // No second "Lessons" title/count subtitle from a duplicated list
+      // header -- the drawer's own header (matched by `lessonsDialog`'s
+      // accessible name above) is the only one.
+      expect(
+        within(lessonsDialog).queryByText("2 lessons"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders Lessons as minimal cards, not the ItemList-based panel", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      expect(
+        within(lessonsDialog).getByTestId("lessons-drawer-card-lesson-1"),
+      ).toBeInTheDocument();
+      expect(
+        within(lessonsDialog).getByTestId("lessons-drawer-card-lesson-2"),
+      ).toBeInTheDocument();
+      // ItemList's own row testid convention -- proves this isn't it.
+      expect(
+        within(lessonsDialog).queryByTestId("list-item-lesson-1"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("each card has a drag handle, Edit, and Delete", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      const card = within(lessonsDialog).getByTestId(
+        "lessons-drawer-card-lesson-1",
+      );
+      expect(card.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+      expect(
+        within(lessonsDialog).getByRole("button", {
+          name: "Edit الدرس الأول",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(lessonsDialog).getByRole("button", {
+          name: "Delete الدرس الأول",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("dragging a card only updates the local order -- no network request", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      await openLessonsDrawer();
+
+      await reorderLessons();
+
+      await vi.waitFor(() => {
+        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+        expect(cards.map((card) => card.getAttribute("data-testid"))).toEqual([
+          "lessons-drawer-card-lesson-2",
+          "lessons-drawer-card-lesson-1",
+        ]);
+      });
+      expect(fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining("/modules/module-1"),
+        expect.anything(),
+      );
+    });
+
+    it("Save changes persists the reordered Lesson ids through the existing Module save path", async () => {
+      mockFetch({ lessons: LESSONS });
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderDrawer({ onSave });
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      await reorderLessons();
+      await vi.waitFor(() => {
+        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+        expect(cards[0].getAttribute("data-testid")).toBe(
+          "lessons-drawer-card-lesson-2",
+        );
+      });
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith(
+          "module-1",
+          expect.objectContaining({ title: { ar: "المقدمة", en: "" } }),
+          ["lesson-2", "lesson-1"],
+        ),
+      );
+      // Closes only the Lessons drawer, revealing the still-open Module
+      // drawer underneath -- not the whole editor.
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.getByRole("dialog", { name: "Edit Module" }),
+      ).toBeInTheDocument();
+    });
+
+    it("Cancel is gated behind a discard confirmation once the order has been reordered, and confirming discards it", async () => {
+      mockFetch({ lessons: LESSONS });
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderDrawer({ onSave });
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      await reorderLessons();
+      await vi.waitFor(() => {
+        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+        expect(cards[0].getAttribute("data-testid")).toBe(
+          "lessons-drawer-card-lesson-2",
+        );
+      });
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "Cancel" }),
+      );
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      // Reopening the Lessons drawer shows the original, un-reordered list.
+      await openLessonsDrawer();
+      const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+      expect(cards.map((card) => card.getAttribute("data-testid"))).toEqual([
+        "lessons-drawer-card-lesson-1",
+        "lessons-drawer-card-lesson-2",
+      ]);
+    });
+
+    it("Cancel closes directly, without confirmation, when the order was never touched", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "Cancel" }),
+      );
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.getByRole("dialog", { name: "Edit Module" }),
+      ).toBeInTheDocument();
+    });
+
+    it("Back and Escape are gated behind the same discard confirmation as Cancel once the order has been reordered", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      await reorderLessons();
+      await vi.waitFor(() => {
+        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+        expect(cards[0].getAttribute("data-testid")).toBe(
+          "lessons-drawer-card-lesson-2",
+        );
+      });
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "Back" }),
+      );
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+      fireEvent.keyDown(lessonsDialog, { key: "Escape", code: "Escape" });
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("New Lesson wires the existing New Lesson behavior and hides the Lessons drawer so the Module drawer's Lesson editor is visible", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        within(screen.getByRole("dialog", { name: "Edit Module" })).getByRole(
+          "heading",
+          { name: "New Lesson" },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("Edit wires the existing Edit Lesson behavior and hides the Lessons drawer", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", {
+          name: "Edit الدرس الأول",
+        }),
+      );
+
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        within(screen.getByRole("dialog", { name: "Edit Module" })).getByRole(
+          "heading",
+          { name: "Edit Lesson" },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("closing the Lessons drawer (clean) reveals the unchanged Module editor drawer and does not mark it dirty", async () => {
+      const onClose = vi.fn();
+      mockFetch({ lessons: LESSONS });
+      renderDrawer({ onClose });
+      const { moduleDialog, lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "Back" }),
+      );
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      expect(within(moduleDialog).getByLabelText("Title")).toHaveValue(
+        "المقدمة",
+      );
+      fireEvent.click(
+        within(moduleDialog).getByRole("button", { name: "Cancel" }),
+      );
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
   });
 });

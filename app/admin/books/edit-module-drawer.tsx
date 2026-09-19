@@ -44,11 +44,6 @@ export interface EditModuleDrawerProps {
 // `EditModuleModal`'s own edit-mode width already uses for its 1040px cap.
 const DRAWER_WIDTH = "min(560px, 100vw)";
 
-// The nested Lessons drawer (ANA-123) is a placeholder only -- no Lessons
-// list/editor lives here yet (ANA-124) -- so it gets its own, narrower
-// width rather than matching the Module editor's.
-const LESSONS_DRAWER_WIDTH = "min(420px, 100vw)";
-
 // Right-side drawer (ANA-121) opened from the Edit Book screen's Modules
 // panel for the pencil action -- replaces the Edit Module modal for editing
 // an existing Module only; Add Module is unaffected and still opens that
@@ -66,17 +61,22 @@ const LESSONS_DRAWER_WIDTH = "min(420px, 100vw)";
 // changes actions render via `DrawerFooter`, once `layout="narrow"` (see
 // that component's own `isNarrow` branches).
 //
-// `ModuleEditorBody` no longer renders a Lessons list/editor for this
+// `ModuleEditorBody` no longer renders a Lessons list/editor inline for this
 // `layout="narrow"` container (ANA-123 -- see its own `isNarrow` branch):
 // that's replaced here by a Lessons header action that opens a second,
 // nested `DrawerShell` stacked above this one via a shared Mantine
 // `Drawer.Stack`, per `stackId` (ANA-122's own stacking support -- see
 // `drawer-shell.tsx`'s `Stacked` story/tests for the exact mechanics this
-// reuses). The nested drawer is an intentionally empty placeholder for now
-// (ANA-124 implements the real Lessons list inside it); this only
-// establishes the container/navigation shape. Opening/closing it is local
+// reuses). This component only owns the *open/closed* flag for that nested
+// drawer (`lessonsDrawerOpened`, a plain navigation flag) -- its real
+// content, dirty-state, and Save/Cancel (ANA-124) are rendered by
+// `ModuleEditorBody` itself, which is where the Lessons data/handlers this
+// drawer needs already live (see that component's own `isNarrow` Lessons-
+// drawer JSX). `Drawer.Stack`'s context reaches it fine despite it being
+// mounted several components deeper than this file's own `<Drawer.Stack>`
+// -- React context, not DOM adjacency. Opening/closing this flag is local
 // UI state, entirely separate from `ModuleEditorBody`'s own dirty tracking,
-// so it never marks the Module editor dirty.
+// so it never marks the Module editor dirty by itself.
 export function EditModuleDrawer({
   state,
   book,
@@ -140,19 +140,10 @@ export function EditModuleDrawer({
             onSave={onSave}
             requestCloseRef={requestCloseRef}
             layout="narrow"
+            lessonsDrawerOpened={lessonsDrawerOpened}
+            onLessonsDrawerClose={() => setLessonsDrawerOpened(false)}
           />
         )}
-      </DrawerShell>
-
-      <DrawerShell
-        opened={lessonsDrawerOpened}
-        title="Lessons"
-        onClose={() => setLessonsDrawerOpened(false)}
-        onBack={() => setLessonsDrawerOpened(false)}
-        size={LESSONS_DRAWER_WIDTH}
-        stackId="lessons"
-      >
-        {null}
       </DrawerShell>
     </Drawer.Stack>
   );
