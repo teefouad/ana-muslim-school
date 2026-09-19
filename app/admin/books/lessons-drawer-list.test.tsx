@@ -131,6 +131,15 @@ describe("LessonsDrawerList", () => {
     expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
   });
 
+  it("calls onEditLesson when a card is double-clicked (ANA-129, matching ModulesPanel/LessonsPanel)", () => {
+    const onEditLesson = vi.fn();
+    renderList({ onEditLesson });
+
+    fireEvent.doubleClick(screen.getByText("Introduction"));
+
+    expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
+  });
+
   it("reorders via the keyboard, updating only the local order (no network request)", async () => {
     const onReorder = vi.fn();
     renderList({ onReorder });

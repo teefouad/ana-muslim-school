@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type MutableRefObject } from "react";
-import { Alert, Button, getDefaultZIndex, Group, Stack } from "@mantine/core";
+import { Alert, getDefaultZIndex, Group, Stack } from "@mantine/core";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DrawerFooter } from "@/components/ui/drawer-shell";
+import { SaveButton } from "@/components/ui/save-button";
 import {
   isSameTranslatedValue,
   type TranslatedValue,
@@ -348,14 +349,15 @@ export function LessonEditor({
   );
 
   const saveButton = (
-    <Button
+    <SaveButton
+      dirty={isDirty}
       onClick={() => void handleSave()}
       loading={isSaving}
       disabled={aiBusy || questionsInvalid}
       style={{ alignSelf: "flex-end" }}
     >
       Save changes
-    </Button>
+    </SaveButton>
   );
 
   return (

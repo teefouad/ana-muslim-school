@@ -19,6 +19,7 @@ import { ColorField } from "@/components/ui/color-field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DrawerFooter, DrawerShell } from "@/components/ui/drawer-shell";
 import { FormField } from "@/components/ui/form-field";
+import { SaveButton } from "@/components/ui/save-button";
 import { ToggleCard } from "@/components/ui/toggle-card";
 import {
   isSameTranslatedValue,
@@ -940,13 +941,14 @@ export function ModuleEditorBody({
       >
         Cancel
       </Button>
-      <Button
+      <SaveButton
+        dirty={isDirty}
         onClick={() => void handlePrimaryAction()}
         loading={isSaving}
         disabled={aiBusy}
       >
         {state.mode === "create" ? "Save Module" : "Save changes"}
-      </Button>
+      </SaveButton>
     </Group>
   );
 

@@ -214,18 +214,17 @@ function setupFetch(
   );
 }
 
-// The custom "Edit Module"/"Add Module" `<Title>` `ModuleEditorBody` renders
-// (ANA-121: shared between the Edit Module modal and drawer, see
-// ../../module-editor-body.tsx) is absolutely positioned over its
-// container's own header rather than passed through as Mantine's `title`
-// prop, so its `role="dialog"` element never gets an `aria-labelledby`
-// Testing Library could match a `name` against (this is pre-existing, true
-// of both the modal's create *and* edit modes, not something ANA-121
-// introduced). Locating it through the heading itself (a real `<h1>`, whose
-// accessible name *does* come from its content) and walking up to its
-// nearest `[role="dialog"]` ancestor sidesteps that gap instead of relying
-// on it. Used for both the Add Module modal and the Edit Module drawer --
-// which container is expected is purely a function of `name`.
+// Both Add Module and Edit Module open the same `EditModuleDrawer` (ANA-129
+// unified Add Module onto it too -- previously only Edit did, ANA-121), so
+// this locates the drawer's own real `<h2>` (`DrawerShell`'s `Drawer.Title`,
+// which Mantine links via `aria-labelledby` automatically) and walks up to
+// its nearest `[role="dialog"]` ancestor -- which container is expected is
+// purely a function of `name`. Kept as a heading-walk (rather than matching
+// the dialog's own accessible name directly) mainly for parity with the
+// still-intact, separately-tested `EditModuleModal` (edit-module-modal.tsx,
+// unreachable from this page since ANA-129 but exercised in its own test
+// file), whose fixed-position `<Title>` hack has no `aria-labelledby` of its
+// own to match against.
 async function findModuleEditorDialog(
   name: "Edit Module" | "Add Module" = "Edit Module",
 ): Promise<HTMLElement> {
@@ -629,7 +628,7 @@ describe("EditBookPage", () => {
       expect(screen.queryByText("Summary")).not.toBeInTheDocument();
     });
 
-    it("opens the Add Module modal instead of inserting a blank Module directly (ANA-94)", async () => {
+    it("opens the Add Module drawer instead of inserting a blank Module directly (ANA-94)", async () => {
       setupFetch(buildBookFixture(), { modules: [] });
       renderPage();
 
@@ -638,7 +637,7 @@ describe("EditBookPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Add module" }));
 
       expect(await findModuleEditorDialog("Add Module")).toBeInTheDocument();
-      // Nothing is added to the list merely by opening the modal -- only a
+      // Nothing is added to the list merely by opening the drawer -- only a
       // successful create does that (see the "Create Module" describe
       // below).
       expect(screen.getByText("0 modules")).toBeInTheDocument();
@@ -1267,7 +1266,7 @@ describe("EditBookPage", () => {
     });
 
     describe("Create Module (ANA-94)", () => {
-      it("opens the Add Module modal blank, with the default color", async () => {
+      it("opens the Add Module drawer blank, with the default color", async () => {
         setupFetch(buildBookFixture(), { modules: [] });
         renderPage();
 
@@ -1372,7 +1371,7 @@ describe("EditBookPage", () => {
         );
       });
 
-      it("keeps the modal open and shows the error when creation fails, adding nothing to the list", async () => {
+      it("keeps the drawer open and shows the error when creation fails, adding nothing to the list", async () => {
         setupFetch(buildBookFixture(), {
           modules: [],
           onCreateModule: () => ({

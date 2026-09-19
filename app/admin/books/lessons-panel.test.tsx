@@ -142,13 +142,14 @@ describe("LessonsPanel", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("a double click on a row does not call onEditLesson either (ANA-115 PR review: Edit is the only entry point)", () => {
+  it("calls onEditLesson with the double-clicked lesson (ANA-129, matching ModulesPanel's own double-click)", () => {
     const onEditLesson = vi.fn();
     renderPanel({ onEditLesson });
 
     fireEvent.doubleClick(screen.getByText("Introduction"));
 
-    expect(onEditLesson).not.toHaveBeenCalled();
+    expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("reorders via the keyboard and reports the new order through onLessonsChange, without a network request", async () => {

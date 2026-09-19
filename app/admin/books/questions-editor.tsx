@@ -15,10 +15,12 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { Box, Group, Paper, Text } from "@mantine/core";
+import { Box, getDefaultZIndex, Group, Paper, Text } from "@mantine/core";
 
 import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DashedEmptyState } from "@/components/ui/dashed-empty-state";
+import { ListHeaderAction } from "@/components/ui/list-header-action";
 import { SortableList } from "@/components/ui/sortable-list";
 import type { Question } from "@/lib/questions/types";
 import {
@@ -32,7 +34,6 @@ import {
   QuestionBankPicker,
   type QuestionBankCandidate,
 } from "./question-bank-picker";
-import styles from "./questions-editor.module.css";
 import { QuestionTextEditor } from "./question-text-editor";
 
 function questionSummary(entry: QuestionFieldEntry): string {
@@ -373,38 +374,29 @@ export function QuestionsEditor({
           Questions
         </Text>
         <Group gap="md">
-          <button type="button" className={styles.action} onClick={handleAdd}>
-            <Plus size={14} aria-hidden="true" />
+          <ListHeaderAction
+            icon={<Plus size={14} aria-hidden="true" />}
+            onClick={handleAdd}
+          >
             New
-          </button>
-          <button
-            type="button"
-            className={styles.action}
+          </ListHeaderAction>
+          <ListHeaderAction
+            icon={<ListPlus size={14} aria-hidden="true" />}
             onClick={() => setPickerOpen(true)}
           >
-            <ListPlus size={14} aria-hidden="true" />
             Insert
-          </button>
-          <button type="button" className={styles.action} disabled>
-            <Sparkles size={14} aria-hidden="true" />
+          </ListHeaderAction>
+          <ListHeaderAction
+            icon={<Sparkles size={14} aria-hidden="true" />}
+            disabled
+          >
             Generate
-          </button>
+          </ListHeaderAction>
         </Group>
       </Group>
 
       {questions.length === 0 ? (
-        <Box
-          style={{
-            border: "1px dashed var(--mantine-color-default-border)",
-            borderRadius: "var(--mantine-radius-md)",
-            padding: "var(--mantine-spacing-lg)",
-            textAlign: "center",
-          }}
-        >
-          <Text size="sm" c="dimmed">
-            No questions yet.
-          </Text>
-        </Box>
+        <DashedEmptyState>No questions yet.</DashedEmptyState>
       ) : (
         <SortableList<QuestionFieldEntry>
           items={questions}
@@ -456,6 +448,11 @@ export function QuestionsEditor({
             );
             setPendingDeleteKey(null);
           }}
+          // This editor renders inside the Lesson editor, which can be a
+          // *stacked* DrawerShell (the nested Lesson editor drawer,
+          // ANA-129) -- see module-editor-body.tsx's identical override for
+          // why the default modal tier isn't enough there.
+          zIndex={getDefaultZIndex("popover")}
         />
       )}
 

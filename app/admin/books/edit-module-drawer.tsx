@@ -6,21 +6,18 @@ import { Pencil } from "lucide-react";
 
 import { DrawerShell } from "@/components/ui/drawer-shell";
 import type { Book } from "@/lib/books/types";
-import { ModuleEditorBody } from "./module-editor-body";
+import { ModuleEditorBody, type ModuleEditorState } from "./module-editor-body";
 import type { ModuleFieldsValues } from "./module-fields";
 
-/** `null` closes the drawer; otherwise the existing Module being edited --
- * its `id` and current field values, read fresh by the caller the same way
- * `EditModuleModal`'s own `"edit"` state is (see `[id]/edit/page.tsx`'s
- * `getModuleFields`). Unlike `EditModuleModalState`, there's no `"create"`
- * variant here (ANA-121): Add Module stays on the existing modal -- this
- * drawer is scoped to editing an existing Module only, so its own public
- * state type never needs to carry a create-mode branch its container would
- * otherwise have to plumb through unused. */
-export type EditModuleDrawerState = {
-  id: string;
-  fields: ModuleFieldsValues;
-} | null;
+/** `null` closes the drawer; otherwise which Module editing session is open
+ * -- `"create"` (ANA-129: Add Module now opens this drawer instead of the
+ * Edit Module modal, for consistency with the pencil action's existing
+ * drawer flow) or the existing Module being edited, its `id` and current
+ * field values read fresh by the caller the same way `EditModuleModal`'s
+ * own `"edit"` state is (see `[id]/edit/page.tsx`'s `getModuleFields`).
+ * Reuses `ModuleEditorBody`'s own state union directly rather than
+ * redefining an equivalent one. */
+export type EditModuleDrawerState = ModuleEditorState | null;
 
 export interface EditModuleDrawerProps {
   state: EditModuleDrawerState;
@@ -28,6 +25,12 @@ export interface EditModuleDrawerProps {
    * `EditModuleModalProps.book`'s identical doc. */
   book: Book;
   onClose: () => void;
+  /** Called with the drawer's current field values when Save Module is
+   * clicked in create mode (ANA-129) -- same awaited resolve/reject
+   * contract as `EditModuleModal`'s own `onCreate`. Optional, mirroring
+   * `ModuleEditorBody`'s own optional `onCreate`, for a caller/test that
+   * only ever opens this drawer in edit mode. */
+  onCreate?: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the drawer's current field values when Save changes is
    * clicked -- same awaited resolve/reject contract as `EditModuleModal`'s
    * own `onSave`. */
@@ -45,14 +48,18 @@ export interface EditModuleDrawerProps {
 const DRAWER_WIDTH = "min(560px, 100vw)";
 
 // Right-side drawer (ANA-121) opened from the Edit Book screen's Modules
-// panel for the pencil action -- replaces the Edit Module modal for editing
-// an existing Module only; Add Module is unaffected and still opens that
-// modal in create mode. Renders the exact same Module-editing experience as
-// the modal's own edit mode through the shared `ModuleEditorBody`
-// (`module-editor-body.tsx`) -- same fields, AI actions, validation, loading
-// states, save behavior, discard protection, and backend integration --
-// just inside a different container, with `layout="narrow"`. The modal
-// component itself (`edit-module-modal.tsx`) is left completely intact.
+// panel for both the pencil action (edit mode) and, since ANA-129, Add
+// Module (create mode) -- the Edit Module modal (`edit-module-modal.tsx`)
+// is no longer opened from that page for either; it's left otherwise
+// completely intact (component, tests, and stories all still exercise it
+// directly) purely so a future consumer isn't blocked from reaching for it,
+// the same "kept fully intact, nothing currently opens it that way"
+// treatment its own `"edit"` mode already got at ANA-121. Renders the exact
+// same Module-editing experience as the modal through the shared
+// `ModuleEditorBody` (`module-editor-body.tsx`) -- same fields, AI actions,
+// validation, loading states, save behavior, discard protection, and
+// backend integration -- just inside a different container, with
+// `layout="narrow"`.
 //
 // The drawer's own chrome (header/footer) is the shared `DrawerShell`
 // (ANA-122) -- its "Edit Module" title and back button replace the fixed-
@@ -83,6 +90,7 @@ export function EditModuleDrawer({
   state,
   book,
   onClose,
+  onCreate,
   onSave,
 }: EditModuleDrawerProps) {
   // Same Modal/Drawer-dismiss bridge as `EditModuleModal` -- see that
@@ -133,40 +141,45 @@ export function EditModuleDrawer({
     <Drawer.Stack>
       <DrawerShell
         opened={state !== null}
-        title="Edit Module"
+        title={renderedState?.mode === "create" ? "Add Module" : "Edit Module"}
         onClose={() => requestCloseRef.current()}
         size={DRAWER_WIDTH}
         stackId="module"
+        // Only edit mode has any Lessons to manage -- create mode has no
+        // Module id yet to load them for (ANA-129, matching
+        // ModuleEditorBody's own "create mode never shows a Lessons list at
+        // all", module-editor-body.tsx).
         headerActions={
-          // Same primary/filled styling as ModuleEditorBody's own Save
-          // changes button (no `variant`, both fall back to Mantine's
-          // default "filled" -- themed green via `--mantine-primary-color-
-          // filled` in globals.css). Mantine's own Button styles don't
-          // transition `background-color` on hover at all (PR review --
-          // confirmed empirically, unlike NavLink/Table's own explicit
-          // 150ms transitions in theme.ts), so the hover snaps instantly;
-          // this adds that same 150ms ease here to match.
-          <Button
-            leftSection={<Pencil size={16} aria-hidden="true" />}
-            onClick={() => setLessonsDrawerOpened(true)}
-            style={{ transition: "background-color 150ms ease" }}
-          >
-            Lessons
-          </Button>
+          renderedState?.mode === "edit" ? (
+            // Same primary/filled styling as ModuleEditorBody's own Save
+            // changes button (no `variant`, both fall back to Mantine's
+            // default "filled" -- themed green via `--mantine-primary-color-
+            // filled` in globals.css). Mantine's own Button styles don't
+            // transition `background-color` on hover at all (PR review --
+            // confirmed empirically, unlike NavLink/Table's own explicit
+            // 150ms transitions in theme.ts), so the hover snaps instantly;
+            // this adds that same 150ms ease here to match.
+            <Button
+              leftSection={<Pencil size={16} aria-hidden="true" />}
+              onClick={() => setLessonsDrawerOpened(true)}
+              style={{ transition: "background-color 150ms ease" }}
+            >
+              Lessons
+            </Button>
+          ) : undefined
         }
       >
         {renderedState && (
           <ModuleEditorBody
-            // Remounts (a fresh local draft) per distinct edit target --
-            // matching `EditModuleModal`'s own per-target remount.
-            key={renderedState.id}
-            state={{
-              mode: "edit",
-              id: renderedState.id,
-              fields: renderedState.fields,
-            }}
+            // Remounts (a fresh local draft) per distinct edit target, and
+            // whenever create mode is (re-)entered after a different state
+            // (ANA-129) -- matching `EditModuleModal`'s own identical
+            // per-target/per-mode remount.
+            key={renderedState.mode === "create" ? "create" : renderedState.id}
+            state={renderedState}
             book={book}
             onClose={handleClose}
+            onCreate={onCreate}
             onSave={onSave}
             requestCloseRef={requestCloseRef}
             layout="narrow"

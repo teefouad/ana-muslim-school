@@ -88,6 +88,10 @@ function LessonCard({
         .filter(Boolean)
         .join(" ")}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      // Double-clicking a card opens the Lesson editor, same as its own
+      // Edit action (ANA-129) -- matching ModulesPanel's/LessonsPanel's
+      // identical double-click (modules-panel.tsx/lessons-panel.tsx).
+      onDoubleClick={onEdit}
     >
       <span
         className={styles.grip}

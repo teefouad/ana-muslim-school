@@ -64,3 +64,30 @@
 .mantine-Fieldset-legend {
   padding-inline: 5px;
 }
+
+/* Every disabled Button already swaps to Mantine's own neutral
+   --mantine-color-disabled/-color tokens instead of its own color/variant
+   styling, but that alone reads as barely different from an ordinary,
+   unhovered button against this admin's own very dark surfaces (ANA-129:
+   the Generate action in the Questions list "looks misleading when
+   disabled"). Layering a lower opacity on top -- rather than only the
+   color swap -- makes the disabled state obvious regardless of which
+   color/variant a given button otherwise uses. A real CSS rule, not
+   Mantine's `styles` theme option (lib/mantine/theme.ts): that option only
+   ever produces an inline `style` object (see Mantine's own `useStyles`),
+   which can't express a `:disabled`/`[data-disabled]` pseudo-selector --
+   this file is already the established place for that (see the Modal/
+   Fieldset overrides above). `:not([data-loading])` matches Mantine's own
+   identical exclusion for its disabled-state color swap (Button's compiled
+   CSS) -- Button's `disabled` DOM attribute is also true while merely
+   `loading` (Button.mjs: `disabled: disabled || loading`), and a Save
+   button that's actively submitting must stay at full opacity, not read as
+   inertly disabled. `ActionIcon` needs no equivalent rule -- every
+   icon-only action button in this admin already goes through the shared
+   `ActionIconButton` (components/ui/action-icon-button.tsx), which applies
+   its own deliberate disabled treatment (transparent background, dimmed
+   icon; see that component's own doc). */
+.mantine-Button-root:disabled:not([data-loading]),
+.mantine-Button-root[data-disabled]:not([data-loading]) {
+  opacity: 0.5;
+}

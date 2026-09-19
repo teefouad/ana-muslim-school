@@ -25,7 +25,6 @@ import {
   type BookFormValues,
 } from "../../book-form";
 import { EditModuleDrawer } from "../../edit-module-drawer";
-import { EditModuleModal } from "../../edit-module-modal";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
 import {
@@ -47,6 +46,7 @@ import {
   type ModuleFieldsValues,
 } from "../../module-fields";
 import { ModulesPanel } from "../../modules-panel";
+import { SaveButton } from "@/components/ui/save-button";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import type { Material } from "@/lib/materials/types";
@@ -219,6 +219,14 @@ export default function EditBookPage() {
   const [modalTarget, setModalTarget] = useState<ModuleModalTarget | null>(
     null,
   );
+  // Reported by BookForm's own `onDirtyChange` (ANA-129) -- whether its
+  // fields have diverged from the Book they were seeded with. Combined
+  // with `moduleOrderDraft` below (a pending Modules reorder is exactly as
+  // much unsaved work, and Save changes persists both in the same request,
+  // see `handleSubmit`) into the one `isDirty` this page's Save changes
+  // button reflects.
+  const [isBookFormDirty, setIsBookFormDirty] = useState(false);
+  const isDirty = isBookFormDirty || moduleOrderDraft !== null;
   // Retry-safety for Create Module's two-step Module-then-Material create
   // (ANA-94 PR review): once the Module itself has been created, its real
   // id is remembered here so a retried Save Module (after a Material-
@@ -511,14 +519,15 @@ export default function EditBookPage() {
               Module Builder
             </Button>
           )}
-          <Button
+          <SaveButton
+            dirty={isDirty}
             type="submit"
             form={BOOK_FORM_ID}
             disabled={!book}
             loading={isSubmitting}
           >
             Save changes
-          </Button>
+          </SaveButton>
         </Group>
       </Group>
       <Divider opacity={0.25} mx={-27} />
@@ -559,6 +568,7 @@ export default function EditBookPage() {
               id={BOOK_FORM_ID}
               initialValues={toBookFormValues(book)}
               onSubmit={handleSubmit}
+              onDirtyChange={setIsBookFormDirty}
             />
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
@@ -612,33 +622,29 @@ export default function EditBookPage() {
       )}
 
       {book && (
-        // Add Module only (ANA-121) -- editing an existing Module now opens
-        // the drawer below instead; this modal's own "edit" mode is never
-        // reached from here anymore, but is left fully intact (see
-        // edit-module-modal.tsx).
-        <EditModuleModal
-          state={modalTarget?.mode === "create" ? { mode: "create" } : null}
-          book={book}
-          onClose={() => setModalTarget(null)}
-          onCreate={handleCreateModule}
-          onSave={handleSaveModule}
-        />
-      )}
-
-      {book && (
-        // Edit Module (ANA-121): the pencil action opens this right-side
-        // drawer instead of the Edit Module modal above -- same fields, AI
-        // actions, validation, Lesson list/editor, and save/discard
-        // behavior, via the same `ModuleEditorBody` the modal's own edit
-        // mode renders (see edit-module-drawer.tsx).
+        // Add Module and Edit Module both open this right-side drawer
+        // (ANA-129 unifies Add Module onto it too, for consistency with the
+        // pencil action's existing drawer flow -- previously only Edit
+        // opened the drawer, Add Module opened the separate Edit Module
+        // modal, edit-module-modal.tsx) -- same fields, AI actions,
+        // validation, Lesson list/editor, and save/discard behavior, via
+        // the same `ModuleEditorBody` that modal renders (see
+        // edit-module-drawer.tsx).
         <EditModuleDrawer
           state={
-            modalTarget?.mode === "edit"
-              ? { id: modalTarget.id, fields: getModuleFields(modalTarget.id) }
-              : null
+            modalTarget?.mode === "create"
+              ? { mode: "create" }
+              : modalTarget?.mode === "edit"
+                ? {
+                    mode: "edit",
+                    id: modalTarget.id,
+                    fields: getModuleFields(modalTarget.id),
+                  }
+                : null
           }
           book={book}
           onClose={() => setModalTarget(null)}
+          onCreate={handleCreateModule}
           onSave={handleSaveModule}
         />
       )}
