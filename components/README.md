@@ -165,9 +165,36 @@ nearest ancestor `DrawerShell`'s footer region instead -- see
 `module-editor-body.tsx`'s `isNarrow` footer wiring for the real usage this
 supports. `DrawerShell` keeps no state of its own beyond one instance's own
 footer-portal target, so nothing prevents two instances being mounted and
-`opened` at once (see this file's own `Stacked` story) -- a later, real
-nested Module -> Lesson drawer flow isn't implemented yet, but the shared
-component doesn't block that shape when it is.
+`opened` at once with no extra wiring.
+
+Real nested-drawer stacking (PR review, ANA-122) -- a parent staying open/
+mounted underneath a child, with only the topmost one responding to
+Escape/outside-click and showing its own overlay -- is opt-in via the
+`stackId` prop: wrap the parent and child `DrawerShell`s in a shared
+Mantine `Drawer.Stack` (re-exported from `@mantine/core`), give each its
+own `stackId`, and `DrawerShell` reads that `Drawer.Stack`'s context itself
+to scope `closeOnEscape`/`trapFocus`/the overlay's own visibility to
+whichever `stackId` is currently topmost -- the same rule Mantine's own
+stacked modals/drawers use, since the compound `Drawer.Root` API this
+component is built on (unlike the `<Drawer>` shorthand) doesn't do this
+automatically. See this file's own `Stacked` story and
+`drawer-shell.test.tsx`'s stacking `describe` block for the exact
+behavior. A standalone `DrawerShell` that omits `stackId` is completely
+unaffected -- every prop this adds is left at `Drawer.Root`'s own regular
+default in that case. A production nested Module -> Lesson drawer flow
+still isn't implemented yet; this only establishes that the shared
+component itself supports that shape when one is built.
+
+One implementation note for a future change here: `Drawer.Stack`'s own
+context value is a new object every time its internal `stack`/`maxZIndex`
+state changes -- including as a _result_ of a `DrawerShell`'s own
+`addModal`/`removeModal` registration call. The registration effect's
+dependency array deliberately omits that context value (matching Mantine's
+own identical effect in its `<Drawer>` shorthand) -- including it re-runs
+the effect on every one of those re-renders too, calling `addModal`/
+`removeModal` again, producing another new context value, and so on: an
+infinite render loop (hit once during development, not merely a
+theoretical concern).
 
 ## Modal vs. Drawer presentation containers
 

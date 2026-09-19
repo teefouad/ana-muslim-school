@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { Button, Group, Stack, Text } from "@mantine/core";
+import { Button, Drawer, Group, Stack, Text } from "@mantine/core";
 
 import { DrawerFooter, DrawerShell } from "./drawer-shell";
 
@@ -90,25 +90,25 @@ export const FooterPortal: Story = {
   },
 };
 
-// Verifies the shared component doesn't assume there can only be one
-// drawer globally (ANA-122): two independent `DrawerShell`s, both mounted
-// and `opened` at once -- `DrawerShell` keeps no state of its own beyond
-// one instance's own footer-portal target, so nothing here needed any
-// extra wiring to let a second instance open without unmounting the first.
-// No production nested Module -> Lesson drawer flow is implemented yet
-// (out of scope for ANA-122); when it is, that's the point to reach for
-// Mantine's own `Drawer.Stack`/`stackId` so only the topmost drawer shows
-// its own overlay and responds to Escape, rather than both at once as this
-// simple example does.
+// Verifies the shared component supports Mantine's own real drawer-
+// stacking behavior (ANA-122 PR review) rather than merely letting two
+// independent `DrawerShell`s coexist: both wired into the same `stackId`-
+// bearing `Drawer.Stack`, both stay mounted/open at once, but only the
+// topmost (the child, opened after the parent) shows its own overlay and
+// responds to Escape/outside-click -- see drawer-shell.test.tsx's own
+// assertions of this same behavior. No production nested Module -> Lesson
+// drawer flow is implemented yet (out of scope for ANA-122); this only
+// shows the shared component itself already supports that shape.
 function StackedDemo() {
   const [parentOpened, setParentOpened] = useState(true);
   const [childOpened, setChildOpened] = useState(true);
 
   return (
-    <>
+    <Drawer.Stack>
       <DrawerShell
         opened={parentOpened}
         onClose={() => setParentOpened(false)}
+        stackId="parent"
         title="Edit Module"
         size="min(500px, 100vw)"
       >
@@ -122,15 +122,17 @@ function StackedDemo() {
         opened={childOpened}
         onClose={() => setChildOpened(false)}
         onBack={() => setChildOpened(false)}
+        stackId="child"
         title="Edit Lesson"
         size="min(420px, 100vw)"
       >
         <Text>
-          Backing out of this child drawer reveals the parent again, rather than
-          closing the whole stack.
+          Escape or an outside click here only ever dismisses this child drawer,
+          revealing the parent again -- the parent&apos;s own Escape/
+          outside-click handling only resumes once this child has closed.
         </Text>
       </DrawerShell>
-    </>
+    </Drawer.Stack>
   );
 }
 
