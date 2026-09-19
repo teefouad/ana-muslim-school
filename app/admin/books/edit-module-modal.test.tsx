@@ -1005,7 +1005,7 @@ describe("EditModuleModal", () => {
       expect(body).toEqual({
         title: { ar: "New lesson title", en: "" },
         description: { ar: "", en: "" },
-        type: "text",
+        type: "quiz",
         position: 2,
         isPublished: false,
         content: { ar: "", en: "" },

@@ -34,12 +34,11 @@ const LESSON_TYPE_LABELS: Record<LessonType, string> = {
 
 /** The Type control's own display order (ANA-126) -- Quiz, Final, Skip,
  * Break, Text, Video, deliberately separate from `LESSON_TYPES`
- * (lib/lessons/types.ts): that list's order is the canonical/validation
- * order, and `lesson-fields.ts`'s `createEmptyLessonFieldsValues` reads
- * `LESSON_TYPES[0]` as New Lesson's default type -- reordering it to start
- * with `"quiz"` would silently change that default from Text to Quiz, a
- * save-behavior change this task doesn't ask for. This list only ever
- * drives the `SegmentedControl`'s own option order below. */
+ * (lib/lessons/types.ts), which is the canonical/validation order and
+ * unrelated to display. New Lesson's default type (Quiz, ANA-127) is its
+ * own hardcoded value in `lesson-fields.ts`'s `createEmptyLessonFieldsValues`,
+ * not derived from this list. This list only ever drives the
+ * `SegmentedControl`'s own option order below. */
 const LESSON_TYPE_ORDER: LessonType[] = [
   "quiz",
   "final",
