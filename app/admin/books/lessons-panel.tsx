@@ -35,7 +35,10 @@ export interface LessonsPanelProps {
   className?: string;
 }
 
-function getLessonLabel(lesson: Lesson, index: number): string {
+/** Exported for reuse by the Lessons drawer's own minimal card list
+ * (`lessons-drawer-list.tsx`, ANA-124) -- same title-fallback rule, not a
+ * second implementation of it. */
+export function getLessonLabel(lesson: Lesson, index: number): string {
   return lesson.title.ar || lesson.title.en || `Lesson ${index + 1}`;
 }
 
