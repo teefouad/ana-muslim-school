@@ -14,8 +14,10 @@ import {
   Title,
 } from "@mantine/core";
 
+import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ColorField } from "@/components/ui/color-field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DrawerFooter } from "@/components/ui/drawer-shell";
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
 import {
@@ -845,70 +847,112 @@ export function ModuleEditorBody({
   // width has no room for a 300px Lessons column next to the Module form
   // regardless of the viewport's own `md` breakpoint, so `"narrow"` always
   // stacks the two instead. Nothing else here differs between the two.
+  // Module mode's Cancel/Save changes move into the shared drawer's own
+  // footer via `DrawerFooter` when this body is mounted inside one
+  // (`isNarrow`, ANA-122) instead of rendering inline here -- the drawer
+  // container itself never duplicates this dirty/save logic, it only
+  // supplies the fixed footer region `DrawerFooter` portals into. The modal
+  // (`isNarrow` false) keeps rendering it inline, exactly as before.
+  const moduleFormFooterSlot = isNarrow ? (
+    <DrawerFooter>{moduleFormFooter}</DrawerFooter>
+  ) : (
+    moduleFormFooter
+  );
+
+  // Lesson mode's own back-to-Module/title indicator (ANA-122): the wide/
+  // Modal layout keeps rendering this as part of the shared, fixed-pixel-
+  // positioned `Title` element further down (unchanged -- see its own
+  // `!isNarrow` gate), which the drawer no longer renders at all once it
+  // has its own real header (`DrawerShell`, always reading "Edit Module").
+  // The narrow/Drawer layout still needs *some* visible way to know Lesson
+  // mode is open and back out of it, so it gets its own small, ordinary
+  // in-flow heading instead -- not absolutely positioned, since there's no
+  // longer an empty header region to fake being sticky over. This is not a
+  // nested Module -> Lesson *drawer* (out of scope for ANA-122): it's the
+  // same single-drawer Lesson mode as before, just with its own title
+  // rendered differently for this one container.
+  const narrowLessonModeHeader = isNarrow && lessonEditorTarget && (
+    <Group gap={14}>
+      <ActionIconButton
+        aria-label="Back to Module"
+        onClick={() => setLessonEditorTarget(null)}
+        disabled={isSaving}
+      >
+        <ArrowLeft size={14} aria-hidden="true" />
+      </ActionIconButton>
+      <Title order={3} size={16}>
+        {lessonEditorTarget.lessonId === null ? "New Lesson" : "Edit Lesson"}
+      </Title>
+    </Group>
+  );
+
   const modeContent =
     state.mode === "create" ? (
       <Stack gap="lg">
         {moduleFormFields}
-        {moduleFormFooter}
+        {moduleFormFooterSlot}
       </Stack>
     ) : lessonEditorTarget ? (
-      <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
-        {questionsLoading ? (
-          // This Module's Questions (needed to seed an existing Lesson's
-          // `questions`, see lesson-fields.ts's `toLessonFieldsValues`)
-          // load alongside its Lessons and have almost always already
-          // resolved by the time Edit/New Lesson is clicked -- this only
-          // ever shows on a genuinely slow first load.
-          <Stack align="center" justify="center" h="100%">
-            <Loader />
-          </Stack>
-        ) : questionsUnavailable && lessonEditorTarget.lessonId !== null ? (
-          // Blocking (PR review): unlike a failed *background* refresh
-          // (handled below, non-blocking), a genuine first-load failure
-          // here means `moduleQuestions` is `[]` with no real data behind
-          // it -- opening this existing Lesson's editor would hydrate
-          // `questions` as empty (see `toLessonFieldsValues`), and saving
-          // any other field would then PATCH `questions: []`, silently
-          // detaching every one of its real Questions. New Lesson
-          // (`lessonId === null`) has nothing to hydrate, so it's
-          // unaffected by this gate and still opens normally below.
-          <Stack align="center" justify="center" h="100%" gap="sm">
-            <Alert color="red" role="alert">
-              {questionsError?.message}
-            </Alert>
-            <Button variant="default" onClick={() => void mutateQuestions()}>
-              Retry
-            </Button>
-          </Stack>
-        ) : (
-          <Stack gap="sm" style={{ height: "100%" }}>
-            {questionsError && (
-              // Non-blocking: Questions have loaded at least once here
-              // (see `questionsUnavailable`'s own doc), so `moduleQuestions`
-              // still reflects that last good list -- a failed background
-              // revalidation only ever surfaces as a banner, matching
-              // Lessons' own failed-refresh treatment below.
+      <Stack gap="md">
+        {narrowLessonModeHeader}
+        <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
+          {questionsLoading ? (
+            // This Module's Questions (needed to seed an existing Lesson's
+            // `questions`, see lesson-fields.ts's `toLessonFieldsValues`)
+            // load alongside its Lessons and have almost always already
+            // resolved by the time Edit/New Lesson is clicked -- this only
+            // ever shows on a genuinely slow first load.
+            <Stack align="center" justify="center" h="100%">
+              <Loader />
+            </Stack>
+          ) : questionsUnavailable && lessonEditorTarget.lessonId !== null ? (
+            // Blocking (PR review): unlike a failed *background* refresh
+            // (handled below, non-blocking), a genuine first-load failure
+            // here means `moduleQuestions` is `[]` with no real data behind
+            // it -- opening this existing Lesson's editor would hydrate
+            // `questions` as empty (see `toLessonFieldsValues`), and saving
+            // any other field would then PATCH `questions: []`, silently
+            // detaching every one of its real Questions. New Lesson
+            // (`lessonId === null`) has nothing to hydrate, so it's
+            // unaffected by this gate and still opens normally below.
+            <Stack align="center" justify="center" h="100%" gap="sm">
               <Alert color="red" role="alert">
-                {questionsError.message}
+                {questionsError?.message}
               </Alert>
-            )}
-            <Box style={{ flex: 1, minHeight: 0 }}>
-              <LessonEditor
-                key={openLesson?.id ?? "new"}
-                lesson={openLesson}
-                moduleQuestions={moduleQuestions}
-                previousModuleQuestions={previousModuleQuestions}
-                moduleTitle={title.ar ?? ""}
-                moduleDescription={description.ar ?? ""}
-                moduleContent={content.ar ?? ""}
-                onCreate={handleCreateLesson}
-                onUpdate={handleUpdateLesson}
-                onBack={() => setLessonEditorTarget(null)}
-              />
-            </Box>
-          </Stack>
-        )}
-      </Box>
+              <Button variant="default" onClick={() => void mutateQuestions()}>
+                Retry
+              </Button>
+            </Stack>
+          ) : (
+            <Stack gap="sm" style={{ height: "100%" }}>
+              {questionsError && (
+                // Non-blocking: Questions have loaded at least once here
+                // (see `questionsUnavailable`'s own doc), so `moduleQuestions`
+                // still reflects that last good list -- a failed background
+                // revalidation only ever surfaces as a banner, matching
+                // Lessons' own failed-refresh treatment below.
+                <Alert color="red" role="alert">
+                  {questionsError.message}
+                </Alert>
+              )}
+              <Box style={{ flex: 1, minHeight: 0 }}>
+                <LessonEditor
+                  key={openLesson?.id ?? "new"}
+                  lesson={openLesson}
+                  moduleQuestions={moduleQuestions}
+                  previousModuleQuestions={previousModuleQuestions}
+                  moduleTitle={title.ar ?? ""}
+                  moduleDescription={description.ar ?? ""}
+                  moduleContent={content.ar ?? ""}
+                  onCreate={handleCreateLesson}
+                  onUpdate={handleUpdateLesson}
+                  onBack={() => setLessonEditorTarget(null)}
+                />
+              </Box>
+            </Stack>
+          )}
+        </Box>
+      </Stack>
     ) : (
       // `isNarrow`'s own height/flex model diverges further here than just
       // `direction` (ANA-121 PR review, caught in Storybook, not by jsdom
@@ -963,45 +1007,53 @@ export function ModuleEditorBody({
             )}
           </Box>
         </Flex>
-        {moduleFormFooter}
+        {moduleFormFooterSlot}
       </Stack>
     );
 
   return (
     <>
-      <Title
-        size={18}
-        style={{
-          position: "absolute",
-          zIndex: 99999,
-          top: 20,
-        }}
-      >
-        {state.mode === "create" ? (
-          "Add Module"
-        ) : lessonEditorTarget ? (
-          <Group gap={14}>
-            <Button
-              variant="subtle"
-              color="#fff"
-              p={0}
-              m={-6}
-              w={32}
-              h={32}
-              onClick={() => setLessonEditorTarget(null)}
-              disabled={isSaving}
-              aria-label="Back to Module"
-            >
-              <ArrowLeft size={14} aria-hidden="true" />
-            </Button>
-            {lessonEditorTarget.lessonId === null
-              ? "New Lesson"
-              : "Edit Lesson"}
-          </Group>
-        ) : (
-          "Edit Module"
-        )}
-      </Title>
+      {/* Only rendered for the wide/Modal layout (ANA-122) -- the narrow/
+          Drawer layout gets its "Edit Module" title from the container's
+          own real header (`DrawerShell`) instead, and its Lesson-mode title
+          from `narrowLessonModeHeader` above, so this fixed-pixel-position
+          hack (kept only for the Modal, unchanged from before ANA-122)
+          would otherwise duplicate/overlap both. */}
+      {!isNarrow && (
+        <Title
+          size={18}
+          style={{
+            position: "absolute",
+            zIndex: 99999,
+            top: 20,
+          }}
+        >
+          {state.mode === "create" ? (
+            "Add Module"
+          ) : lessonEditorTarget ? (
+            <Group gap={14}>
+              <Button
+                variant="subtle"
+                color="#fff"
+                p={0}
+                m={-6}
+                w={32}
+                h={32}
+                onClick={() => setLessonEditorTarget(null)}
+                disabled={isSaving}
+                aria-label="Back to Module"
+              >
+                <ArrowLeft size={14} aria-hidden="true" />
+              </Button>
+              {lessonEditorTarget.lessonId === null
+                ? "New Lesson"
+                : "Edit Lesson"}
+            </Group>
+          ) : (
+            "Edit Module"
+          )}
+        </Title>
+      )}
 
       {modeContent}
       {/* Discard confirmation (PR review) -- gates every way of dismissing

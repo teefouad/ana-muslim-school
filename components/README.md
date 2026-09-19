@@ -135,27 +135,68 @@ action added to this component) render through the shared `ActionIconButton`
 consumer visually consistent with the rest of the admin's action buttons
 (ANA-100, generalized into a shared component in ANA-105).
 
+## DrawerShell
+
+`components/ui/drawer-shell.tsx` is the reusable right-side drawer layout
+(ANA-122) for admin editor panels: a header that always stays visible (a
+left-pointing back arrow plus the supplied `title`, rendered with the same
+`Title order={2}` typography/theme behavior as the Edit Book page's own
+title -- never Mantine's own close/X button), a `flex: 1` scrollable
+content region, and an optional footer pinned to the bottom for the
+consumer's own actions (e.g. Cancel/Save). It's built from Mantine's
+compound `Drawer.Root`/`Content`/`Header`/`Body` API rather than the
+`<Drawer>` shorthand specifically so the header/footer can be real
+flex-column siblings of the scrollable body (see `drawer-shell.module.css`)
+instead of fixed pixel positioning. `DrawerShell` is presentation-only: it
+owns no editor state or save/dirty logic of its own, and every dismissal
+path it doesn't render its own control for (Escape, outside/backdrop click)
+funnels through the caller-supplied `onClose` -- the same guarded handler
+the caller already wires its own Cancel action to, so an existing
+unsaved-changes confirmation stays authoritative regardless of how the
+drawer was dismissed. The back arrow calls `onBack` when supplied, falling
+back to `onClose` otherwise (every current consumer is a single top-level
+drawer, where those are the same thing).
+
+A component nested arbitrarily deep in `DrawerShell`'s `children` that owns
+its own busy/dirty state (and so can't have that state lifted up into the
+container that renders `DrawerShell`) renders its actions into the fixed
+footer via the paired `DrawerFooter` component, which portals into the
+nearest ancestor `DrawerShell`'s footer region instead -- see
+`module-editor-body.tsx`'s `isNarrow` footer wiring for the real usage this
+supports. `DrawerShell` keeps no state of its own beyond one instance's own
+footer-portal target, so nothing prevents two instances being mounted and
+`opened` at once (see this file's own `Stacked` story) -- a later, real
+nested Module -> Lesson drawer flow isn't implemented yet, but the shared
+component doesn't block that shape when it is.
+
 ## Modal vs. Drawer presentation containers
 
 `app/admin/books/edit-module-modal.tsx` (the Edit Module modal, centered,
 900-1040px) and `app/admin/books/edit-module-drawer.tsx` (the Edit Module
-drawer, right-side, fixed 500px on desktop, ANA-121) are two different
-presentation containers around the exact same editing experience --
+drawer, right-side, fixed 500px on desktop, ANA-121, migrated onto the
+shared `DrawerShell` above in ANA-122) are two different presentation
+containers around the exact same editing experience --
 `app/admin/books/module-editor-body.tsx`'s `ModuleEditorBody`, which owns
 every field, AI action, the Lessons list/editor, loading state, and
 save/discard behavior. Neither container duplicates that logic: each is a
 thin wrapper that mounts `ModuleEditorBody` inside its own Mantine `Modal`/
-`Drawer`, bridges every way that container can be dismissed (X/close button,
-Escape, backdrop/outside click) through the body's own unsaved-changes guard
-via a shared `requestCloseRef` pattern, and otherwise gets out of the way.
-`ModuleEditorBody`'s own `layout` prop (`"wide"`, the default the modal never
-overrides, vs. `"narrow"`) is the only thing that differs between the two --
-it only affects whether Module mode's Module-editor+Lessons-list split sits
-side by side or stacks, never the fields/behavior themselves. Reach for this
-same split -- a shared `*-body.tsx` plus thin container wrappers -- before
-duplicating an existing editor's logic into a second container; don't
-special-case a single monolithic component to support two visual shells
-instead.
+the shared `DrawerShell`, bridges every way that container can be dismissed
+(X/close button or back arrow, Escape, backdrop/outside click) through the
+body's own unsaved-changes guard via a shared `requestCloseRef` pattern, and
+otherwise gets out of the way. `ModuleEditorBody`'s own `layout` prop
+(`"wide"`, the default the modal never overrides, vs. `"narrow"`, the
+drawer) is what the body branches on for everything the shared shell
+requires it to present differently: whether Module mode's Module-
+editor+Lessons-list split sits side by side or stacks (unchanged from
+ANA-121), whether Module mode's own Cancel/Save changes render inline or
+through `DrawerFooter` into the drawer's shared footer, and whether the
+body's own fixed-pixel-positioned title (kept only for the modal) or an
+ordinary in-flow one (Lesson mode inside the drawer, since there's no
+longer an empty header region to fake being sticky over) is used -- never
+the underlying fields/behavior themselves. Reach for this same split -- a
+shared `*-body.tsx` plus thin container wrappers -- before duplicating an
+existing editor's logic into a second container; don't special-case a
+single monolithic component to support two visual shells instead.
 
 ## Conventions
 

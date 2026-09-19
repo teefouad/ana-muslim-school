@@ -1,0 +1,29 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  flex: 0 0 auto;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.footer {
+  flex: 0 0 auto;
+}
+
+/* Collapses to nothing when the caller passes no `footer` and nothing has
+   been portaled into it via `DrawerFooter` (e.g. while the Module editor's
+   drawer is showing its Lesson-mode content, which keeps its own inline
+   Save action instead) -- otherwise this would render an empty bordered/
+   padded bar at the bottom of the drawer. */
+.footer:not(:empty) {
+  border-top: 1px solid var(--mantine-color-default-border);
+  padding: var(--mantine-spacing-md);
+}
