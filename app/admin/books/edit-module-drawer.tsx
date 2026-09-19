@@ -69,10 +69,12 @@ const DRAWER_WIDTH = "min(560px, 100vw)";
 // `drawer-shell.tsx`'s `Stacked` story/tests for the exact mechanics this
 // reuses). This component only owns the *open/closed* flag for that nested
 // drawer (`lessonsDrawerOpened`, a plain navigation flag) -- its real
-// content, dirty-state, and Save/Cancel (ANA-124) are rendered by
-// `ModuleEditorBody` itself, which is where the Lessons data/handlers this
-// drawer needs already live (see that component's own `isNarrow` Lessons-
-// drawer JSX). `Drawer.Stack`'s context reaches it fine despite it being
+// content is rendered by `ModuleEditorBody` itself, which is where the
+// Lessons data/handlers this drawer needs already live (see that
+// component's own `isNarrow` Lessons-drawer JSX). It has no dirty-state or
+// Save/Cancel of its own (ANA-126): reordering persists through the Module
+// drawer's own Save changes, the same as every other Module field.
+// `Drawer.Stack`'s context reaches it fine despite it being
 // mounted several components deeper than this file's own `<Drawer.Stack>`
 // -- React context, not DOM adjacency. Opening/closing this flag is local
 // UI state, entirely separate from `ModuleEditorBody`'s own dirty tracking,

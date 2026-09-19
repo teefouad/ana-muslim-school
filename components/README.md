@@ -186,10 +186,15 @@ production consumer: a Lessons header action opens a second, nested
 `DrawerShell` stacked above the Module editor's own via this same
 mechanism. `edit-module-drawer.tsx` itself only owns that nested drawer's
 open/closed flag (a plain navigation boolean); its real content -- a
-purpose-built, minimal sortable Lesson-card list, dirty-tracking, and
-Save/Cancel (ANA-124) -- is rendered by `module-editor-body.tsx` instead,
-since every Lesson data/handler that content needs (the Lessons SWR read,
-the pending reorder draft, create/update/delete) already lives there. That
+purpose-built, minimal sortable Lesson-card list -- is rendered by
+`module-editor-body.tsx` instead, since every Lesson data/handler that
+content needs (the Lessons SWR read, the pending reorder draft, create/
+update/delete) already lives there. Reordering there has no dirty-tracking
+or Save/Cancel of its own (ANA-124, simplified in ANA-126): it belongs to
+the Module object itself, so it folds straight into `ModuleEditorBody`'s
+own Module-level `isDirty`/Save changes, the same as every other Module
+field -- this nested drawer is purely a display/navigation surface for it.
+That
 second `DrawerShell` instance ends up mounted several React components
 deeper than the first, inside `ModuleEditorBody`'s own children rather than
 as its JSX sibling -- `Drawer.Stack`'s stacking still works correctly
@@ -240,8 +245,10 @@ Module-editor+Lessons-list split side by side using the ItemList-based
 Lessons list/split entirely, moving Lesson management to the drawer's own
 Lessons header action/nested `DrawerShell` instead, with its own
 purpose-built, minimal sortable card list (`lessons-drawer-list.tsx`, not
-`LessonsPanel`/`ItemList`) and its own independent reorder-dirty state/
-Save/Cancel (see `DrawerShell`'s `headerActions`/`stackId` above); whether
+`LessonsPanel`/`ItemList`) and no dirty-state/Save-Cancel of its own
+(ANA-126: a pending reorder counts toward `ModuleEditorBody`'s own
+Module-level dirty state instead, see `DrawerShell`'s `headerActions`/
+`stackId` above); whether
 Color/Published render as a single side-by-side row or, in the drawer,
 Color then Published each on their own full row (ANA-123, narrower width
 has no room for the side-by-side row); whether Module mode's own Cancel/
@@ -255,7 +262,13 @@ above the Lessons drawer, opened by New Lesson/Edit inside that Lessons
 drawer, which stays mounted/open underneath rather than being hidden (see
 `DrawerShell`'s `stackId` doc above for the same "child stays a JSX sibling,
 not a DOM descendant, and only the topmost drawer responds to Escape/
-outside click" mechanics one level deeper) -- never the underlying fields/
+outside click" mechanics one level deeper). This third `DrawerShell`'s own
+`onClose` is wired through a second, deeper `requestCloseRef` bridge
+(ANA-126), the same "container calls `requestCloseRef.current()` instead of
+`onClose` directly" pattern `EditModuleDrawer`/`EditModuleModal` already use
+one level up, so `LessonEditor`'s own unsaved-changes confirmation stays
+authoritative regardless of whether it was dismissed via its Back button,
+Escape, or an outside click -- never the underlying fields/
 behavior themselves. Reach for this same split
 -- a shared `*-body.tsx` plus thin container wrappers -- before duplicating
 an existing editor's logic into a second container; don't special-case a
