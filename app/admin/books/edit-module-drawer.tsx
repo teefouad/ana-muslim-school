@@ -92,12 +92,36 @@ export function EditModuleDrawer({
 
   const [lessonsDrawerOpened, setLessonsDrawerOpened] = useState(false);
 
+  // Keeps rendering the last real `state` throughout this drawer's own
+  // closing slide-out transition, instead of unmounting `ModuleEditorBody`
+  // the instant the caller nulls `state` in response to `onClose` (PR
+  // review -- the same bug, and the same fix, as the nested Lesson editor
+  // drawer's own `lessonEditorTarget`/`lessonEditorDrawerOpened` split,
+  // module-editor-body.tsx: `state` is this component's *only* signal for
+  // both "is the drawer open" and "what to render inside it", so nulling it
+  // to close also wiped the content Mantine's exit transition needed to
+  // animate away). Unlike that fix, `state` itself is an external prop this
+  // component doesn't own, so it can't simply defer clearing it the way a
+  // local `useState` setter could -- instead this mirrors it locally,
+  // syncing to every new non-null `state` and otherwise holding the last
+  // one. This is React's own documented "adjust state during render"
+  // pattern (https://react.dev/learn/you-might-not-need-an-effect#adjusting-
+  // some-state-when-a-prop-changes), not a ref or an effect: the
+  // conditional `setRenderedState` call runs directly in the render body,
+  // so React re-renders with the new value before committing, rather than
+  // this component ever painting one frame behind the real `state`.
+  const [renderedState, setRenderedState] = useState(state);
+  if (state !== null && state !== renderedState) {
+    setRenderedState(state);
+  }
+
   // Resets the nested Lessons placeholder back to closed whenever the
   // Module editor itself actually closes, so reopening this same
   // `EditModuleDrawer` instance for a later Module never starts with a
   // stale nested drawer already open -- this component isn't remounted
-  // between opens the way `ModuleEditorBody` is (see its own `key={state.
-  // id}` below), so this local state would otherwise persist across them.
+  // between opens the way `ModuleEditorBody` is (see its own `key={
+  // renderedState.id}` below), so this local state would otherwise persist
+  // across them.
   function handleClose() {
     setLessonsDrawerOpened(false);
     onClose();
@@ -129,12 +153,16 @@ export function EditModuleDrawer({
           </Button>
         }
       >
-        {state && (
+        {renderedState && (
           <ModuleEditorBody
             // Remounts (a fresh local draft) per distinct edit target --
             // matching `EditModuleModal`'s own per-target remount.
-            key={state.id}
-            state={{ mode: "edit", id: state.id, fields: state.fields }}
+            key={renderedState.id}
+            state={{
+              mode: "edit",
+              id: renderedState.id,
+              fields: renderedState.fields,
+            }}
             book={book}
             onClose={handleClose}
             onSave={onSave}

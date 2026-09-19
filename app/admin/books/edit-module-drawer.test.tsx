@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { SWRConfig } from "swr";
@@ -6,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EditModuleDrawer,
   type EditModuleDrawerProps,
+  type EditModuleDrawerState,
 } from "./edit-module-drawer";
 import { buildLessonFixture } from "./lesson-fixtures";
 import type { Book } from "@/lib/books/types";
@@ -161,6 +163,64 @@ describe("EditModuleDrawer", () => {
 
     const root = document.querySelector(".mantine-Drawer-root");
     expect(root?.getAttribute("style")).toContain("min(560px, 100vw)");
+  });
+
+  // PR review: `renderDrawer`'s own default `onClose: vi.fn()` never
+  // actually nulls `state` (it's a mock, not real state), so it can't
+  // exercise what happens to this drawer's own content while `state`
+  // *really* transitions to `null` -- which is exactly how a real caller
+  // (`[id]/edit/page.tsx`) closes it. This small wrapper manages `state`
+  // itself instead, mirroring that.
+  function ControlledDrawer() {
+    const [state, setState] = useState<EditModuleDrawerState>({
+      id: "module-1",
+      fields: EDIT_FIELDS,
+    });
+    return (
+      <MantineProvider>
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <EditModuleDrawer
+            state={state}
+            book={BOOK}
+            onClose={() => setState(null)}
+            onSave={vi.fn().mockResolvedValue(undefined)}
+          />
+        </SWRConfig>
+      </MantineProvider>
+    );
+  }
+
+  // Same bug/fix as the nested Lesson editor drawer's own
+  // `lessonEditorTarget`/`lessonEditorDrawerOpened` split (module-editor-
+  // body.tsx): `state` used to be this drawer's *only* signal for both
+  // "is it open" and "what to render inside it", so a real caller nulling
+  // it to close also wiped `ModuleEditorBody` in that same render --
+  // Mantine's own exit transition kept the drawer panel sliding away, but
+  // over an empty body.
+  it("keeps the Module's own fields visible while the drawer is still animating closed, instead of blanking out on the first frame", async () => {
+    render(<ControlledDrawer />);
+
+    const dialog = await findDrawerDialog("Edit Module");
+    expect(within(dialog).getByLabelText("Title")).toHaveValue("المقدمة");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    // Synchronously after triggering close, before Mantine's own exit
+    // transition has had a chance to finish -- the dialog is still in the
+    // tree (same "animates out rather than unmounting immediately" contract
+    // used throughout this file), and, unlike before this fix, still shows
+    // the real Module it was editing rather than going blank.
+    expect(
+      within(
+        screen.getByRole("dialog", { name: "Edit Module" }),
+      ).getByLabelText("Title"),
+    ).toHaveValue("المقدمة");
+
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Edit Module" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("Save changes calls onSave with the Module's id, edited fields, and a null Lesson order when nothing was reordered", async () => {
