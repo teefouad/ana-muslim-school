@@ -112,10 +112,18 @@ export function EditModuleDrawer({
         size={DRAWER_WIDTH}
         stackId="module"
         headerActions={
+          // Same primary/filled styling as ModuleEditorBody's own Save
+          // changes button (no `variant`, both fall back to Mantine's
+          // default "filled" -- themed green via `--mantine-primary-color-
+          // filled` in globals.css). Mantine's own Button styles don't
+          // transition `background-color` on hover at all (PR review --
+          // confirmed empirically, unlike NavLink/Table's own explicit
+          // 150ms transitions in theme.ts), so the hover snaps instantly;
+          // this adds that same 150ms ease here to match.
           <Button
-            variant="subtle"
             leftSection={<Pencil size={16} aria-hidden="true" />}
             onClick={() => setLessonsDrawerOpened(true)}
+            style={{ transition: "background-color 150ms ease" }}
           >
             Lessons
           </Button>

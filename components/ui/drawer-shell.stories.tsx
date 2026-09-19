@@ -64,9 +64,9 @@ export const WithHeaderActions: Story = {
     children: <LongContent />,
     headerActions: (
       <Button
-        variant="subtle"
         leftSection={<Pencil size={16} aria-hidden="true" />}
         onClick={() => {}}
+        style={{ transition: "background-color 150ms ease" }}
       >
         Lessons
       </Button>
