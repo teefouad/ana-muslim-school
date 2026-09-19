@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { Alert, Button, Group, Stack } from "@mantine/core";
+import { useEffect, useState, type MutableRefObject } from "react";
+import { Alert, Button, getDefaultZIndex, Group, Stack } from "@mantine/core";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DrawerFooter } from "@/components/ui/drawer-shell";
@@ -105,6 +104,18 @@ export interface LessonEditorProps {
    * whole rather than this component managing a second, nested scroll
    * region inside it. */
   layout?: "wide" | "narrow";
+  /** Same Modal/Drawer-dismiss bridge `ModuleEditorBody`'s own
+   * `requestCloseRef` already uses for the Module drawer's own unsaved-
+   * changes guard (module-editor-body.tsx) -- only meaningful for
+   * `layout="narrow"` (ANA-126): the nested Lesson editor drawer's own Back
+   * button, Escape, and outside/backdrop dismissal all funnel through
+   * `DrawerShell`'s `onClose`/`onBack`, which `ModuleEditorBody` points at
+   * `requestCloseRef.current()` instead of calling `onBack` directly, so
+   * this editor's own dirty check runs first regardless of which of those
+   * three dismissed it. The wide/Modal layout has no use for this -- its own
+   * container-level Back arrow (module-editor-body.tsx's `Title`) still
+   * calls `onBack` unguarded, unchanged from before this prop existed. */
+  requestCloseRef?: MutableRefObject<() => void>;
 }
 
 // Lesson mode's editor (ANA-115, wired to the real Lesson backend in
@@ -128,6 +139,7 @@ export function LessonEditor({
   onUpdate,
   onBack,
   layout = "wide",
+  requestCloseRef,
 }: LessonEditorProps) {
   const isNarrow = layout === "narrow";
 
@@ -190,7 +202,23 @@ export function LessonEditor({
     !isSameAzkar(azkar, initialFields.azkar) ||
     !isSameQuestionEntries(questions, initialFields.questions);
 
-  function handleBackClick() {
+  // Gates this editor's own dismissal behind its unsaved-changes
+  // confirmation (ANA-126) -- reached only through `requestCloseRef` below,
+  // which the narrow/Drawer layout's nested Lesson editor drawer points at
+  // this so its own Back button, Escape, and outside/backdrop dismissal all
+  // funnel through here instead of calling `onBack` directly (see that
+  // prop's own doc). The wide/Modal layout never supplies `requestCloseRef`
+  // and has no other caller for this function -- its own container-level
+  // Back arrow (module-editor-body.tsx's `Title`) still calls `onBack`
+  // unguarded, unchanged from before this existed. A save already in
+  // flight is never raced (mirrors `ModuleEditorBody`'s own identical
+  // `handleRequestClose` guard): dismissing is simply ignored until it
+  // settles.
+  function handleRequestClose() {
+    if (isSaving) {
+      return;
+    }
+
     if (isDirty) {
       setConfirmingDiscard(true);
       return;
@@ -198,6 +226,19 @@ export function LessonEditor({
 
     onBack();
   }
+
+  // Keeps the narrow/Drawer layout's own Lesson editor drawer dismiss
+  // bridge pointed at this render's own `handleRequestClose` (ANA-126) --
+  // same "effect, not a direct render-time assignment" reasoning as
+  // `ModuleEditorBody`'s own identical `requestCloseRef` effect: Mantine
+  // only ever reads this ref from a later, separate event (the drawer
+  // actually being dismissed), by which point the effect has already run.
+  // A no-op for the wide/Modal layout, which never supplies this prop.
+  useEffect(() => {
+    if (requestCloseRef) {
+      requestCloseRef.current = handleRequestClose;
+    }
+  });
 
   // Persists the draft through the real Lesson create/update API (ANA-116)
   // -- awaited: resolving returns to Module mode, matching the Module
@@ -368,6 +409,13 @@ export function LessonEditor({
             setConfirmingDiscard(false);
             onBack();
           }}
+          // Same reasoning as `ModuleEditorBody`'s own identical override
+          // (module-editor-body.tsx) -- the narrow/Drawer layout's nested
+          // Lesson editor drawer gets a *stacked* z-index (`stackId=
+          // "lesson-editor"`), which otherwise buries this confirmation
+          // underneath its own overlay. A no-op for the wide/Modal layout's
+          // non-stacked Modal, still safely above its own default tier.
+          zIndex={getDefaultZIndex("popover")}
         />
       )}
     </>

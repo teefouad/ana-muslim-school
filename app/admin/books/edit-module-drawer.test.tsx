@@ -670,108 +670,25 @@ describe("EditModuleDrawer", () => {
       );
     });
 
-    it("Save changes persists the reordered Lesson ids through the existing Module save path", async () => {
-      mockFetch({ lessons: LESSONS });
-      const onSave = vi.fn().mockResolvedValue(undefined);
-      renderDrawer({ onSave });
-      const { lessonsDialog } = await openLessonsDrawer();
-
-      await reorderLessons();
-      await vi.waitFor(() => {
-        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
-        expect(cards[0].getAttribute("data-testid")).toBe(
-          "lessons-drawer-card-lesson-2",
-        );
-      });
-
-      fireEvent.click(
-        within(lessonsDialog).getByRole("button", { name: "Save changes" }),
-      );
-
-      await vi.waitFor(() =>
-        expect(onSave).toHaveBeenCalledWith(
-          "module-1",
-          expect.objectContaining({ title: { ar: "المقدمة", en: "" } }),
-          ["lesson-2", "lesson-1"],
-        ),
-      );
-      // Closes only the Lessons drawer, revealing the still-open Module
-      // drawer underneath -- not the whole editor.
-      await vi.waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
-        ).not.toBeInTheDocument(),
-      );
-      expect(
-        screen.getByRole("dialog", { name: "Edit Module" }),
-      ).toBeInTheDocument();
-    });
-
-    it("Cancel is gated behind a discard confirmation once the order has been reordered, and confirming discards it", async () => {
-      mockFetch({ lessons: LESSONS });
-      const onSave = vi.fn().mockResolvedValue(undefined);
-      renderDrawer({ onSave });
-      const { lessonsDialog } = await openLessonsDrawer();
-
-      await reorderLessons();
-      await vi.waitFor(() => {
-        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
-        expect(cards[0].getAttribute("data-testid")).toBe(
-          "lessons-drawer-card-lesson-2",
-        );
-      });
-
-      fireEvent.click(
-        within(lessonsDialog).getByRole("button", { name: "Cancel" }),
-      );
-
-      expect(
-        await screen.findByRole("dialog", {
-          name: "Discard unsaved changes?",
-        }),
-      ).toBeInTheDocument();
-      expect(onSave).not.toHaveBeenCalled();
-
-      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-
-      await vi.waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
-        ).not.toBeInTheDocument(),
-      );
-
-      // Reopening the Lessons drawer shows the original, un-reordered list.
-      await openLessonsDrawer();
-      const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
-      expect(cards.map((card) => card.getAttribute("data-testid"))).toEqual([
-        "lessons-drawer-card-lesson-1",
-        "lessons-drawer-card-lesson-2",
-      ]);
-    });
-
-    it("Cancel closes directly, without confirmation, when the order was never touched", async () => {
+    // ANA-126: the Lessons drawer no longer has its own Save changes/Cancel
+    // -- reordering belongs to the Module object itself, so a pending
+    // reorder is neither saved nor discarded here; it's simply carried back
+    // to the still-open Module drawer, which owns persisting or discarding
+    // it the same way it already does for every other Module field.
+    it("has no footer -- no Save changes or Cancel button", async () => {
       mockFetch({ lessons: LESSONS });
       renderDrawer();
       const { lessonsDialog } = await openLessonsDrawer();
 
-      fireEvent.click(
-        within(lessonsDialog).getByRole("button", { name: "Cancel" }),
-      );
-
       expect(
-        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+        within(lessonsDialog).queryByRole("button", { name: "Save changes" }),
       ).not.toBeInTheDocument();
-      await vi.waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "Lessons" }),
-        ).not.toBeInTheDocument(),
-      );
       expect(
-        screen.getByRole("dialog", { name: "Edit Module" }),
-      ).toBeInTheDocument();
+        within(lessonsDialog).queryByRole("button", { name: "Cancel" }),
+      ).not.toBeInTheDocument();
     });
 
-    it("Back and Escape are gated behind the same discard confirmation as Cancel once the order has been reordered", async () => {
+    it("Back and Escape close the Lessons drawer directly, with no discard confirmation, even after reordering", async () => {
       mockFetch({ lessons: LESSONS });
       renderDrawer();
       const { lessonsDialog } = await openLessonsDrawer();
@@ -788,18 +705,80 @@ describe("EditModuleDrawer", () => {
         within(lessonsDialog).getByRole("button", { name: "Back" }),
       );
       expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      // The reorder is still pending, carried back to the Module drawer --
+      // reopening the Lessons drawer still shows it.
+      const { lessonsDialog: reopened } = await openLessonsDrawer();
+      const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+      expect(cards.map((card) => card.getAttribute("data-testid"))).toEqual([
+        "lessons-drawer-card-lesson-2",
+        "lessons-drawer-card-lesson-1",
+      ]);
+
+      fireEvent.keyDown(reopened, { key: "Escape", code: "Escape" });
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it("reordering marks the Module drawer itself dirty, and its own Save changes persists the reordered Lesson ids", async () => {
+      mockFetch({ lessons: LESSONS });
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderDrawer({ onSave });
+      const { moduleDialog, lessonsDialog } = await openLessonsDrawer();
+
+      await reorderLessons();
+      await vi.waitFor(() => {
+        const cards = screen.getAllByTestId(/^lessons-drawer-card-/);
+        expect(cards[0].getAttribute("data-testid")).toBe(
+          "lessons-drawer-card-lesson-2",
+        );
+      });
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "Back" }),
+      );
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Lessons" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      // The Module drawer's own Cancel is now gated -- the pending reorder
+      // counts as unsaved Module work, same as an edited field.
+      fireEvent.click(
+        within(moduleDialog).getByRole("button", { name: "Cancel" }),
+      );
+      expect(
         await screen.findByRole("dialog", {
           name: "Discard unsaved changes?",
         }),
       ).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
 
-      fireEvent.keyDown(lessonsDialog, { key: "Escape", code: "Escape" });
-      expect(
-        await screen.findByRole("dialog", {
-          name: "Discard unsaved changes?",
-        }),
-      ).toBeInTheDocument();
+      fireEvent.click(
+        within(moduleDialog).getByRole("button", { name: "Save changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onSave).toHaveBeenCalledWith(
+          "module-1",
+          expect.objectContaining({ title: { ar: "المقدمة", en: "" } }),
+          ["lesson-2", "lesson-1"],
+        ),
+      );
     });
 
     // ANA-125: New Lesson/Edit now open the existing Lesson configuration UI
@@ -881,6 +860,117 @@ describe("EditModuleDrawer", () => {
       ).toBeInTheDocument();
     });
 
+    // ANA-126: the nested Lesson editor drawer's own Back button used to
+    // call `handleLessonEditorClose` directly, bypassing `LessonEditor`'s
+    // own "Discard unsaved changes?" confirmation entirely -- unlike the
+    // Lessons drawer's own Back (which is gated by this body's own
+    // `handleLessonsDrawerRequestClose`), nothing stood between the Lesson
+    // editor drawer's Back button and closing.
+    it("Back is gated behind the Lesson editor's own discard confirmation once a field has been edited, and confirming reveals the still-open Lessons drawer underneath", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+      fireEvent.change(within(lessonEditorDialog).getByLabelText("Title"), {
+        target: { value: "مسودة غير محفوظة" },
+      });
+
+      fireEvent.click(
+        within(lessonEditorDialog).getByRole("button", { name: "Back" }),
+      );
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      // Still open, draft intact -- "Keep editing" only hides the
+      // confirmation.
+      fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+      expect(
+        within(
+          screen.getByRole("dialog", { name: "New Lesson" }),
+        ).getByLabelText("Title"),
+      ).toHaveValue("مسودة غير محفوظة");
+
+      fireEvent.click(
+        within(lessonEditorDialog).getByRole("button", { name: "Back" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Discard changes" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "New Lesson" }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.getByRole("dialog", { name: "Lessons" }),
+      ).toBeInTheDocument();
+    });
+
+    // Same "Escape as a proxy for the shared Mantine dismiss funnel" as
+    // edit-module-modal.test.tsx's/this file's own identical tests -- Escape
+    // and outside/backdrop click both funnel into `DrawerShell`'s single
+    // `onClose` prop (see drawer-shell.tsx), so exercising one exercises the
+    // other.
+    it("Escape is gated behind the same discard confirmation as Back once a field has been edited", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+      fireEvent.change(within(lessonEditorDialog).getByLabelText("Title"), {
+        target: { value: "مسودة غير محفوظة" },
+      });
+
+      fireEvent.keyDown(lessonEditorDialog, {
+        key: "Escape",
+        code: "Escape",
+      });
+
+      expect(
+        await screen.findByRole("dialog", {
+          name: "Discard unsaved changes?",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "New Lesson" }),
+      ).toBeInTheDocument();
+    });
+
+    it("Back closes the Lesson editor drawer normally, with no confirmation, when nothing was edited", async () => {
+      mockFetch({ lessons: LESSONS });
+      renderDrawer();
+      const { lessonsDialog } = await openLessonsDrawer();
+
+      fireEvent.click(
+        within(lessonsDialog).getByRole("button", { name: "New Lesson" }),
+      );
+      const lessonEditorDialog = await findDrawerDialog("New Lesson");
+
+      fireEvent.click(
+        within(lessonEditorDialog).getByRole("button", { name: "Back" }),
+      );
+
+      expect(
+        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+      ).not.toBeInTheDocument();
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "New Lesson" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
     // PR review: `lessonEditorTarget` used to be nulled the instant the
     // Lesson editor drawer's own close was triggered, which also emptied
     // out `lessonEditorInner` (the `LessonEditor` it renders) in that same
@@ -947,6 +1037,11 @@ describe("EditModuleDrawer", () => {
       });
       fireEvent.click(
         within(firstDialog).getByRole("button", { name: "Back" }),
+      );
+      // ANA-126: Back is now gated behind the Lesson editor's own unsaved-
+      // changes confirmation, same as every other way of dismissing it.
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Discard changes" }),
       );
       await vi.waitFor(() =>
         expect(

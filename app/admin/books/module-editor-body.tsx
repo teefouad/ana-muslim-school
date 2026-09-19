@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import useSWR from "swr";
 import {
   Alert,
@@ -231,11 +231,14 @@ export interface ModuleEditorBodyProps {
    * rendered) unless `layout` is `"narrow"` -- the modal has no nested
    * Lessons drawer of its own. */
   lessonsDrawerOpened?: boolean;
-  /** Hides the nested Lessons drawer -- called once its own dismiss is
-   * either confirmed (a discard) or was never gated (a clean close). New
-   * Lesson/Edit no longer calls this (ANA-125): they open their own nested
-   * Lesson editor drawer stacked above the Lessons drawer instead, which
-   * stays open underneath it. */
+  /** Hides the nested Lessons drawer -- wired directly to its own dismiss
+   * (Back, Escape, outside click), with no dirty/discard gate of its own
+   * (ANA-126): reordering belongs to the Module object itself, so a pending
+   * reorder is neither lost nor asked about here, only when the Module
+   * drawer itself is later dismissed or saved (see `isDirty`/
+   * `handlePrimaryAction` below). New Lesson/Edit no longer calls this
+   * (ANA-125): they open their own nested Lesson editor drawer stacked above
+   * the Lessons drawer instead, which stays open underneath it. */
   onLessonsDrawerClose?: () => void;
 }
 
@@ -270,20 +273,6 @@ export function ModuleEditorBody({
   // outside click) behind a "Discard unsaved changes?" confirmation -- see
   // `isDirty`/`handleRequestClose` below (PR review).
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
-
-  // The nested Lessons drawer's own Save changes state (ANA-124) --
-  // entirely separate from the Module drawer's own `isSaving`/`saveError`
-  // above, since the two Save actions are independent requests a user can
-  // never trigger at the same time (the Lessons drawer's own overlay blocks
-  // interaction with the Module drawer underneath while it's open).
-  const [lessonsSaving, setLessonsSaving] = useState(false);
-  const [lessonsSaveError, setLessonsSaveError] = useState<string | null>(null);
-  // Gates dismissing the Lessons drawer (Back, Cancel, Escape, backdrop/
-  // outside click) behind the same "Discard unsaved changes?" confirmation
-  // as the Module drawer's own, whenever `lessonsDrawerIsDirty` is true --
-  // see `handleLessonsDrawerRequestClose` below.
-  const [confirmingLessonsDiscard, setConfirmingLessonsDiscard] =
-    useState(false);
 
   // Each field disables only itself while its own AI request is in flight
   // (ANA-109) -- these three flags are never fed back into another field's
@@ -409,32 +398,26 @@ export function ModuleEditorBody({
         .filter((lesson): lesson is Lesson => lesson !== undefined)
     : serverLessons;
 
-  // Whether this draft (any Module field, plus -- wide/Modal layout only --
-  // a pending Lesson reorder) has diverged from what it was seeded with --
-  // mirrors LessonEditor's own `isDirty` (lesson-editor.tsx). Drives
-  // `handleRequestClose` below: a reorder that's never been saved is
-  // exactly as much unsaved work as an edited Title (PR review), so it
-  // gates dismissing the whole container the same way.
+  // Whether this draft (any Module field, plus a pending Lesson reorder) has
+  // diverged from what it was seeded with -- mirrors LessonEditor's own
+  // `isDirty` (lesson-editor.tsx). Drives `handleRequestClose` below: a
+  // reorder that's never been saved is exactly as much unsaved work as an
+  // edited Title (PR review), so it gates dismissing the whole container the
+  // same way.
   //
-  // The narrow/Drawer layout excludes `lessonOrderDraft` here (ANA-124):
-  // that reorder now belongs to the nested Lessons drawer's own,
-  // independent dirty state (see `lessonsDrawerIsDirty` below) -- opening/
-  // closing that drawer, or reordering inside it, must never itself mark
-  // this Module drawer dirty.
+  // `lessonOrderDraft` counts here for both layouts (ANA-126): reordering
+  // belongs to the Module object itself -- the nested Lessons drawer (narrow
+  // layout only) is purely a display/navigation surface for it, with no
+  // save/discard of its own (see this file's own `isNarrow` Lessons drawer
+  // JSX below), so the only place a pending reorder is ever actually
+  // persisted or discarded is this Module drawer's own Save changes/Cancel.
   const isDirty =
     !isSameTranslatedValue(title, initialFields.title) ||
     !isSameTranslatedValue(description, initialFields.description) ||
     color !== initialFields.color ||
     !isSameTranslatedValue(content, initialFields.content) ||
     isPublished !== initialFields.isPublished ||
-    (!isNarrow && lessonOrderDraft !== null);
-
-  // The nested Lessons drawer's own dirty state (ANA-124) -- whether the
-  // Lesson order has changed from the initial persisted Module order, the
-  // exact same `lessonOrderDraft` the wide/Modal layout folds into its own
-  // `isDirty` above, just tracked independently here so opening/closing
-  // this drawer never touches the Module drawer's own dirty state.
-  const lessonsDrawerIsDirty = lessonOrderDraft !== null;
+    lessonOrderDraft !== null;
 
   function handleReorderLessons(reordered: Lesson[]) {
     if (
@@ -482,6 +465,17 @@ export function ModuleEditorBody({
   } | null>(null);
   const [lessonEditorDrawerOpened, setLessonEditorDrawerOpened] =
     useState(false);
+  // Same Modal/Drawer-dismiss bridge as this body's own `requestCloseRef`
+  // prop (ANA-126) -- points at `LessonEditor`'s own unsaved-changes guard
+  // (`handleRequestClose`, lesson-editor.tsx), set via that component's
+  // identical ref-assignment effect. Every way the nested Lesson editor
+  // drawer can be dismissed (Back, Escape, outside click) funnels through
+  // this instead of `handleLessonEditorClose` directly below, so a dirty
+  // Lesson draft is never discarded silently. Initialized to
+  // `handleLessonEditorClose` itself so a dismissal that somehow fires
+  // before `LessonEditor` has mounted (its own effect hasn't run yet) still
+  // closes the drawer rather than doing nothing.
+  const lessonEditorRequestCloseRef = useRef(handleLessonEditorClose);
   // Forces a fresh `LessonEditor` mount (its own `key` below) on every
   // narrow-layout open, even a repeat of the exact same target (e.g. New
   // Lesson, cancelled, New Lesson again) -- since closing no longer nulls
@@ -688,79 +682,6 @@ export function ModuleEditorBody({
       setLessonEditorDrawerOpened(false);
     } else {
       setLessonEditorTarget(null);
-    }
-  }
-
-  // Funnels every way of dismissing the nested Lessons drawer (Back,
-  // Cancel, Escape, backdrop/outside click) through one dirty check
-  // (ANA-124) -- same shape as `handleRequestClose` below, scoped to
-  // `lessonsDrawerIsDirty`/`lessonsSaving` instead of this body's own
-  // `isDirty`/`isSaving`.
-  function handleLessonsDrawerRequestClose() {
-    if (lessonsSaving) {
-      return;
-    }
-
-    if (lessonsDrawerIsDirty) {
-      setConfirmingLessonsDiscard(true);
-      return;
-    }
-
-    onLessonsDrawerClose();
-  }
-
-  // Discards the pending Lesson reorder and hides the Lessons drawer --
-  // only ever called once the discard confirmation above is actually
-  // confirmed.
-  function handleDiscardLessonsOrder() {
-    setConfirmingLessonsDiscard(false);
-    setLessonOrderDraft(null);
-    onLessonsDrawerClose();
-  }
-
-  // Persists the Lessons drawer's own pending reorder through the existing
-  // Module save/update path (ANA-124) -- the exact same `onSave(id, fields,
-  // lessonsOrder)` call `handlePrimaryAction` below makes for the Module
-  // drawer's own Save changes, never a separate Lesson-order persistence
-  // request/endpoint. Sends this body's current field values alongside the
-  // order, same as that existing call already does (a single Module PATCH
-  // always carries both together) -- this Save action is scoped to the
-  // Lessons drawer itself, so it only ever hides that drawer afterward,
-  // revealing the still-open Module drawer underneath, rather than closing
-  // the whole editor the way `handlePrimaryAction` does.
-  async function handleSaveLessonsOrder() {
-    if (state.mode !== "edit") {
-      return;
-    }
-
-    setLessonsSaveError(null);
-    setLessonsSaving(true);
-
-    try {
-      const fields: ModuleFieldsValues = {
-        title,
-        description,
-        color,
-        content,
-        isPublished,
-      };
-
-      await onSave(state.id, fields, lessonOrderDraft);
-
-      // Same "promote the just-persisted order into the SWR cache
-      // immediately" reasoning as `handlePrimaryAction` below -- avoids a
-      // stale-order flash if the Lessons drawer is reopened before its own
-      // background revalidation returns.
-      if (lessonOrderDraft) {
-        void mutateLessons({ data: lessons }, { revalidate: true });
-      }
-
-      setLessonOrderDraft(null);
-      onLessonsDrawerClose();
-    } catch (err) {
-      setLessonsSaveError(errorMessage(err));
-    } finally {
-      setLessonsSaving(false);
     }
   }
 
@@ -1147,6 +1068,11 @@ export function ModuleEditorBody({
               // renders, so passing it straight through here is always
               // correct for whichever one does.
               layout={layout}
+              // Only meaningful for the narrow/Drawer layout (ANA-126) -- see
+              // `lessonEditorRequestCloseRef`'s own doc above and
+              // `LessonEditor`'s own `requestCloseRef` doc (lesson-editor.tsx)
+              // for why this is a no-op for the wide/Modal layout.
+              requestCloseRef={lessonEditorRequestCloseRef}
             />
           </Box>
         </Stack>
@@ -1313,8 +1239,7 @@ export function ModuleEditorBody({
         <DrawerShell
           opened={lessonsDrawerOpened}
           title="Lessons"
-          onClose={handleLessonsDrawerRequestClose}
-          onBack={handleLessonsDrawerRequestClose}
+          onClose={onLessonsDrawerClose}
           size={LESSONS_DRAWER_WIDTH}
           stackId="lessons"
           headerActions={
@@ -1326,23 +1251,6 @@ export function ModuleEditorBody({
               New Lesson
             </Button>
           }
-          footer={
-            <Group justify="flex-end" gap="sm">
-              <Button
-                variant="default"
-                onClick={handleLessonsDrawerRequestClose}
-                disabled={lessonsSaving}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void handleSaveLessonsOrder()}
-                loading={lessonsSaving}
-              >
-                Save changes
-              </Button>
-            </Group>
-          }
         >
           {lessonsError && (
             // Non-blocking, same as the wide/Modal layout's identical
@@ -1350,11 +1258,6 @@ export function ModuleEditorBody({
             // whatever this list last successfully showed.
             <Alert color="red" mb="sm">
               {lessonsError.message}
-            </Alert>
-          )}
-          {lessonsSaveError && (
-            <Alert color="red" role="alert" mb="sm">
-              {lessonsSaveError}
             </Alert>
           )}
           <LessonsDrawerList
@@ -1365,25 +1268,6 @@ export function ModuleEditorBody({
             onDeleteLesson={handleDeleteLesson}
           />
         </DrawerShell>
-      )}
-
-      {/* Discard confirmation for the Lessons drawer's own pending reorder
-          (ANA-124) -- same copy/pattern as `confirmingDiscard` above, gated
-          behind `lessonsDrawerIsDirty` instead of this body's own `isDirty`.
-          Needs the same `getDefaultZIndex("popover")` override: this drawer
-          is itself stacked (`stackId="lessons"`), which otherwise buries the
-          confirmation underneath its own overlay. */}
-      {confirmingLessonsDiscard && (
-        <ConfirmDialog
-          opened
-          title="Discard unsaved changes?"
-          description="Your changes have not been saved and will be lost."
-          confirmLabel="Discard changes"
-          cancelLabel="Keep editing"
-          onCancel={() => setConfirmingLessonsDiscard(false)}
-          onConfirm={handleDiscardLessonsOrder}
-          zIndex={getDefaultZIndex("popover")}
-        />
       )}
 
       {/* The Lesson editor drawer (ANA-125): New Lesson/Edit, triggered from
@@ -1413,14 +1297,28 @@ export function ModuleEditorBody({
           to Escape/outside click" behavior, and closing it (Back, Escape,
           outside click) reveals the still-open Lessons drawer underneath --
           the Lessons drawer is never touched here. Only rendered for the
-          narrow/Drawer layout, same as the Lessons drawer itself. */}
+          narrow/Drawer layout, same as the Lessons drawer itself.
+          `onClose` is `() => lessonEditorRequestCloseRef.current()`, not
+          `handleLessonEditorClose` directly (ANA-126) -- every way this
+          drawer can be dismissed (its own Back button, Escape, outside
+          click) is funneled through Mantine's single `onClose` prop (see
+          `DrawerShell`'s own doc, drawer-shell.tsx: its Back button falls
+          back to `onClose` when no separate `onBack` is given, as here), so
+          routing that one prop through `LessonEditor`'s own dirty check is
+          enough to guard all three -- preserving its existing "Discard
+          unsaved changes?" confirmation instead of bypassing it the way
+          calling `handleLessonEditorClose` here directly used to (the bug
+          this fixes). Confirming discard (or dismissing while clean) still
+          resolves to `handleLessonEditorClose` itself, via `LessonEditor`'s
+          own `onBack` call -- closing only this drawer and revealing the
+          still-open Lessons drawer underneath, never anything more. */}
       {isNarrow && (
         <DrawerShell
           opened={lessonEditorDrawerOpened}
           title={
             lessonEditorTarget?.lessonId === null ? "New Lesson" : "Edit Lesson"
           }
-          onClose={handleLessonEditorClose}
+          onClose={() => lessonEditorRequestCloseRef.current()}
           size={LESSON_EDITOR_DRAWER_WIDTH}
           stackId="lesson-editor"
           // No `footer` prop here (PR review) -- `LessonEditor` itself

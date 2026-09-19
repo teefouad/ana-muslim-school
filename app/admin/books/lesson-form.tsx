@@ -11,7 +11,7 @@ import {
 
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
-import { LESSON_TYPES, type LessonType } from "@/lib/lessons/types";
+import type { LessonType } from "@/lib/lessons/types";
 import type { Question } from "@/lib/questions/types";
 import {
   suggestLessonDescription,
@@ -24,13 +24,30 @@ import type { ModuleQuestionGroup } from "./question-fields";
 import { QuestionsEditor } from "./questions-editor";
 
 const LESSON_TYPE_LABELS: Record<LessonType, string> = {
-  text: "Text",
-  video: "Video",
   quiz: "Quiz",
   final: "Final",
   skip: "Skip",
   break: "Break",
+  text: "Text",
+  video: "Video",
 };
+
+/** The Type control's own display order (ANA-126) -- Quiz, Final, Skip,
+ * Break, Text, Video, deliberately separate from `LESSON_TYPES`
+ * (lib/lessons/types.ts): that list's order is the canonical/validation
+ * order, and `lesson-fields.ts`'s `createEmptyLessonFieldsValues` reads
+ * `LESSON_TYPES[0]` as New Lesson's default type -- reordering it to start
+ * with `"quiz"` would silently change that default from Text to Quiz, a
+ * save-behavior change this task doesn't ask for. This list only ever
+ * drives the `SegmentedControl`'s own option order below. */
+const LESSON_TYPE_ORDER: LessonType[] = [
+  "quiz",
+  "final",
+  "skip",
+  "break",
+  "text",
+  "video",
+];
 
 /** The Lesson position rules from ANA-110: `0` through `4`, segmented/
  * switcher-style control rather than a plain numeric input. */
@@ -302,23 +319,14 @@ export function LessonForm({
               onChange={(position) => onChange({ position })}
             />
           </Stack>
-        </Stack>
 
-        <Stack
-          gap="lg"
-          style={{
-            border: "1px dashed #fff1",
-            padding: 16,
-            borderRadius: 12,
-          }}
-        >
           <Stack gap={4}>
             <Text size="sm" fw={500}>
               Type
             </Text>
             <SegmentedControl<LessonType>
               aria-label="Type"
-              data={LESSON_TYPES.map((type) => ({
+              data={LESSON_TYPE_ORDER.map((type) => ({
                 value: type,
                 label: LESSON_TYPE_LABELS[type],
               }))}
@@ -334,18 +342,20 @@ export function LessonForm({
             previousModuleQuestions={previousModuleQuestions}
             onQuestionsBusyChange={onQuestionsBusyChange}
           />
-        </Stack>
-      </SimpleGrid>
 
-      {/* Rendered below both columns, rather than inside the left column
+          {/* Rendered below both columns, rather than inside the left column
           alongside Position (PR review), so Published stays this form's own
           last field regardless of which column ends up taller -- see this
           file's own top-level doc comment. */}
-      <ToggleCard
-        label="Published"
-        checked={value.isPublished}
-        onChange={(isPublished) => onChange({ isPublished })}
-      />
+          <ToggleCard
+            label="Published"
+            checked={value.isPublished}
+            onChange={(isPublished) => onChange({ isPublished })}
+          />
+
+          <div></div>
+        </Stack>
+      </SimpleGrid>
     </Stack>
   );
 }
