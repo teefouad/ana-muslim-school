@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { Button, Drawer, Group, Stack, Text } from "@mantine/core";
+import { Pencil } from "lucide-react";
 
 import { DrawerFooter, DrawerShell } from "./drawer-shell";
 
@@ -51,6 +52,25 @@ export const Default: Story = {
 export const NoFooter: Story = {
   args: {
     children: <LongContent />,
+  },
+};
+
+// Demonstrates `headerActions` (ANA-123): a secondary action rendered in
+// the header, right-aligned opposite the back button/title -- e.g. the Edit
+// Module drawer's own Lessons button, which opens a nested drawer stacked
+// above this one (see the Edit Module drawer's real usage for that wiring).
+export const WithHeaderActions: Story = {
+  args: {
+    children: <LongContent />,
+    headerActions: (
+      <Button
+        variant="subtle"
+        leftSection={<Pencil size={16} aria-hidden="true" />}
+        onClick={() => {}}
+      >
+        Lessons
+      </Button>
+    ),
   },
 };
 

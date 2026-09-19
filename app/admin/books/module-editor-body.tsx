@@ -81,21 +81,11 @@ const LESSONS_SKELETON_ROW_COUNT = 3;
  * "auto"`). Left at `auto` below `md`, where the two columns already stack
  * instead of sitting side by side -- constraining height there would fight
  * that stacked layout's own natural scroll instead of stabilizing anything.
- * Used by the modal always, and by the drawer's own Lesson mode (ANA-121) --
- * narrow Module mode uses its own auto-height layout instead (see
- * `NARROW_LESSONS_PANEL_HEIGHT` below), since it stacks a second column that
- * would otherwise need a real height of its own to size against. */
+ * Used by Lesson mode always, and by the wide/Modal layout's own Module
+ * mode -- the drawer's narrow layout uses auto-height stacking for Module
+ * mode instead (ANA-123: it no longer renders the Lessons list, so there's
+ * no second column to size against). */
 const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 544 } as const;
-
-/** Narrow layout's Lessons column has no ancestor Flex row to stretch
- * against for its height the way the wide layout's does (ANA-121 PR review
- * -- see the narrow-mode comment further down), so it gets one concrete
- * pixel height instead, for `LessonsPanelSkeleton`/`LessonsPanel`'s own
- * `height: "100%"` to resolve against regardless of how tall the Module
- * fields above it happen to be. Picked to comfortably show a few Lesson
- * rows without making the drawer's own body scroll excessively before
- * reaching Save. */
-const NARROW_LESSONS_PANEL_HEIGHT = 320;
 
 // Approximates LessonsPanel/ItemList's own card chrome (ANA-116) --
 // mirrors `[id]/edit/page.tsx`'s `ModulesPanelSkeleton`, sized for this
@@ -772,24 +762,37 @@ export function ModuleEditorBody({
         onBusyChange={setContentBusy}
       />
 
-      {/* Published + Color (ANA-117 PR review): a single responsive row,
-          Published on the left and Color on the right -- matching Book
-          form's own Locked/Published row (book-form.tsx), stacking only on
-          narrow screens. Published reflects and edits this Module's own
-          persisted `isPublished`, included in both create and update
-          Module persistence (module-fields.ts). */}
-      <Group align="flex-end" wrap="nowrap">
-        <div style={{ flex: 1 }}>
+      {/* Published + Color: a single responsive row, Published on the left
+          and Color on the right (ANA-117 PR review) -- matching Book form's
+          own Locked/Published row (book-form.tsx), stacking only on narrow
+          screens. The drawer (ANA-123) instead stacks Color, then Published,
+          each its own full row -- its 560px width has no room for the
+          side-by-side row. Published reflects and edits this Module's own
+          persisted `isPublished`, included in both create and update Module
+          persistence (module-fields.ts). */}
+      {isNarrow ? (
+        <>
+          <ColorField value={color} onChange={setColor} />
           <ToggleCard
             label="Published"
             checked={isPublished}
             onChange={setIsPublished}
           />
-        </div>
-        <div style={{ flex: 2 }}>
-          <ColorField value={color} onChange={setColor} />
-        </div>
-      </Group>
+        </>
+      ) : (
+        <Group align="flex-end" wrap="nowrap">
+          <div style={{ flex: 1 }}>
+            <ToggleCard
+              label="Published"
+              checked={isPublished}
+              onChange={setIsPublished}
+            />
+          </div>
+          <div style={{ flex: 2 }}>
+            <ColorField value={color} onChange={setColor} />
+          </div>
+        </Group>
+      )}
 
       {saveError && (
         <Alert color="red" role="alert">
@@ -953,43 +956,36 @@ export function ModuleEditorBody({
           )}
         </Box>
       </Stack>
+    ) : isNarrow ? (
+      // The drawer no longer renders the Lessons list alongside the Module
+      // fields (ANA-123 -- see the header's own Lessons button, wired up by
+      // edit-module-drawer.tsx, for where Lesson management moved to: a
+      // nested drawer, still a placeholder for now). Auto-height stacking,
+      // same as create mode -- the Drawer's own body already scrolls the
+      // whole thing, so there's no fixed-height scroll region to coordinate
+      // with a second column the way the wide layout below still does.
+      <Stack gap="lg">
+        {moduleFormFields}
+        {moduleFormFooterSlot}
+      </Stack>
     ) : (
-      // `isNarrow`'s own height/flex model diverges further here than just
-      // `direction` (ANA-121 PR review, caught in Storybook, not by jsdom
-      // tests -- jsdom never computes real flexbox layout, so a Lessons
-      // panel silently collapsed to zero height with its DOM content still
-      // fully present and queryable): the wide layout's `flex: 1` on the
-      // Module-fields column and `align="stretch"` on a *row* Flex both
-      // depend on the row's own cross-axis (vertical) stretch to give the
-      // Lessons column a real height, via the ancestor Stack's fixed
-      // `EDIT_MODE_CONTENT_HEIGHT`. In a *column* Flex those same axes swap
-      // -- `flex: 1` on the Module-fields Box would instead consume the
-      // column's main-axis (vertical) space, starving the Lessons Box of
-      // any height for its own `height: "100%"` (`LessonsPanelSkeleton`/
-      // `LessonsPanel`) to resolve against. Narrow mode sidesteps this
-      // entirely instead of fighting it: natural, auto-height stacking (no
-      // competing `flex: 1`, no fixed-height scroll region -- the Drawer's
-      // own body already scrolls the whole thing) for the Module fields,
-      // and one concrete pixel height (not a percentage) for the Lessons
-      // Box, so its own children have something real to fill regardless of
-      // what's auto-sized above them.
-      <Stack gap="lg" h={isNarrow ? "auto" : EDIT_MODE_CONTENT_HEIGHT}>
+      // The wide/Modal layout's `flex: 1` on the Module-fields column and
+      // `align="stretch"` on a *row* Flex both depend on the row's own
+      // cross-axis (vertical) stretch to give the Lessons column a real
+      // height, via the ancestor Stack's fixed `EDIT_MODE_CONTENT_HEIGHT`
+      // (ANA-121 PR review, caught in Storybook, not by jsdom tests --
+      // jsdom never computes real flexbox layout, so a Lessons panel
+      // silently collapsed to zero height with its DOM content still fully
+      // present and queryable).
+      <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
         <Flex
           gap="lg"
-          direction={isNarrow ? "column" : { base: "column", md: "row" }}
+          direction={{ base: "column", md: "row" }}
           align="stretch"
-          style={
-            isNarrow ? undefined : { flex: 1, minHeight: 0, overflowY: "auto" }
-          }
+          style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
         >
-          <Box style={{ flex: isNarrow ? undefined : 1, minWidth: 0 }}>
-            {moduleFormFields}
-          </Box>
-          <Box
-            h={isNarrow ? NARROW_LESSONS_PANEL_HEIGHT : undefined}
-            w={isNarrow ? "100%" : { base: "100%", md: 300 }}
-            style={{ flexShrink: 0 }}
-          >
+          <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
+          <Box w={{ base: "100%", md: 300 }} style={{ flexShrink: 0 }}>
             {lessonsLoading ? (
               <LessonsPanelSkeleton />
             ) : lessonsError ? (

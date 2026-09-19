@@ -123,12 +123,12 @@ describe("EditModuleDrawer", () => {
     expect(await within(dialog).findByText("محتوى")).toBeInTheDocument();
   });
 
-  it("uses a 500px drawer width on desktop, opening from the right", async () => {
+  it("uses a 560px drawer width on desktop, opening from the right", async () => {
     renderDrawer();
     await findDrawerDialog("Edit Module");
 
     const root = document.querySelector(".mantine-Drawer-root");
-    expect(root?.getAttribute("style")).toContain("min(500px, 100vw)");
+    expect(root?.getAttribute("style")).toContain("min(560px, 100vw)");
   });
 
   it("Save changes calls onSave with the Module's id, edited fields, and a null Lesson order when nothing was reordered", async () => {
@@ -279,7 +279,9 @@ describe("EditModuleDrawer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("still opens and edits Lessons from inside the drawer (ANA-116/ANA-121)", async () => {
+  // ANA-123: the drawer no longer renders the Lessons list/panel at all --
+  // Lesson management moves to the nested placeholder drawer below.
+  it("does not render the Lessons list/panel", async () => {
     mockFetch({
       lessons: [
         buildLessonFixture({
@@ -291,31 +293,108 @@ describe("EditModuleDrawer", () => {
     renderDrawer();
 
     const dialog = await findDrawerDialog("Edit Module");
+    // The Module's fields are still there (proves the drawer rendered
+    // successfully), but nothing from the Lessons list/its rows.
+    expect(within(dialog).getByLabelText("Title")).toBeInTheDocument();
+    expect(within(dialog).queryByText("الدرس الأول")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "New Lesson" }),
+    ).not.toBeInTheDocument();
+  });
+
+  // ANA-123: Color gets its own full row, Published the row below it --
+  // replacing the modal's side-by-side Published/Color row (unchanged
+  // there, out of scope for this task).
+  it("renders Color and Published on separate rows, Color first", async () => {
+    renderDrawer();
+    const dialog = await findDrawerDialog("Edit Module");
+
+    const color = within(dialog).getByRole("combobox", { name: "Color" });
+    const published = within(dialog).getByRole("switch", {
+      name: "Published",
+    });
+
+    expect(color.compareDocumentPosition(published)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("renders a Lessons button with a pencil icon in the header", async () => {
+    renderDrawer();
+    const dialog = await findDrawerDialog("Edit Module");
+
+    const lessonsButton = within(dialog).getByRole("button", {
+      name: "Lessons",
+    });
+    expect(lessonsButton).toBeInTheDocument();
+    expect(lessonsButton.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("clicking Lessons opens an empty nested drawer above the Module editor, which stays mounted underneath it", async () => {
+    renderDrawer();
+    const moduleDialog = await findDrawerDialog("Edit Module");
+
     fireEvent.click(
-      await within(dialog).findByRole("button", { name: "Edit الدرس الأول" }),
+      within(moduleDialog).getByRole("button", { name: "Lessons" }),
+    );
+
+    const lessonsDialog = await findDrawerDialog("Lessons");
+    expect(lessonsDialog).toBeInTheDocument();
+    // The Module editor is still mounted underneath, fields intact.
+    expect(
+      screen.getByRole("dialog", { name: "Edit Module" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("المقدمة");
+  });
+
+  it("backing out of the nested Lessons drawer returns to the Module editor", async () => {
+    renderDrawer();
+    const moduleDialog = await findDrawerDialog("Edit Module");
+    fireEvent.click(
+      within(moduleDialog).getByRole("button", { name: "Lessons" }),
+    );
+    const lessonsDialog = await findDrawerDialog("Lessons");
+
+    fireEvent.click(
+      within(lessonsDialog).getByRole("button", { name: "Back" }),
+    );
+
+    // The Lessons drawer animates out rather than unmounting immediately
+    // (Mantine's own exit transition) -- wait for it to actually leave the
+    // tree rather than asserting its absence synchronously.
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Lessons" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Edit Module" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opening and closing the Lessons placeholder does not mark the Module editor dirty", async () => {
+    const onClose = vi.fn();
+    renderDrawer({ onClose });
+    const moduleDialog = await findDrawerDialog("Edit Module");
+
+    fireEvent.click(
+      within(moduleDialog).getByRole("button", { name: "Lessons" }),
+    );
+    const lessonsDialog = await findDrawerDialog("Lessons");
+    fireEvent.click(
+      within(lessonsDialog).getByRole("button", { name: "Back" }),
+    );
+    await screen.findByRole("dialog", { name: "Edit Module" });
+
+    // No Module field was touched, so Cancel should still close immediately
+    // -- opening/closing the placeholder alone must never flip `isDirty`.
+    fireEvent.click(
+      within(moduleDialog).getByRole("button", { name: "Cancel" }),
     );
 
     expect(
-      await within(dialog).findByRole("heading", { name: "Edit Lesson" }),
-    ).toBeInTheDocument();
-    expect(
-      await within(dialog).findByTestId("lesson-form"),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("Title")).toHaveValue("الدرس الأول");
-
-    // ANA-122: Lesson mode's own back-to-Module control renders in-flow
-    // now, not absolutely positioned over the drawer's header (there's no
-    // longer an empty header region to fake being sticky over -- the
-    // drawer's own real header still reads "Edit Module" throughout).
-    // Still gets back to Module mode the same way as before.
-    expect(
-      within(dialog).getByRole("heading", { name: "Edit Module" }),
-    ).toBeInTheDocument();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Back to Module" }),
-    );
-    expect(
-      within(dialog).getByRole("button", { name: "Save changes" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+    ).not.toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

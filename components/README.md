@@ -181,9 +181,19 @@ automatically. See this file's own `Stacked` story and
 `drawer-shell.test.tsx`'s stacking `describe` block for the exact
 behavior. A standalone `DrawerShell` that omits `stackId` is completely
 unaffected -- every prop this adds is left at `Drawer.Root`'s own regular
-default in that case. A production nested Module -> Lesson drawer flow
-still isn't implemented yet; this only establishes that the shared
-component itself supports that shape when one is built.
+default in that case. `edit-module-drawer.tsx` (ANA-123) is the first
+production consumer: a Lessons header action opens a second, nested
+`DrawerShell` stacked above the Module editor's own via this same
+mechanism -- the nested drawer is an intentionally empty placeholder for
+now (ANA-124 implements the real Lessons list inside it), but the
+container/navigation shape itself is real.
+
+`headerActions` (ANA-123) renders additional content in the header,
+right-aligned opposite the back button/title -- e.g. that same Lessons
+button. It needs no layout wrapper of its own: Mantine's own
+`ModalBaseHeader` is already `justify-content: space-between`, so a second
+header child lands on the opposite side for free. Omit for a header with
+no actions beyond the back button (every consumer before ANA-123).
 
 One implementation note for a future change here: `Drawer.Stack`'s own
 context value is a new object every time its internal `stack`/`maxZIndex`
@@ -200,10 +210,10 @@ theoretical concern).
 
 `app/admin/books/edit-module-modal.tsx` (the Edit Module modal, centered,
 900-1040px) and `app/admin/books/edit-module-drawer.tsx` (the Edit Module
-drawer, right-side, fixed 500px on desktop, ANA-121, migrated onto the
-shared `DrawerShell` above in ANA-122) are two different presentation
-containers around the exact same editing experience --
-`app/admin/books/module-editor-body.tsx`'s `ModuleEditorBody`, which owns
+drawer, right-side, fixed 560px on desktop -- 500px at ANA-121, widened at
+ANA-123 -- migrated onto the shared `DrawerShell` above in ANA-122) are two
+different presentation containers around the exact same editing experience
+-- `app/admin/books/module-editor-body.tsx`'s `ModuleEditorBody`, which owns
 every field, AI action, the Lessons list/editor, loading state, and
 save/discard behavior. Neither container duplicates that logic: each is a
 thin wrapper that mounts `ModuleEditorBody` inside its own Mantine `Modal`/
@@ -213,16 +223,22 @@ body's own unsaved-changes guard via a shared `requestCloseRef` pattern, and
 otherwise gets out of the way. `ModuleEditorBody`'s own `layout` prop
 (`"wide"`, the default the modal never overrides, vs. `"narrow"`, the
 drawer) is what the body branches on for everything the shared shell
-requires it to present differently: whether Module mode's Module-
-editor+Lessons-list split sits side by side or stacks (unchanged from
-ANA-121), whether Module mode's own Cancel/Save changes render inline or
-through `DrawerFooter` into the drawer's shared footer, and whether the
-body's own fixed-pixel-positioned title (kept only for the modal) or an
-ordinary in-flow one (Lesson mode inside the drawer, since there's no
-longer an empty header region to fake being sticky over) is used -- never
-the underlying fields/behavior themselves. Reach for this same split -- a
-shared `*-body.tsx` plus thin container wrappers -- before duplicating an
-existing editor's logic into a second container; don't special-case a
+requires it to present differently: whether Module mode renders its
+Module-editor+Lessons-list split side by side, or -- the drawer, ANA-123 --
+omits the Lessons list entirely (Lesson management there moves to the
+drawer's own Lessons header action/nested placeholder drawer instead, see
+`DrawerShell`'s `headerActions`/`stackId` above); whether Color/Published
+render as a single side-by-side row or, in the drawer, Color then Published
+each on their own full row (ANA-123, narrower width has no room for the
+side-by-side row); whether Module mode's own Cancel/Save changes render
+inline or through `DrawerFooter` into the drawer's shared footer; and
+whether the body's own fixed-pixel-positioned title (kept only for the
+modal) or an ordinary in-flow one (Lesson mode inside the modal only now --
+the drawer no longer has a route into Lesson mode since removing its
+Lessons list, ANA-123) is used -- never the underlying fields/behavior
+themselves. Reach for this same split -- a shared `*-body.tsx` plus thin
+container wrappers -- before duplicating an existing editor's logic into a
+second container; don't special-case a
 single monolithic component to support two visual shells instead.
 
 ## Conventions

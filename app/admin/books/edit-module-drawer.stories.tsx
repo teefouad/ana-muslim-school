@@ -41,14 +41,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Right-side drawer, 500px on desktop (ANA-121) -- renders the exact same
-// Module-editing experience as the Edit Module modal's own Edit story
-// (edit-module-modal.stories.tsx), just inside a narrower container: same
-// fields, same Lessons list. Its Lessons are loaded live through the real
-// Lesson list API, same as the modal -- this Storybook environment has no
-// backend to serve that request, so this story shows the panel's own
-// loading/error state rather than populated rows; see
-// edit-module-drawer.test.tsx for coverage of a populated Lessons list.
+// Right-side drawer, 560px on desktop (ANA-123, previously 500px per
+// ANA-121) -- renders the exact same Module-editing experience as the Edit
+// Module modal's own Edit story (edit-module-modal.stories.tsx), just
+// inside a narrower container: same fields, minus the Lessons list (ANA-123
+// -- see the header's own Lessons button, which opens a still-empty nested
+// placeholder drawer instead).
 export const Edit: Story = {
   args: {
     state: { id: "module-1", fields: FILLED_FIELDS },

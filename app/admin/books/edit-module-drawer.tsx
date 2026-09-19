@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { Button, Drawer } from "@mantine/core";
+import { Pencil } from "lucide-react";
 
 import { DrawerShell } from "@/components/ui/drawer-shell";
 import type { Book } from "@/lib/books/types";
@@ -36,22 +38,25 @@ export interface EditModuleDrawerProps {
   ) => Promise<void>;
 }
 
-// Fixed 500px on desktop (ANA-121); `min(...)` caps it at the viewport width
-// on anything narrower instead of overflowing horizontally, the same
-// "shrink to fit, never overflow" contract `EditModuleModal`'s own edit-mode
-// width already uses for its 1040px cap.
-const DRAWER_WIDTH = "min(500px, 100vw)";
+// Fixed 560px on desktop (ANA-123, previously 500px per ANA-121); `min(...)`
+// caps it at the viewport width on anything narrower instead of overflowing
+// horizontally, the same "shrink to fit, never overflow" contract
+// `EditModuleModal`'s own edit-mode width already uses for its 1040px cap.
+const DRAWER_WIDTH = "min(560px, 100vw)";
+
+// The nested Lessons drawer (ANA-123) is a placeholder only -- no Lessons
+// list/editor lives here yet (ANA-124) -- so it gets its own, narrower
+// width rather than matching the Module editor's.
+const LESSONS_DRAWER_WIDTH = "min(420px, 100vw)";
 
 // Right-side drawer (ANA-121) opened from the Edit Book screen's Modules
 // panel for the pencil action -- replaces the Edit Module modal for editing
 // an existing Module only; Add Module is unaffected and still opens that
 // modal in create mode. Renders the exact same Module-editing experience as
 // the modal's own edit mode through the shared `ModuleEditorBody`
-// (`module-editor-body.tsx`) -- same fields, AI actions, validation, Lesson
-// list/editor, loading states, save behavior, discard protection, and
-// backend integration -- just inside a different container, with `layout=
-// "narrow"` so `ModuleEditorBody`'s Module-editor+Lessons-list split stacks
-// in one column instead of trying to fit side by side in 500px. The modal
+// (`module-editor-body.tsx`) -- same fields, AI actions, validation, loading
+// states, save behavior, discard protection, and backend integration --
+// just inside a different container, with `layout="narrow"`. The modal
 // component itself (`edit-module-modal.tsx`) is left completely intact.
 //
 // The drawer's own chrome (header/footer) is the shared `DrawerShell`
@@ -59,10 +64,19 @@ const DRAWER_WIDTH = "min(500px, 100vw)";
 // pixel-positioned `Title` `ModuleEditorBody` used to render for this
 // container, and its footer is where `ModuleEditorBody`'s own Cancel/Save
 // changes actions render via `DrawerFooter`, once `layout="narrow"` (see
-// that component's own `isNarrow` branches). Lesson mode's own inline
-// back-to-Module/title and Save action are untouched -- neither moves into
-// this shared chrome; ANA-122 doesn't implement a real nested Module ->
-// Lesson drawer.
+// that component's own `isNarrow` branches).
+//
+// `ModuleEditorBody` no longer renders a Lessons list/editor for this
+// `layout="narrow"` container (ANA-123 -- see its own `isNarrow` branch):
+// that's replaced here by a Lessons header action that opens a second,
+// nested `DrawerShell` stacked above this one via a shared Mantine
+// `Drawer.Stack`, per `stackId` (ANA-122's own stacking support -- see
+// `drawer-shell.tsx`'s `Stacked` story/tests for the exact mechanics this
+// reuses). The nested drawer is an intentionally empty placeholder for now
+// (ANA-124 implements the real Lessons list inside it); this only
+// establishes the container/navigation shape. Opening/closing it is local
+// UI state, entirely separate from `ModuleEditorBody`'s own dirty tracking,
+// so it never marks the Module editor dirty.
 export function EditModuleDrawer({
   state,
   book,
@@ -76,26 +90,62 @@ export function EditModuleDrawer({
   // unsaved-changes guard before ever actually closing.
   const requestCloseRef = useRef(onClose);
 
+  const [lessonsDrawerOpened, setLessonsDrawerOpened] = useState(false);
+
+  // Resets the nested Lessons placeholder back to closed whenever the
+  // Module editor itself actually closes, so reopening this same
+  // `EditModuleDrawer` instance for a later Module never starts with a
+  // stale nested drawer already open -- this component isn't remounted
+  // between opens the way `ModuleEditorBody` is (see its own `key={state.
+  // id}` below), so this local state would otherwise persist across them.
+  function handleClose() {
+    setLessonsDrawerOpened(false);
+    onClose();
+  }
+
   return (
-    <DrawerShell
-      opened={state !== null}
-      title="Edit Module"
-      onClose={() => requestCloseRef.current()}
-      size={DRAWER_WIDTH}
-    >
-      {state && (
-        <ModuleEditorBody
-          // Remounts (a fresh local draft) per distinct edit target --
-          // matching `EditModuleModal`'s own per-target remount.
-          key={state.id}
-          state={{ mode: "edit", id: state.id, fields: state.fields }}
-          book={book}
-          onClose={onClose}
-          onSave={onSave}
-          requestCloseRef={requestCloseRef}
-          layout="narrow"
-        />
-      )}
-    </DrawerShell>
+    <Drawer.Stack>
+      <DrawerShell
+        opened={state !== null}
+        title="Edit Module"
+        onClose={() => requestCloseRef.current()}
+        size={DRAWER_WIDTH}
+        stackId="module"
+        headerActions={
+          <Button
+            variant="subtle"
+            leftSection={<Pencil size={16} aria-hidden="true" />}
+            onClick={() => setLessonsDrawerOpened(true)}
+          >
+            Lessons
+          </Button>
+        }
+      >
+        {state && (
+          <ModuleEditorBody
+            // Remounts (a fresh local draft) per distinct edit target --
+            // matching `EditModuleModal`'s own per-target remount.
+            key={state.id}
+            state={{ mode: "edit", id: state.id, fields: state.fields }}
+            book={book}
+            onClose={handleClose}
+            onSave={onSave}
+            requestCloseRef={requestCloseRef}
+            layout="narrow"
+          />
+        )}
+      </DrawerShell>
+
+      <DrawerShell
+        opened={lessonsDrawerOpened}
+        title="Lessons"
+        onClose={() => setLessonsDrawerOpened(false)}
+        onBack={() => setLessonsDrawerOpened(false)}
+        size={LESSONS_DRAWER_WIDTH}
+        stackId="lessons"
+      >
+        {null}
+      </DrawerShell>
+    </Drawer.Stack>
   );
 }
