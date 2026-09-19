@@ -222,6 +222,52 @@ the effect on every one of those re-renders too, calling `addModal`/
 infinite render loop (hit once during development, not merely a
 theoretical concern).
 
+## SaveButton
+
+`components/ui/save-button.tsx` (ANA-129) wraps the plain Mantine `Button`
+used for every editor's primary save action -- Module/Lesson Save
+changes/Save Module (module-editor-body.tsx/lesson-editor.tsx), the Book
+edit page's Save changes, and the Manage Users permission form's Save
+changes/Save access. It takes the same props as `Button` plus a required
+`dirty: boolean`: this theme's usual primary green (the default, no
+`color` override) while `dirty` is `false`, an amber `#fd9c20` (PR review
+-- a literal hex, not one of this theme's own named colors) once it's
+`true`. `color` is omitted from this component's own props -- it fully
+owns the color, so a caller can't fight `dirty` with its own override.
+Before this existed, every one of those buttons rendered in the same
+green regardless of whether there was anything to save -- reach for this
+instead of a bare `Button` for any new Save action so it stays
+consistent. The caller still owns computing `dirty` (comparing current
+field values against whatever the editor was seeded with, e.g.
+`ModuleEditorBody`'s/`LessonEditor`'s own `isDirty`) --
+this component only renders the result.
+
+## ListHeaderAction
+
+`components/ui/list-header-action.tsx` (extracted in ANA-129 from
+`questions-editor.tsx`'s original New/Insert/Generate) is the compact text
+action a bare (non-`ItemList`) list's header uses instead of a full Mantine
+`Button` -- a plain `<button>` styled through `list-header-action.module.css`
+(white at 70% opacity, this theme's primary green at full opacity on hover,
+35% opacity plus `not-allowed` when `disabled`), which reads as lighter-weight
+than a pill-shaped filled/light `Button` would for a header action. Takes an
+`icon` (`ReactNode`) plus the label as `children`; every other prop passes
+straight through to the underlying `<button>`. Used by the Questions editor's
+New/Insert/Generate and the Break entries list's Add entry
+(lesson-break-config.tsx) -- reach for this before adding a new list's own
+header action rather than reinventing the style.
+
+## DashedEmptyState
+
+`components/ui/dashed-empty-state.tsx` (extracted in ANA-129 from
+`questions-editor.tsx`'s original "No questions yet." state) is the centered
+message inside a dashed, rounded box a bare (non-`ItemList`) list shows when
+it has nothing to display. `ItemList`'s own `emptyState` prop needs no
+separate border (it already renders inside `ItemList`'s own bordered card,
+see `item-list.module.css`'s `.emptyState`) -- this is for a list with no
+such outer card of its own, e.g. the Questions and Break entries editors.
+Takes the message as `children`.
+
 ## Modal vs. Drawer presentation containers
 
 `app/admin/books/edit-module-modal.tsx` (the Edit Module modal, centered,

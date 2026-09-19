@@ -7,9 +7,10 @@ import { ColorField } from "@/components/ui/color-field";
 import { DEFAULT_APPLICATION_COLOR } from "@/components/ui/application-colors";
 import { FormField } from "@/components/ui/form-field";
 import { ToggleCard } from "@/components/ui/toggle-card";
-import type {
-  LanguageOption,
-  TranslatedValue,
+import {
+  isSameTranslatedValue,
+  type LanguageOption,
+  type TranslatedValue,
 } from "@/components/ui/translatable-value";
 import type { Book, BookWritableFields } from "@/lib/books/types";
 import {
@@ -60,6 +61,18 @@ export function toBookFormValues(book: Book): BookFormValues {
   };
 }
 
+function isSameBookFormValues(a: BookFormValues, b: BookFormValues): boolean {
+  return (
+    isSameTranslatedValue(a.title, b.title) &&
+    isSameTranslatedValue(a.description, b.description) &&
+    isSameTranslatedValue(a.longDescription, b.longDescription) &&
+    a.imageId === b.imageId &&
+    a.isLocked === b.isLocked &&
+    a.isPublished === b.isPublished &&
+    a.color === b.color
+  );
+}
+
 function toTranslatableString(value: TranslatedValue): {
   ar: string;
   en: string;
@@ -98,21 +111,70 @@ export function BookForm({
   id,
   initialValues,
   onSubmit,
+  onDirtyChange,
 }: {
   /** Form element id. Callers wire a header submit button to this form via
    * `<button type="submit" form={id}>` -- normal HTML form semantics, no
    * ref/imperative submit call needed. */
   id: string;
   initialValues?: BookFormValues;
-  onSubmit: (values: BookFormValues) => void;
+  /** Awaited (ANA-129 PR review): resolving means the save succeeded, and
+   * this form resets its own `baseline` to the just-submitted `values` so
+   * Save changes reflects back to clean -- this form is never unmounted or
+   * re-seeded by the caller on save (unlike `ModuleEditorBody`'s own
+   * create-mode remount), so nothing else would otherwise clear its dirty
+   * state. Rejecting leaves the draft (and its dirty state) exactly as the
+   * user left it, so a failed save never looks like it succeeded; the
+   * caller owns surfacing the actual error. */
+  onSubmit: (values: BookFormValues) => Promise<void>;
+  /** Reports whether the current draft has diverged from `initialValues`
+   * (ANA-129) -- the caller's own Save changes button (rendered outside
+   * this form, see this file's own top-level doc) uses it to reflect
+   * unsaved changes. Called directly from each field's own `onChange`
+   * (`updateValues` below), never from an effect: this form owns the
+   * values, and the caller only ever needs to know when they change, not
+   * to resync anything of its own on mount. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [values, setValues] = useState<BookFormValues>(
     initialValues ?? createEmptyBookFormValues(),
   );
+  // Pinned to this form's own first-render values (a lazy `useState`
+  // initializer only ever runs once, on mount) -- the same baseline
+  // `values` itself was already seeded from, so dirty-checking stays
+  // correct for this editing session even if the caller's own
+  // `initialValues` object identity changes later (e.g. a background SWR
+  // revalidation of the same Book), the same "seed once, don't resync a
+  // later prop change" contract `values`' own initial state already has.
+  // `useState`, not `useRef` -- this value is read directly in `isDirty`-
+  // style render-time computations elsewhere in this file (`updateValues`
+  // below), and this project's `react-hooks/refs` lint rule flags a ref's
+  // `.current` read that way (permission-form.tsx hit this identically).
+  // Reset directly to the just-saved `values` on a successful submit
+  // (`handleSubmit` below, ANA-129 PR review) -- unlike `values`' own
+  // initial state, this one *does* get updated after mount, exactly once
+  // per successful save, which is what "seed once" was guarding against a
+  // stray background revalidation doing instead.
+  const [baseline, setBaseline] = useState(values);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function updateValues(patch: Partial<BookFormValues>) {
+    const next = { ...values, ...patch };
+    setValues(next);
+    onDirtyChange?.(!isSameBookFormValues(next, baseline));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit(values);
+
+    try {
+      await onSubmit(values);
+      setBaseline(values);
+      onDirtyChange?.(false);
+    } catch {
+      // The caller (`[id]/edit/page.tsx`) already surfaces its own error
+      // state -- this form just leaves the draft (and its dirty state)
+      // exactly as the user left it, so a failed save never looks saved.
+    }
   }
 
   return (
@@ -125,7 +187,7 @@ export function BookForm({
           translatable
           languages={LANGUAGES}
           value={values.title}
-          onChange={(title) => setValues((prev) => ({ ...prev, title }))}
+          onChange={(title) => updateValues({ title })}
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
         />
@@ -145,9 +207,7 @@ export function BookForm({
           translatable
           languages={LANGUAGES}
           value={values.description}
-          onChange={(description) =>
-            setValues((prev) => ({ ...prev, description }))
-          }
+          onChange={(description) => updateValues({ description })}
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
           aiAssistance
@@ -174,9 +234,7 @@ export function BookForm({
           translatable
           languages={LANGUAGES}
           value={values.longDescription}
-          onChange={(longDescription) =>
-            setValues((prev) => ({ ...prev, longDescription }))
-          }
+          onChange={(longDescription) => updateValues({ longDescription })}
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
           aiAssistance
@@ -197,16 +255,13 @@ export function BookForm({
             label="In-app image ID"
             value={values.imageId}
             onChange={(event) =>
-              setValues((prev) => ({
-                ...prev,
-                imageId: event.currentTarget.value,
-              }))
+              updateValues({ imageId: event.currentTarget.value })
             }
           />
 
           <ColorField
             value={values.color}
-            onChange={(color) => setValues((prev) => ({ ...prev, color }))}
+            onChange={(color) => updateValues({ color })}
           />
         </SimpleGrid>
 
@@ -215,17 +270,13 @@ export function BookForm({
             label="Locked"
             variant="error"
             checked={values.isLocked}
-            onChange={(isLocked) =>
-              setValues((prev) => ({ ...prev, isLocked }))
-            }
+            onChange={(isLocked) => updateValues({ isLocked })}
           />
           <ToggleCard
             label="Published"
             variant="primary"
             checked={values.isPublished}
-            onChange={(isPublished) =>
-              setValues((prev) => ({ ...prev, isPublished }))
-            }
+            onChange={(isPublished) => updateValues({ isPublished })}
           />
         </SimpleGrid>
       </Stack>

@@ -82,6 +82,19 @@ export const theme = createTheme({
         },
       },
     },
+    // Matches TextInput's own label spacing above (ANA-129) -- without
+    // this, NumberInput's label keeps Mantine's own default margin instead,
+    // so a `TextInput`/`NumberInput` pair sharing one row (e.g. a Video
+    // Lesson's Video URL/Duration fields, lesson-form.tsx) has each
+    // input's own box start at a different vertical offset even though
+    // both labels are a single line.
+    NumberInput: {
+      styles: {
+        label: {
+          marginBottom: 5,
+        },
+      },
+    },
   },
 });
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 
 import {
@@ -113,12 +113,24 @@ describe("LessonBreakConfig", () => {
     ]);
   });
 
-  it("deletes only the targeted entry", () => {
+  it("deletes only the targeted entry after confirming (ANA-129)", () => {
     const { onChange } = renderConfig();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete سبحان الله" }));
+    const dialog = screen.getByRole("dialog", { name: "Delete entry 1?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     expect(onChange).toHaveBeenCalledWith([ENTRIES[1]]);
+  });
+
+  it("cancelling the delete confirmation keeps the entry (ANA-129)", () => {
+    const { onChange } = renderConfig();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete سبحان الله" }));
+    const dialog = screen.getByRole("dialog", { name: "Delete entry 1?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("reorders entries via the keyboard and reports the new order through onChange", async () => {

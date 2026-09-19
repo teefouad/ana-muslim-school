@@ -1,11 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Box, Button, Group, NumberInput, Paper, Text } from "@mantine/core";
+import {
+  Box,
+  Group,
+  NumberInput,
+  Paper,
+  Text,
+  getDefaultZIndex,
+} from "@mantine/core";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 
 import { ActionIconButton } from "@/components/ui/action-icon-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DashedEmptyState } from "@/components/ui/dashed-empty-state";
+import { ListHeaderAction } from "@/components/ui/list-header-action";
 import { SortableList } from "@/components/ui/sortable-list";
 import { TranslatableTextInput } from "@/components/ui/translatable-text-input";
 import type { LanguageOption } from "@/components/ui/translatable-value";
@@ -153,6 +164,11 @@ function SortableEntry({
 // in, so switching away from and back to Break during one editing session
 // never drops entries entered earlier (ANA-118).
 export function LessonBreakConfig({ value, onChange }: LessonBreakConfigProps) {
+  // Deleting a Break entry requires confirmation (ANA-129), matching the
+  // Questions list's own `pendingDeleteKey` pattern (questions-editor.tsx)
+  // instead of this list's previous instant, unconfirmed removal.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   function handleAdd() {
     onChange([
       ...value,
@@ -172,9 +188,9 @@ export function LessonBreakConfig({ value, onChange }: LessonBreakConfigProps) {
     );
   }
 
-  function handleDelete(id: string) {
-    onChange(value.filter((entry) => entry.id !== id));
-  }
+  const pendingDeleteIndex = pendingDeleteId
+    ? value.findIndex((entry) => entry.id === pendingDeleteId)
+    : -1;
 
   return (
     <Box>
@@ -182,19 +198,18 @@ export function LessonBreakConfig({ value, onChange }: LessonBreakConfigProps) {
         <Text size="sm" fw={500}>
           Break entries
         </Text>
-        <Button
-          size="xs"
-          leftSection={<Plus size={14} aria-hidden="true" />}
+        <ListHeaderAction
+          icon={<Plus size={14} aria-hidden="true" />}
           onClick={handleAdd}
         >
           Add entry
-        </Button>
+        </ListHeaderAction>
       </Group>
 
       {value.length === 0 ? (
-        <Text size="sm" c="dimmed">
+        <DashedEmptyState>
           This lesson has no break entries yet.
-        </Text>
+        </DashedEmptyState>
       ) : (
         <SortableList<LessonAzkarFieldEntry>
           items={value}
@@ -207,7 +222,7 @@ export function LessonBreakConfig({ value, onChange }: LessonBreakConfigProps) {
               index={index}
               onTextChange={(text) => handleTextChange(entry.id, text)}
               onRepeatChange={(repeat) => handleRepeatChange(entry.id, repeat)}
-              onDelete={() => handleDelete(entry.id)}
+              onDelete={() => setPendingDeleteId(entry.id)}
             />
           )}
           renderOverlay={(entry, index) => (
@@ -224,6 +239,26 @@ export function LessonBreakConfig({ value, onChange }: LessonBreakConfigProps) {
               </Group>
             </Paper>
           )}
+        />
+      )}
+
+      {pendingDeleteId && pendingDeleteIndex !== -1 && (
+        <ConfirmDialog
+          opened
+          title={`Delete entry ${pendingDeleteIndex + 1}?`}
+          description="This can't be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => {
+            onChange(value.filter((entry) => entry.id !== pendingDeleteId));
+            setPendingDeleteId(null);
+          }}
+          // This list renders inside the Lesson editor, which can be a
+          // *stacked* DrawerShell (the nested Lesson editor drawer,
+          // ANA-129) -- see module-editor-body.tsx's identical override for
+          // why the default modal tier isn't enough there.
+          zIndex={getDefaultZIndex("popover")}
         />
       )}
     </Box>

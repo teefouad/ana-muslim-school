@@ -1,7 +1,14 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { Button, Group, Modal, Text, Textarea } from "@mantine/core";
+import {
+  Button,
+  getDefaultZIndex,
+  Group,
+  Modal,
+  Text,
+  Textarea,
+} from "@mantine/core";
 
 export interface AiInstructionsModalProps {
   /** Always `true` in practice -- callers mount this modal only while the
@@ -36,7 +43,22 @@ export function AiInstructionsModal({
   const [instructions, setInstructions] = useState("");
 
   return (
-    <Modal opened={opened} onClose={onCancel} title={title} centered>
+    <Modal
+      opened={opened}
+      onClose={onCancel}
+      title={title}
+      centered
+      // Every caller reaches this dialog through a field's own AI action
+      // (FormField), which can be rendered inside a *stacked* DrawerShell
+      // (e.g. the Edit Module/Lesson editor drawers, ANA-129) -- that gets a
+      // z-index above Mantine's default modal tier (see drawer-shell.tsx's
+      // own `stackId` doc), which otherwise buries this dialog underneath
+      // the drawer's own overlay instead of on top of it. Pinning to the
+      // "popover" tier unconditionally is a no-op for every other caller
+      // (an ordinary Modal/no drawer), matching the same override
+      // `ConfirmDialog` callers already reach for in this situation.
+      zIndex={getDefaultZIndex("popover")}
+    >
       <Text size="sm" c="dimmed" mb="md">
         {description}
       </Text>

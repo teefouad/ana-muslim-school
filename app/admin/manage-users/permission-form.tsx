@@ -13,6 +13,7 @@ import {
 } from "@mantine/core";
 import { DateTimePicker } from "@mantine/dates";
 
+import { SaveButton } from "@/components/ui/save-button";
 import { toDateTimePickerValueOrNull, toIsoStringOrNull } from "@/lib/dates";
 import type {
   PermissionRecord,
@@ -62,6 +63,21 @@ export function PermissionForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Pinned to this form's own first-render values (ANA-129) -- same "seed
+  // once, don't resync to a later prop change" contract as BookForm's own
+  // identical `baseline` (book-form.tsx), so Save's dirty state stays
+  // correct for this editing session regardless of any later `record` prop
+  // change. `useState`, not `useRef` -- `isDirty` below reads it directly
+  // during render, and this project's `react-hooks/refs` lint rule flags a
+  // ref's `.current` read that way.
+  const [baseline] = useState({ email, expiresAt, permissions });
+  const isDirty =
+    email !== baseline.email ||
+    expiresAt !== baseline.expiresAt ||
+    (Object.keys(permissions) as PermissionKey[]).some(
+      (key) => permissions[key] !== baseline.permissions[key],
+    );
 
   function togglePermission(key: PermissionKey) {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -187,9 +203,9 @@ export function PermissionForm({
               Cancel
             </Button>
           )}
-          <Button type="submit" loading={loading}>
+          <SaveButton dirty={isDirty} type="submit" loading={loading}>
             {isEditing ? "Save changes" : "Save access"}
-          </Button>
+          </SaveButton>
         </Group>
       </Stack>
     </form>

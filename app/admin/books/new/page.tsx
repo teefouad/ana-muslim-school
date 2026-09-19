@@ -63,6 +63,12 @@ export default function AddBookPage() {
       setSubmitError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
+      // Rethrown (ANA-129 PR review) so BookForm's own awaited `onSubmit`
+      // (book-form.tsx) knows this attempt failed and leaves its draft/
+      // dirty state untouched instead of optimistically marking it saved
+      // -- harmless on the success path above, which navigates away and
+      // unmounts this form regardless.
+      throw err;
     } finally {
       setIsSubmitting(false);
     }

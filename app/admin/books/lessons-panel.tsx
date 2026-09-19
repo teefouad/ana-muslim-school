@@ -14,11 +14,11 @@ export interface LessonsPanelProps {
    * (edit-module-modal.tsx) owns the Lessons SWR read. */
   lessons: Lesson[];
   onLessonsChange: (lessons: Lesson[]) => void;
-  /** Fired when a row's Edit action is clicked (ANA-115) -- switches Edit
-   * Module into Lesson mode for this Lesson; this panel owns no editing UI
-   * itself. Clicking the row itself no longer opens the form, nor does
-   * double-clicking it (ANA-115 PR review) -- Edit is the only entry point
-   * into Lesson mode. */
+  /** Fired when a row's Edit action is clicked (ANA-115), or the row is
+   * double-clicked (ANA-129, matching ModulesPanel's own double-click --
+   * see modules-panel.tsx) -- switches Edit Module into Lesson mode for
+   * this Lesson; this panel owns no editing UI itself. Single-clicking the
+   * row still does nothing on its own (ANA-115 PR review). */
   onEditLesson: (lesson: Lesson) => void;
   /** Persists the deletion of a real Lesson through the existing Lesson
    * delete API (ANA-116), gated behind the same `ConfirmDialog` pattern
@@ -112,6 +112,10 @@ export function LessonsPanel({
         sortable
         onReorder={onLessonsChange}
         onEditItem={(lesson) => onEditLesson(lesson)}
+        // Double-clicking a row opens the same Lesson editor as its pencil
+        // action (ANA-129), matching ModulesPanel's identical
+        // `onItemDoubleClick` (modules-panel.tsx).
+        onItemDoubleClick={(lesson) => onEditLesson(lesson)}
         getEditLabel={(lesson, index) =>
           `Edit ${getLessonLabel(lesson, index)}`
         }

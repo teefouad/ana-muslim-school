@@ -4,6 +4,7 @@
   height: 100%;
   overflow: hidden;
   background-color: #121212;
+  border-left: 1px solid #202020;
 }
 
 .header {

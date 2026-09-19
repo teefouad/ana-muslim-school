@@ -49,7 +49,17 @@ type Story = StoryObj<typeof meta>;
 // placeholder drawer instead).
 export const Edit: Story = {
   args: {
-    state: { id: "module-1", fields: FILLED_FIELDS },
+    state: { mode: "edit", id: "module-1", fields: FILLED_FIELDS },
+  },
+};
+
+// Add Module (ANA-129): the same drawer, opened blank in create mode --
+// notably with no Lessons header action, since there's no Module id yet to
+// manage Lessons for.
+export const Create: Story = {
+  args: {
+    state: { mode: "create" },
+    onCreate: async () => {},
   },
 };
 

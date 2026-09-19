@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Alert,
@@ -25,7 +25,6 @@ import {
   type BookFormValues,
 } from "../../book-form";
 import { EditModuleDrawer } from "../../edit-module-drawer";
-import { EditModuleModal } from "../../edit-module-modal";
 import { fetchJson, HttpError } from "../../fetch-json";
 import { ImportSourceModal } from "../../import-source/import-source-modal";
 import {
@@ -47,6 +46,7 @@ import {
   type ModuleFieldsValues,
 } from "../../module-fields";
 import { ModulesPanel } from "../../modules-panel";
+import { SaveButton } from "@/components/ui/save-button";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
 import type { Material } from "@/lib/materials/types";
@@ -161,11 +161,11 @@ function BookFormSkeleton() {
 // the read (see books-table.tsx for why) so it doesn't need a `useEffect`.
 export default function EditBookPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const {
     data: book,
     error,
     isLoading,
+    mutate: mutateBook,
   } = useSWR(
     `/api/v1/books/${id}`,
     (url) => fetchJson<{ data: Book }>(url).then((response) => response.data),
@@ -219,6 +219,14 @@ export default function EditBookPage() {
   const [modalTarget, setModalTarget] = useState<ModuleModalTarget | null>(
     null,
   );
+  // Reported by BookForm's own `onDirtyChange` (ANA-129) -- whether its
+  // fields have diverged from the Book they were seeded with. Combined
+  // with `moduleOrderDraft` below (a pending Modules reorder is exactly as
+  // much unsaved work, and Save changes persists both in the same request,
+  // see `handleSubmit`) into the one `isDirty` this page's Save changes
+  // button reflects.
+  const [isBookFormDirty, setIsBookFormDirty] = useState(false);
+  const isDirty = isBookFormDirty || moduleOrderDraft !== null;
   // Retry-safety for Create Module's two-step Module-then-Material create
   // (ANA-94 PR review): once the Module itself has been created, its real
   // id is remembered here so a retried Save Module (after a Material-
@@ -384,6 +392,16 @@ export default function EditBookPage() {
     await mutateModules();
     await mutateMaterials();
     setModuleOrderDraft(null);
+    // Switches the drawer into edit mode for the Module just created
+    // (ANA-129 PR review: saving must never change the screen) -- the
+    // drawer itself never closes on save (module-editor-body.tsx), so
+    // without this the user would be left staring at the same blank
+    // create draft with no way to tell it had actually saved. `getModuleFields`
+    // (below) reads from `modulesData`, already revalidated above, so the
+    // freshly-mounted edit-mode `ModuleEditorBody` this triggers (a new
+    // `state.id` means a new `key`, see edit-module-drawer.tsx) seeds from
+    // the real, just-saved fields rather than a blank flash.
+    setModalTarget({ mode: "edit", id: moduleId });
   }
 
   // Persists an existing Module's edited fields through the backend
@@ -476,15 +494,29 @@ export default function EditBookPage() {
         );
       }
 
-      // Only relevant if a future change keeps the user on this page after
-      // a successful save instead of navigating away -- revalidates so the
-      // Modules panel reflects the now-persisted order rather than the
-      // (no-longer-authoritative) local draft.
+      // Revalidates so the Modules panel reflects the now-persisted order
+      // rather than the (no-longer-authoritative) local draft, then drops
+      // the draft itself -- it's persisted now, so `isDirty` (below) must
+      // stop counting it (ANA-129 PR review: this page no longer navigates
+      // away on save, so a leftover draft would otherwise read as dirty
+      // forever after a successful save).
       if (moduleOrderDraft) {
         await mutateModules();
+        setModuleOrderDraft(null);
       }
 
-      router.push("/admin/books");
+      // Revalidates the Book itself so anything else on this page reading
+      // `book` reflects the just-saved values -- not what resets BookForm's
+      // own dirty state, though (its own `baseline` is reset directly, see
+      // `onDirtyChange`'s wiring above/book-form.tsx's `handleSubmit`,
+      // since a background SWR revalidation must never silently overwrite
+      // an in-progress edit).
+      await mutateBook();
+
+      // No navigation here (ANA-129 PR review: saving must never change
+      // the screen) -- the admin stays on this same Edit Book page, Save
+      // changes reflecting back to clean once BookForm resets its own
+      // baseline (see book-form.tsx).
     } catch (err) {
       // The reordered draft (if any) is deliberately left in place here --
       // a failed save must not discard the user's chosen order, only
@@ -492,6 +524,10 @@ export default function EditBookPage() {
       setSubmitError(
         err instanceof Error ? err.message : "Something went wrong.",
       );
+      // Rethrown so BookForm's own awaited `onSubmit` (book-form.tsx) knows
+      // this attempt failed and leaves its draft/dirty state untouched
+      // instead of optimistically marking it saved.
+      throw err;
     } finally {
       setIsSubmitting(false);
     }
@@ -511,14 +547,15 @@ export default function EditBookPage() {
               Module Builder
             </Button>
           )}
-          <Button
+          <SaveButton
+            dirty={isDirty}
             type="submit"
             form={BOOK_FORM_ID}
             disabled={!book}
             loading={isSubmitting}
           >
             Save changes
-          </Button>
+          </SaveButton>
         </Group>
       </Group>
       <Divider opacity={0.25} mx={-27} />
@@ -559,6 +596,7 @@ export default function EditBookPage() {
               id={BOOK_FORM_ID}
               initialValues={toBookFormValues(book)}
               onSubmit={handleSubmit}
+              onDirtyChange={setIsBookFormDirty}
             />
           </Box>
           <Box w={{ base: "100%", md: 320 }} style={{ flexShrink: 0 }}>
@@ -612,33 +650,29 @@ export default function EditBookPage() {
       )}
 
       {book && (
-        // Add Module only (ANA-121) -- editing an existing Module now opens
-        // the drawer below instead; this modal's own "edit" mode is never
-        // reached from here anymore, but is left fully intact (see
-        // edit-module-modal.tsx).
-        <EditModuleModal
-          state={modalTarget?.mode === "create" ? { mode: "create" } : null}
-          book={book}
-          onClose={() => setModalTarget(null)}
-          onCreate={handleCreateModule}
-          onSave={handleSaveModule}
-        />
-      )}
-
-      {book && (
-        // Edit Module (ANA-121): the pencil action opens this right-side
-        // drawer instead of the Edit Module modal above -- same fields, AI
-        // actions, validation, Lesson list/editor, and save/discard
-        // behavior, via the same `ModuleEditorBody` the modal's own edit
-        // mode renders (see edit-module-drawer.tsx).
+        // Add Module and Edit Module both open this right-side drawer
+        // (ANA-129 unifies Add Module onto it too, for consistency with the
+        // pencil action's existing drawer flow -- previously only Edit
+        // opened the drawer, Add Module opened the separate Edit Module
+        // modal, edit-module-modal.tsx) -- same fields, AI actions,
+        // validation, Lesson list/editor, and save/discard behavior, via
+        // the same `ModuleEditorBody` that modal renders (see
+        // edit-module-drawer.tsx).
         <EditModuleDrawer
           state={
-            modalTarget?.mode === "edit"
-              ? { id: modalTarget.id, fields: getModuleFields(modalTarget.id) }
-              : null
+            modalTarget?.mode === "create"
+              ? { mode: "create" }
+              : modalTarget?.mode === "edit"
+                ? {
+                    mode: "edit",
+                    id: modalTarget.id,
+                    fields: getModuleFields(modalTarget.id),
+                  }
+                : null
           }
           book={book}
           onClose={() => setModalTarget(null)}
+          onCreate={handleCreateModule}
           onSave={handleSaveModule}
         />
       )}

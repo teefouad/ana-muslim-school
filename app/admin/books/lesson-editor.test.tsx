@@ -86,7 +86,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
   });
 
   describe("existing Lesson (update)", () => {
-    it("calls onUpdate (not onCreate) with only this Lesson's id and fields, then returns to Module mode once it resolves", async () => {
+    it("calls onUpdate (not onCreate) with only this Lesson's id and fields, and stays in Lesson mode once it resolves (ANA-129 PR review: saving must never change the screen)", async () => {
       const { onCreate, onUpdate, onBack } = renderEditor();
 
       fireEvent.change(screen.getByLabelText("Title"), {
@@ -113,7 +113,13 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
         ),
       );
       expect(onCreate).not.toHaveBeenCalled();
-      await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
+      );
+      expect(onBack).not.toHaveBeenCalled();
+      expect(screen.getByTestId("lesson-form")).toBeInTheDocument();
     });
 
     it("stays in Lesson mode, preserves the draft, and shows the error when onUpdate fails", async () => {
@@ -159,7 +165,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       expect(onCreate).not.toHaveBeenCalled();
     });
 
-    it("calls onCreate (not onUpdate) exactly once and returns to Module mode once it resolves", async () => {
+    it("calls onCreate (not onUpdate) exactly once and stays in Lesson mode once it resolves (ANA-129 PR review: saving must never change the screen)", async () => {
       const { onCreate, onUpdate, onBack } = renderNewLessonEditor();
 
       fireEvent.change(screen.getByLabelText("Title"), {
@@ -186,7 +192,13 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       );
       expect(onCreate).toHaveBeenCalledTimes(1);
       expect(onUpdate).not.toHaveBeenCalled();
-      await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
+      );
+      expect(onBack).not.toHaveBeenCalled();
+      expect(screen.getByTestId("lesson-form")).toBeInTheDocument();
     });
 
     it("stays in Lesson mode, preserves the draft, and shows the error when onCreate fails, without implicitly retrying", async () => {
@@ -416,7 +428,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
       ).toBeInTheDocument();
     });
 
-    it("still saves through the same onUpdate contract as the wide/Modal layout", async () => {
+    it("still saves through the same onUpdate contract as the wide/Modal layout, and stays open (ANA-129)", async () => {
       const { onCreate, onUpdate, onBack } = renderInDrawer();
 
       fireEvent.change(screen.getByLabelText("Title"), {
@@ -432,7 +444,12 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
         ),
       );
       expect(onCreate).not.toHaveBeenCalled();
-      await vi.waitFor(() => expect(onBack).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save changes" }),
+        ).not.toHaveAttribute("data-loading"),
+      );
+      expect(onBack).not.toHaveBeenCalled();
     });
   });
 
