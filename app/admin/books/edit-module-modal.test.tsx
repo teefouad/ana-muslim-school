@@ -1206,7 +1206,12 @@ describe("EditModuleModal", () => {
 
       expect(form.getByDisplayValue("Introduction")).toBeInTheDocument();
       expect(form.getByDisplayValue("Short intro")).toBeInTheDocument();
-      expect(form.getByRole("switch", { name: "Published" })).not.toBeChecked();
+      // Published now renders below the two-column grid (ANA-125 PR review,
+      // lesson-form.tsx), outside the `lesson-form` testid element `form` is
+      // scoped to -- searched from `dialog` instead.
+      expect(
+        within(dialog).getByRole("switch", { name: "Published" }),
+      ).not.toBeChecked();
       expect(
         form.getByRole("radio", { name: "0", checked: true }),
       ).toBeInTheDocument();

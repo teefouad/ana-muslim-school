@@ -96,10 +96,13 @@ const LESSON_EDITOR_DRAWER_WIDTH = "min(460px, 100vw)";
  * "auto"`). Left at `auto` below `md`, where the two columns already stack
  * instead of sitting side by side -- constraining height there would fight
  * that stacked layout's own natural scroll instead of stabilizing anything.
- * Used by Lesson mode always, and by the wide/Modal layout's own Module
- * mode -- the drawer's narrow layout uses auto-height stacking for Module
- * mode instead (ANA-123: it no longer renders the Lessons list, so there's
- * no second column to size against). */
+ * Used by the wide/Modal layout's own Module mode and Lesson mode -- the
+ * drawer's narrow layout uses auto-height stacking for Module mode instead
+ * (ANA-123: it no longer renders the Lessons list, so there's no second
+ * column to size against), and, since ANA-125, for its own nested Lesson
+ * editor drawer too: that has no sibling content of its own height needs to
+ * match, so it's sized by whatever `DrawerShell`'s own body has available
+ * instead, same as the drawer's Module mode already is. */
 const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 544 } as const;
 
 // Approximates LessonsPanel/ItemList's own card chrome (ANA-116) --
@@ -1020,8 +1023,8 @@ export function ModuleEditorBody({
   // it to `null` whenever no Lesson editor is open, so mounting this drawer
   // ahead of time (Mantine's own exit transition) never briefly shows a
   // blank New Lesson draft.
-  const lessonEditorContent = lessonEditorTarget && (
-    <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
+  const lessonEditorInner = lessonEditorTarget && (
+    <>
       {questionsLoading ? (
         // This Module's Questions (needed to seed an existing Lesson's
         // `questions`, see lesson-fields.ts's `toLessonFieldsValues`) load
@@ -1077,7 +1080,7 @@ export function ModuleEditorBody({
           </Box>
         </Stack>
       )}
-    </Box>
+    </>
   );
 
   const modeContent =
@@ -1098,8 +1101,16 @@ export function ModuleEditorBody({
     ) : lessonEditorTarget ? (
       // The wide/Modal layout has no nested Lesson editor drawer of its own
       // -- Lesson mode still replaces the Module editor/Lessons list content
-      // inline here, unchanged from ANA-115/ANA-116.
-      <Stack gap="md">{lessonEditorContent}</Stack>
+      // inline here, unchanged from ANA-115/ANA-116, still pinned to the
+      // shared `EDIT_MODE_CONTENT_HEIGHT` (unlike the narrow/Drawer layout's
+      // own nested Lesson editor drawer below, ANA-125 PR review) so it
+      // renders the same height as Module mode's own Module-editor+Lessons-
+      // list split when switching between them inside this same container.
+      <Stack gap="md">
+        <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
+          {lessonEditorInner}
+        </Box>
+      </Stack>
     ) : (
       // The wide/Modal layout's `flex: 1` on the Module-fields column and
       // `align="stretch"` on a *row* Flex both depend on the row's own
@@ -1310,13 +1321,19 @@ export function ModuleEditorBody({
           a third `DrawerShell` stacked above the Lessons drawer, rather than
           replacing that drawer's own content -- see `handleNewLessonFromDrawer`/
           `handleEditLessonFromDrawer`'s doc for what changed. Reuses the same
-          `lessonEditorContent` the wide/Modal layout's own inline Lesson mode
+          `lessonEditorInner` the wide/Modal layout's own inline Lesson mode
           renders above, and the same `lessonEditorTarget`/`setLessonEditorTarget`
           state ANA-115 already introduced -- only the container changed here,
           never the editor itself or its save behavior (`onCreate`/`onUpdate`
           still call this body's own `handleCreateLesson`/`handleUpdateLesson`,
-          the existing Lesson create/update API). Stacked (`stackId`) the same
-          way the Lessons drawer stacks above the Module drawer, so it inherits
+          the existing Lesson create/update API). Unlike the wide/Modal
+          layout's own usage above, this renders `lessonEditorInner` directly
+          -- no `EDIT_MODE_CONTENT_HEIGHT` cap (PR review) -- so it behaves
+          the same way the Module drawer's own content does: no artificial
+          height limit, sized by whatever `DrawerShell`'s own `.body` region
+          actually has available, scrolling that same way if the Lesson
+          form's content is taller than it. Stacked (`stackId`) the same way
+          the Lessons drawer stacks above the Module drawer, so it inherits
           the same "only the topmost drawer responds to Escape/outside click"
           behavior, and closing it (Back, Escape, outside click) simply clears
           `lessonEditorTarget`, revealing the still-open Lessons drawer
@@ -1332,7 +1349,7 @@ export function ModuleEditorBody({
           size={LESSON_EDITOR_DRAWER_WIDTH}
           stackId="lesson-editor"
         >
-          {lessonEditorContent}
+          {lessonEditorInner}
         </DrawerShell>
       )}
     </>
