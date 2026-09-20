@@ -20,11 +20,17 @@ import { Box, getDefaultZIndex, Group, Paper, Text } from "@mantine/core";
 import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DashedEmptyState } from "@/components/ui/dashed-empty-state";
+import {
+  GenerateQuestionsModal,
+  type GenerateQuestionsInput,
+} from "@/components/ui/generate-questions-modal";
 import { ListHeaderAction } from "@/components/ui/list-header-action";
 import { SortableList } from "@/components/ui/sortable-list";
 import type { Question } from "@/lib/questions/types";
+import { generateQuestions } from "./generate-questions-client";
 import {
   copyQuestionFromPreviousModule,
+  fromGeneratedQuestion,
   makeQuestionFieldEntry,
   toQuestionFieldEntry,
   type ModuleQuestionGroup,
@@ -242,11 +248,10 @@ export interface QuestionsEditorProps {
 
 // The Quiz/Final/Skip Lesson types' Questions configuration (ANA-119,
 // New/Insert header styling and Insert's own Question Bank picker added in
-// ANA-120), matching the old admin's Questions editor layout and
-// interaction pattern: a header (Questions label + New/Insert/Generate
-// actions), an empty state, and a sortable list of collapsible Question
-// cards. Generate (AI generation) remains a dedicated follow-up task,
-// rendered disabled in its correct position. Built on the low-level
+// ANA-120, Generate's AI question generation added in ANA-131), matching the
+// old admin's Questions editor layout and interaction pattern: a header
+// (Questions label + New/Insert/Generate actions), an empty state, and a
+// sortable list of collapsible Question cards. Built on the low-level
 // `SortableList` primitive
 // rather than `ItemList`, for the same reason lesson-break-config.tsx is:
 // each row is an always-visible, multi-field inline editor, not a
@@ -270,6 +275,15 @@ export function QuestionsEditor({
   // local UI state only, so opening/closing it alone never marks the Lesson
   // dirty; only an actual selection (which calls `onChange`) does.
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Generate (ANA-131): the modal's own open/loading/error state. Unlike
+  // Insert's picker, a Generate request is an actual network call, so it
+  // needs its own in-flight/error tracking -- the modal stays open and
+  // `generateError` is shown inside it on failure (rather than closing the
+  // modal the way AI Assistance's instructions dialog does), so a failed
+  // request never loses the passage/instructions already typed into it.
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   // Which Question cards currently have a Translate request in flight --
   // a ref, not state, since nothing here needs to re-render on this
   // changing; it exists solely to aggregate each card's own busy flag
@@ -305,6 +319,36 @@ export function QuestionsEditor({
 
   function handleAdd() {
     onChange([...questions, makeQuestionFieldEntry()]);
+  }
+
+  function handleGenerateClick() {
+    setGenerateError(null);
+    setGenerateOpen(true);
+  }
+
+  function handleGenerateCancel() {
+    if (isGenerating) {
+      return;
+    }
+    setGenerateOpen(false);
+    setGenerateError(null);
+  }
+
+  async function handleGenerateSubmit(input: GenerateQuestionsInput) {
+    setIsGenerating(true);
+    setGenerateError(null);
+
+    try {
+      const generated = await generateQuestions(input);
+      onChange([...questions, ...generated.map(fromGeneratedQuestion)]);
+      setGenerateOpen(false);
+    } catch (err) {
+      setGenerateError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   // Every persisted current-Module Question id already linked into this
@@ -388,7 +432,7 @@ export function QuestionsEditor({
           </ListHeaderAction>
           <ListHeaderAction
             icon={<Sparkles size={14} aria-hidden="true" />}
-            disabled
+            onClick={handleGenerateClick}
           >
             Generate
           </ListHeaderAction>
@@ -462,6 +506,16 @@ export function QuestionsEditor({
           candidates={insertCandidates}
           onSelect={handleInsert}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {generateOpen && (
+        <GenerateQuestionsModal
+          opened
+          isGenerating={isGenerating}
+          error={generateError}
+          onCancel={handleGenerateCancel}
+          onGenerate={(input) => void handleGenerateSubmit(input)}
         />
       )}
     </Box>

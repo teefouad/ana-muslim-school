@@ -158,6 +158,37 @@ export function copyQuestionFromPreviousModule(
   });
 }
 
+/** Seeds a Question editor entry from one AI-generated question (ANA-131) --
+ * Arabic-only, matching this Admin's "Arabic first, Translate afterwards"
+ * pattern every other Question draft already follows (see
+ * `useTranslateQuestion`); the English side starts blank and is filled in by
+ * the existing Translate action, never by generation itself. `id: null`,
+ * exactly like a blank New entry, so the existing Save flow persists it the
+ * same way any other new draft is persisted. */
+export function fromGeneratedQuestion(generated: {
+  text: string;
+  explanation: string;
+  choices: { text: string; isCorrect: boolean }[];
+}): QuestionFieldEntry {
+  const text: TranslatedValue = { ar: generated.text };
+  const explanation: TranslatedValue = { ar: generated.explanation };
+  const choices: QuestionChoiceFieldValue[] = generated.choices.map(
+    (choice) => ({
+      text: { ar: choice.text },
+      isCorrect: choice.isCorrect,
+    }),
+  );
+
+  return {
+    key: makeKey(),
+    id: null,
+    text,
+    explanation,
+    choices,
+    rawText: rawTextFromContent(text, explanation, choices),
+  };
+}
+
 /** Applies a *successful* parse of one language's raw textarea buffer onto
  * an entry (see question-text-editor.tsx) -- the parsed line order/
  * correctness becomes authoritative for `choices` (there's only ever one

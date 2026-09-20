@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +15,14 @@ import {
 } from "./question-fields";
 import { buildQuestionFixture } from "./question-fixtures";
 import { QuestionsEditor, type QuestionsEditorProps } from "./questions-editor";
+
+const { generateQuestionsMock } = vi.hoisted(() => ({
+  generateQuestionsMock: vi.fn(),
+}));
+
+vi.mock("./generate-questions-client", () => ({
+  generateQuestions: generateQuestionsMock,
+}));
 
 const QUESTION_1 = buildQuestionFixture({
   id: "question-1",
@@ -115,6 +129,7 @@ function stubItemRects(order: string[], itemHeight = 60) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  generateQuestionsMock.mockReset();
 });
 
 describe("QuestionsEditor", () => {
@@ -145,12 +160,12 @@ describe("QuestionsEditor", () => {
     ).toHaveClass("lucide-sparkles");
   });
 
-  it("keeps Generate present but disabled, while New and Insert stay enabled (ANA-120)", () => {
+  it("keeps New, Insert, and Generate all enabled", () => {
     renderEditor();
 
-    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "New" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "Insert" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Generate" })).not.toBeDisabled();
   });
 
   it("styles New/Insert/Generate as compact text actions, not button chrome (ANA-120)", () => {
@@ -381,6 +396,98 @@ describe("QuestionsEditor", () => {
       fireEvent.click(screen.getByRole("button", { name: "Insert" }));
 
       expect(screen.queryByText("سؤال من وحدة سابقة")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Generate (ANA-131)", () => {
+    it("opens the Generate Questions modal", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+      expect(
+        screen.getByRole("dialog", { name: "Generate Questions" }),
+      ).toBeInTheDocument();
+    });
+
+    it("generating appends the returned questions, expanded, and closes the modal", async () => {
+      generateQuestionsMock.mockResolvedValue([
+        {
+          text: "سؤال مولّد",
+          explanation: "شرح",
+          choices: [
+            { text: "خطأ", isCorrect: false },
+            { text: "صحيح", isCorrect: true },
+          ],
+        },
+      ]);
+      const { onChange } = renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+      const dialog = screen.getByRole("dialog", { name: "Generate Questions" });
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "نص المصدر" },
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Generate Questions" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      expect(generateQuestionsMock).toHaveBeenCalledWith({
+        sourceText: "نص المصدر",
+        additionalInstructions: undefined,
+        count: 5,
+      });
+      expect(onChange).toHaveBeenCalledWith([
+        ...QUESTIONS,
+        expect.objectContaining({
+          id: null,
+          text: { ar: "سؤال مولّد" },
+        }),
+      ]);
+      // Newly generated, so it renders expanded, consistent with New/Insert.
+      expect(screen.getByText("Question 3")).toBeInTheDocument();
+    });
+
+    it("a failed generation shows the error and keeps the modal open with the entered passage", async () => {
+      generateQuestionsMock.mockRejectedValue(
+        new Error("Question generation failed. Please try again."),
+      );
+      const { onChange } = renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+      const dialog = screen.getByRole("dialog", { name: "Generate Questions" });
+      fireEvent.change(screen.getByLabelText("Source text"), {
+        target: { value: "نص المصدر" },
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+      await waitFor(() =>
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Question generation failed. Please try again.",
+        ),
+      );
+
+      expect(
+        screen.getByRole("dialog", { name: "Generate Questions" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Source text")).toHaveValue("نص المصدر");
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("cancelling the modal without generating never calls onChange", () => {
+      const { onChange } = renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", { name: "Generate Questions" }),
+      ).not.toBeInTheDocument();
     });
   });
 });
