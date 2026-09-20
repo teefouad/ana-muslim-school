@@ -7,7 +7,7 @@ import type {
 } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Box, Group, Tooltip, UnstyledButton } from "@mantine/core";
+import { Box, Group, UnstyledButton } from "@mantine/core";
 import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { ActionIconButton } from "./action-icon-button";

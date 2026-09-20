@@ -30,8 +30,7 @@ const SAMPLE_LESSONS: Lesson[] = [
 
 // Wraps LessonsDrawerList with local state so reorder behaves for real in
 // Storybook -- the component itself is fully controlled and has no state
-// of its own beyond its own delete-confirmation UI (mirrors
-// `LessonsPanelDemo`, see lessons-panel.stories.tsx).
+// of its own beyond its own delete-confirmation UI.
 function LessonsDrawerListDemo({
   lessons: initialLessons,
   onReorder,

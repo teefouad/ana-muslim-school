@@ -49,6 +49,7 @@ import { ModulesPanel } from "../../modules-panel";
 import { SaveButton } from "@/components/ui/save-button";
 import type { Book } from "@/lib/books/types";
 import { isValidReorder } from "@/lib/learning-content/validate-reorder";
+import { preferredTranslatableStringValue } from "@/lib/learning-content/translatable-string";
 import type { Material } from "@/lib/materials/types";
 import type { Module } from "@/lib/modules/types";
 import type { Source } from "@/lib/sources/types";
@@ -57,7 +58,7 @@ function getModuleLabel(module: Module): string {
   // The panel's own `Module N` fallback (see modules-panel.tsx) covers a
   // blank label -- passing "" through when both languages are empty lets
   // that fallback do the last step instead of duplicating it here.
-  return module.title.ar || module.title.en || "";
+  return preferredTranslatableStringValue(module.title);
 }
 
 /** Which Module editing container (ANA-94) is open, if any -- `"create"`
@@ -653,10 +654,10 @@ export default function EditBookPage() {
         // Add Module and Edit Module both open this right-side drawer
         // (ANA-129 unifies Add Module onto it too, for consistency with the
         // pencil action's existing drawer flow -- previously only Edit
-        // opened the drawer, Add Module opened the separate Edit Module
-        // modal, edit-module-modal.tsx) -- same fields, AI actions,
-        // validation, Lesson list/editor, and save/discard behavior, via
-        // the same `ModuleEditorBody` that modal renders (see
+        // opened the drawer, Add Module opened a separate Edit Module modal,
+        // removed once this drawer became the only consumer of
+        // `ModuleEditorBody`, ANA-128) -- same fields, AI actions,
+        // validation, Lesson list/editor, and save/discard behavior (see
         // edit-module-drawer.tsx).
         <EditModuleDrawer
           state={

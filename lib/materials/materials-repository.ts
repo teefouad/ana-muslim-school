@@ -11,7 +11,7 @@ import {
   type MaterialWritableFields,
 } from "./types";
 
-export const MATERIALS_COLLECTION = "materials";
+const MATERIALS_COLLECTION = "materials";
 
 function parseMaterialDocument(doc: DocumentSnapshot): Material | null {
   try {

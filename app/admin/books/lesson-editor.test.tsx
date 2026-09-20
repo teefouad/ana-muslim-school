@@ -25,40 +25,30 @@ const LESSON = buildLessonFixture({
   description: { ar: "وصف قصير", en: "" },
 });
 
-/** `inDrawer` wraps the editor in a real `DrawerShell` (ANA-125 PR review) --
- * every real `layout="narrow"` caller (module-editor-body.tsx) always
- * renders `LessonEditor` inside one, so `layout="narrow"`'s own tests reuse
- * this instead of re-declaring the same wrapper per test. */
-function renderEditor(
-  overrides: Partial<LessonEditorProps> = {},
-  { inDrawer = false }: { inDrawer?: boolean } = {},
-) {
+/** Wraps the editor in a real `DrawerShell` -- `LessonEditor` always portals
+ * Save changes into the owning drawer's own fixed footer via `DrawerFooter`,
+ * the same as its only real caller (module-editor-body.tsx) always renders
+ * it, so every test reuses this instead of re-declaring the same wrapper. */
+function renderEditor(overrides: Partial<LessonEditorProps> = {}) {
   const onCreate = vi.fn().mockResolvedValue(undefined);
   const onUpdate = vi.fn().mockResolvedValue(undefined);
   const onBack = vi.fn();
-  const editor = (
-    <LessonEditor
-      lesson={LESSON}
-      moduleQuestions={[]}
-      previousModuleQuestions={[]}
-      moduleTitle="عنوان الوحدة"
-      moduleDescription="وصف الوحدة"
-      moduleContent="محتوى الوحدة"
-      onCreate={onCreate}
-      onUpdate={onUpdate}
-      onBack={onBack}
-      {...overrides}
-    />
-  );
   const utils = render(
     <MantineProvider>
-      {inDrawer ? (
-        <DrawerShell opened title="Edit Lesson" onClose={vi.fn()}>
-          {editor}
-        </DrawerShell>
-      ) : (
-        editor
-      )}
+      <DrawerShell opened title="Edit Lesson" onClose={vi.fn()}>
+        <LessonEditor
+          lesson={LESSON}
+          moduleQuestions={[]}
+          previousModuleQuestions={[]}
+          moduleTitle="عنوان الوحدة"
+          moduleDescription="وصف الوحدة"
+          moduleContent="محتوى الوحدة"
+          onCreate={onCreate}
+          onUpdate={onUpdate}
+          onBack={onBack}
+          {...overrides}
+        />
+      </DrawerShell>
     </MantineProvider>,
   );
   return { onCreate, onUpdate, onBack, ...utils };
@@ -74,10 +64,9 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
     // design) -- that's now the owning container's own Title-bar control
     // (`module-editor-body.tsx`'s `ArrowLeft` button, ANA-121), which calls
     // this editor's `onBack` prop directly rather than through any dirty
-    // check of its own; see edit-module-modal.test.tsx's "Lesson mode"
-    // tests for coverage of that control (and module-editor-body.tsx's own
-    // comments for why it isn't gated the way Cancel/Escape on the owning
-    // Edit Module dialog itself still are).
+    // check of its own (see module-editor-body.tsx's own comments for why
+    // it isn't gated the way Cancel/Escape on the owning Edit Module
+    // container itself still are).
     renderEditor();
 
     expect(screen.getByTestId("lesson-form")).toBeInTheDocument();
@@ -402,55 +391,20 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
     });
   });
 
-  // ANA-125 PR review: `layout="narrow"` (the Edit Module drawer's own
-  // nested Lesson editor drawer) portals Save changes into the owning
-  // `DrawerShell`'s real footer via `DrawerFooter`, instead of rendering it
-  // inline the way the default `layout="wide"` (the Edit Module modal) still
-  // does -- the same mechanism/footer Module mode's own Save changes already
-  // uses in that drawer, not a second, bespoke sticky/pinned section.
-  describe("narrow/Drawer layout (ANA-125 PR review)", () => {
-    function renderInDrawer(overrides: Partial<LessonEditorProps> = {}) {
-      return renderEditor(
-        { layout: "narrow", ...overrides },
-        { inDrawer: true },
-      );
-    }
+  // ANA-125 PR review: Save changes portals into the owning `DrawerShell`'s
+  // real footer via `DrawerFooter`, the same mechanism/footer Module mode's
+  // own Save changes already uses in that drawer, not a second, bespoke
+  // sticky/pinned section.
+  it("portals Save changes into the owning DrawerShell's own fixed footer, outside the scrollable content region", () => {
+    renderEditor();
 
-    it("portals Save changes into the owning DrawerShell's own fixed footer, outside the scrollable content region", () => {
-      renderInDrawer();
-
-      const scrollRegion = screen.getByTestId("drawer-scroll-region");
-      expect(
-        within(scrollRegion).queryByRole("button", { name: "Save changes" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Save changes" }),
-      ).toBeInTheDocument();
-    });
-
-    it("still saves through the same onUpdate contract as the wide/Modal layout, and stays open (ANA-129)", async () => {
-      const { onCreate, onUpdate, onBack } = renderInDrawer();
-
-      fireEvent.change(screen.getByLabelText("Title"), {
-        target: { value: "عنوان جديد" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-      await vi.waitFor(() =>
-        expect(onUpdate).toHaveBeenCalledWith(
-          "lesson-1",
-          expect.objectContaining({ title: { ar: "عنوان جديد", en: "" } }),
-          expect.any(Function),
-        ),
-      );
-      expect(onCreate).not.toHaveBeenCalled();
-      await vi.waitFor(() =>
-        expect(
-          screen.getByRole("button", { name: "Save changes" }),
-        ).not.toHaveAttribute("data-loading"),
-      );
-      expect(onBack).not.toHaveBeenCalled();
-    });
+    const scrollRegion = screen.getByTestId("drawer-scroll-region");
+    expect(
+      within(scrollRegion).queryByRole("button", { name: "Save changes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save changes" }),
+    ).toBeInTheDocument();
   });
 
   describe("Save is blocked while a Question's raw text is invalid (PR review, ANA-119)", () => {

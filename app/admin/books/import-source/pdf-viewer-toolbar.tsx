@@ -6,9 +6,9 @@ import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
 import { useClampedStepper } from "./use-clamped-stepper";
 import styles from "./pdf-viewer-toolbar.module.css";
 
-export const MIN_ZOOM_PERCENT = 50;
-export const MAX_ZOOM_PERCENT = 250;
-export const ZOOM_STEP_PERCENT = 25;
+const MIN_ZOOM_PERCENT = 50;
+const MAX_ZOOM_PERCENT = 250;
+const ZOOM_STEP_PERCENT = 25;
 
 export interface PdfViewerToolbarProps {
   fileName: string;

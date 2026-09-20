@@ -14,7 +14,7 @@ import {
  * as the persisted `QuestionChoice`, just with the UI's looser
  * `TranslatedValue` (an absent language slot rather than a required empty
  * string) for `text`. */
-export interface QuestionChoiceFieldValue {
+interface QuestionChoiceFieldValue {
   text: TranslatedValue;
   isCorrect: boolean;
 }

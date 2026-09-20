@@ -14,7 +14,7 @@
 // persists -- text/explanation/choices -- without ever introducing a
 // `rawText` field into that persisted document; raw text stays editor-only
 // state (see question-fields.ts).
-export interface ParsedQuestionChoice {
+interface ParsedQuestionChoice {
   text: string;
   isCorrect: boolean;
 }

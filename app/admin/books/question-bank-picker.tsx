@@ -91,13 +91,12 @@ export function QuestionBankPicker({
       centered
       // Pinned above Mantine's own "popover" elevation tier (ANA-127) --
       // this picker is opened from Questions editors rendered inside the
-      // narrow/Drawer layout's nested Lesson editor drawer, which gets a
-      // *stacked* z-index (`stackId="lesson-editor"`,
-      // module-editor-body.tsx) at or above this Modal's own default
-      // "modal" tier. Without this override the picker rendered underneath
-      // that drawer's overlay instead of above it -- the same fix pattern
-      // `ConfirmDialog`'s own `zIndex` override uses elsewhere (see e.g.
-      // lesson-editor.tsx's discard confirmation).
+      // nested Lesson editor drawer, which gets a *stacked* z-index
+      // (`stackId="lesson-editor"`, module-editor-body.tsx) at or above this
+      // Modal's own default "modal" tier. Without this override the picker
+      // rendered underneath that drawer's overlay instead of above it -- the
+      // same fix pattern `ConfirmDialog`'s own `zIndex` override uses
+      // elsewhere (see e.g. lesson-editor.tsx's discard confirmation).
       zIndex={getDefaultZIndex("popover")}
     >
       <Stack gap="sm">

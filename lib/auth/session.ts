@@ -9,8 +9,6 @@ export {
   isSuperAdminEmail,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_MS,
-  verifySessionCookie,
-  type SessionUser,
 } from "./verify-session";
 
 /**

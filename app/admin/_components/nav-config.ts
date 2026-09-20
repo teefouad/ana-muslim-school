@@ -7,7 +7,7 @@ export type NavAccess = {
   canManageUsers: boolean;
 };
 
-export type NavItem = {
+type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;

@@ -20,8 +20,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/** Same routing shape as edit-module-modal.test.tsx's identical helper --
- * every `GET .../lessons`/`GET .../questions` this component fires on mount
+/** Every `GET .../lessons`/`GET .../questions` this component fires on mount
  * resolves from an in-memory list; anything else (Save's own Module PATCH is
  * never made by this component itself -- `onSave` is a caller-supplied mock)
  * resolves 200 with an empty Questions list by default. */
@@ -69,8 +68,7 @@ const EDIT_FIELDS = {
 function renderDrawer(overrides: Partial<EditModuleDrawerProps> = {}) {
   return render(
     <MantineProvider>
-      {/* A fresh SWR cache per render, same reason as edit-module-modal.test.tsx
-          (see AGENTS.md). */}
+      {/* A fresh SWR cache per render (see AGENTS.md). */}
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
         <EditModuleDrawer
           state={{ mode: "edit", id: "module-1", fields: EDIT_FIELDS }}
@@ -317,9 +315,7 @@ describe("EditModuleDrawer", () => {
   });
 
   // Every other way Mantine's Drawer can be dismissed (close button, Escape,
-  // outside click) funnels into the exact same `onClose` prop as Cancel --
-  // same "Escape as a proxy for the shared Mantine dismiss funnel" precedent
-  // edit-module-modal.test.tsx's identical test already uses.
+  // outside click) funnels into the exact same `onClose` prop as Cancel.
   it("blocks every other way of dismissing the drawer (close button/Escape/outside click, funneled through Mantine's own onClose) the same way as Cancel", async () => {
     const onClose = vi.fn();
     renderDrawer({ onClose });
@@ -1014,8 +1010,7 @@ describe("EditModuleDrawer", () => {
       ).toBeInTheDocument();
     });
 
-    // Same "Escape as a proxy for the shared Mantine dismiss funnel" as
-    // edit-module-modal.test.tsx's/this file's own identical tests -- Escape
+    // "Escape as a proxy for the shared Mantine dismiss funnel" -- Escape
     // and outside/backdrop click both funnel into `DrawerShell`'s single
     // `onClose` prop (see drawer-shell.tsx), so exercising one exercises the
     // other.

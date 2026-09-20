@@ -22,11 +22,12 @@ import {
 import { resolveApplicationColor } from "@/components/ui/application-colors";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import type { Book } from "@/lib/books/types";
+import { preferredTranslatableStringValue } from "@/lib/learning-content/translatable-string";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
 import { fetchJson } from "./fetch-json";
 
 function getBookLabel(book: Book): string {
-  return book.title.ar || book.title.en || "Untitled book";
+  return preferredTranslatableStringValue(book.title) || "Untitled book";
 }
 
 const columns: DataTableColumn<Book>[] = [

@@ -21,7 +21,7 @@ export async function translateArabicToEnglish(text: string): Promise<string> {
   return data.text;
 }
 
-export type TranslatableModuleField = "title" | "description" | "content";
+type TranslatableModuleField = "title" | "description" | "content";
 
 export interface TranslateModuleFieldInput {
   bookId: string;

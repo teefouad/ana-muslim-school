@@ -10,7 +10,7 @@ import {
   type PermissionsInput,
 } from "./types";
 
-export const PERMISSIONS_COLLECTION = "permissions";
+const PERMISSIONS_COLLECTION = "permissions";
 
 type UpsertPermissionInput = {
   email: string;

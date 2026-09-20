@@ -9,7 +9,7 @@ import type { TranslatableString } from "@/lib/learning-content/translatable-str
  * into one. Non-translation AI generation/assistance operates on Arabic
  * content only; see each base prompt's own "Return ... Arabic only" rule.
  */
-export function arabicValue(value: TranslatableString): string {
+function arabicValue(value: TranslatableString): string {
   return value.ar.trim();
 }
 

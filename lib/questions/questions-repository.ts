@@ -14,7 +14,7 @@ import {
   type QuestionWritableFields,
 } from "./types";
 
-export const QUESTIONS_COLLECTION = "questions";
+const QUESTIONS_COLLECTION = "questions";
 
 function questionsCollection(bookId: string, moduleId: string) {
   return getAdminFirestore()

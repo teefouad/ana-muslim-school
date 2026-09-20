@@ -219,12 +219,7 @@ function setupFetch(
 // this locates the drawer's own real `<h2>` (`DrawerShell`'s `Drawer.Title`,
 // which Mantine links via `aria-labelledby` automatically) and walks up to
 // its nearest `[role="dialog"]` ancestor -- which container is expected is
-// purely a function of `name`. Kept as a heading-walk (rather than matching
-// the dialog's own accessible name directly) mainly for parity with the
-// still-intact, separately-tested `EditModuleModal` (edit-module-modal.tsx,
-// unreachable from this page since ANA-129 but exercised in its own test
-// file), whose fixed-position `<Title>` hack has no `aria-labelledby` of its
-// own to match against.
+// purely a function of `name`.
 async function findModuleEditorDialog(
   name: "Edit Module" | "Add Module" = "Edit Module",
 ): Promise<HTMLElement> {

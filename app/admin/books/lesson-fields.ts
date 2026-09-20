@@ -143,7 +143,7 @@ function toLessonAzkar(
  * `questionIds` is the *already-persisted* ordered Question id list (ANA-119)
  * -- resolving `fields.questions`' local drafts into real ids requires
  * Question create/update requests this pure function can't make itself; the
- * caller (edit-module-modal.tsx) resolves them first via
+ * caller (module-editor-body.tsx) resolves them first via
  * `saveLessonQuestions` (questions-client.ts). */
 export function toLessonCreateFields(
   fields: LessonFieldsValues,

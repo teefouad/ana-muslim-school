@@ -10,26 +10,23 @@ import { ModuleEditorBody, type ModuleEditorState } from "./module-editor-body";
 import type { ModuleFieldsValues } from "./module-fields";
 
 /** `null` closes the drawer; otherwise which Module editing session is open
- * -- `"create"` (ANA-129: Add Module now opens this drawer instead of the
- * Edit Module modal, for consistency with the pencil action's existing
- * drawer flow) or the existing Module being edited, its `id` and current
- * field values read fresh by the caller the same way `EditModuleModal`'s
- * own `"edit"` state is (see `[id]/edit/page.tsx`'s `getModuleFields`).
- * Reuses `ModuleEditorBody`'s own state union directly rather than
- * redefining an equivalent one. */
+ * -- `"create"` (ANA-129: Add Module opens this drawer, same as the pencil
+ * action) or the existing Module being edited, its `id` and current field
+ * values read fresh by the caller (see `[id]/edit/page.tsx`'s
+ * `getModuleFields`). Reuses `ModuleEditorBody`'s own state union directly
+ * rather than redefining an equivalent one. */
 export type EditModuleDrawerState = ModuleEditorState | null;
 
 export interface EditModuleDrawerProps {
   state: EditModuleDrawerState;
   /** The owning Book -- forwarded to `ModuleEditorBody` unchanged; see
-   * `EditModuleModalProps.book`'s identical doc. */
+   * `ModuleEditorBodyProps.book`'s identical doc. */
   book: Book;
   onClose: () => void;
   /** Called with the drawer's current field values when Save Module is
-   * clicked in create mode -- same awaited resolve/reject contract as
-   * `EditModuleModal`'s own `onCreate`. Optional, mirroring
-   * `ModuleEditorBody`'s own optional `onCreate`, for a caller/test that
-   * only ever opens this drawer in edit mode.
+   * clicked in create mode. Optional, mirroring `ModuleEditorBody`'s own
+   * optional `onCreate`, for a caller/test that only ever opens this drawer
+   * in edit mode.
    *
    * Saving never closes this drawer (ANA-129 PR review) -- once this
    * resolves, the caller is expected to switch `state` from `"create"` to
@@ -40,8 +37,7 @@ export interface EditModuleDrawerProps {
    * now showing the just-created Module instead of a blank create draft. */
   onCreate?: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the drawer's current field values when Save changes is
-   * clicked -- same awaited resolve/reject contract as `EditModuleModal`'s
-   * own `onSave`. */
+   * clicked. */
   onSave: (
     id: string,
     fields: ModuleFieldsValues,
@@ -51,42 +47,32 @@ export interface EditModuleDrawerProps {
 
 // Fixed 560px on desktop (ANA-123, previously 500px per ANA-121); `min(...)`
 // caps it at the viewport width on anything narrower instead of overflowing
-// horizontally, the same "shrink to fit, never overflow" contract
-// `EditModuleModal`'s own edit-mode width already uses for its 1040px cap.
+// horizontally.
 const DRAWER_WIDTH = "min(560px, 100vw)";
 
 // Right-side drawer (ANA-121) opened from the Edit Book screen's Modules
 // panel for both the pencil action (edit mode) and, since ANA-129, Add
-// Module (create mode) -- the Edit Module modal (`edit-module-modal.tsx`)
-// is no longer opened from that page for either; it's left otherwise
-// completely intact (component, tests, and stories all still exercise it
-// directly) purely so a future consumer isn't blocked from reaching for it,
-// the same "kept fully intact, nothing currently opens it that way"
-// treatment its own `"edit"` mode already got at ANA-121. Renders the exact
-// same Module-editing experience as the modal through the shared
-// `ModuleEditorBody` (`module-editor-body.tsx`) -- same fields, AI actions,
-// validation, loading states, save behavior, discard protection, and
-// backend integration -- just inside a different container, with
-// `layout="narrow"`.
+// Module (create mode) -- the Edit Module modal that used to own Add Module
+// (`edit-module-modal.tsx`) was removed once this drawer became the only
+// consumer of `ModuleEditorBody` (ANA-128). Renders the Module-editing
+// experience through the shared `ModuleEditorBody` (`module-editor-body.tsx`)
+// -- same fields, AI actions, validation, loading states, save behavior,
+// discard protection, and backend integration.
 //
 // The drawer's own chrome (header/footer) is the shared `DrawerShell`
-// (ANA-122) -- its "Edit Module" title and back button replace the fixed-
-// pixel-positioned `Title` `ModuleEditorBody` used to render for this
-// container, and its footer is where `ModuleEditorBody`'s own Cancel/Save
-// changes actions render via `DrawerFooter`, once `layout="narrow"` (see
-// that component's own `isNarrow` branches).
+// (ANA-122) -- its "Edit Module" title and back button, and its footer is
+// where `ModuleEditorBody`'s own Cancel/Save changes actions render via
+// `DrawerFooter`.
 //
-// `ModuleEditorBody` no longer renders a Lessons list/editor inline for this
-// `layout="narrow"` container (ANA-123 -- see its own `isNarrow` branch):
-// that's replaced here by a Lessons header action that opens a second,
-// nested `DrawerShell` stacked above this one via a shared Mantine
-// `Drawer.Stack`, per `stackId` (ANA-122's own stacking support -- see
-// `drawer-shell.tsx`'s `Stacked` story/tests for the exact mechanics this
-// reuses). This component only owns the *open/closed* flag for that nested
-// drawer (`lessonsDrawerOpened`, a plain navigation flag) -- its real
-// content is rendered by `ModuleEditorBody` itself, which is where the
-// Lessons data/handlers this drawer needs already live (see that
-// component's own `isNarrow` Lessons-drawer JSX). It has no dirty-state or
+// `ModuleEditorBody` renders no Lessons list/editor inline (ANA-123): that's
+// replaced here by a Lessons header action that opens a second, nested
+// `DrawerShell` stacked above this one via a shared Mantine `Drawer.Stack`,
+// per `stackId` (ANA-122's own stacking support -- see `drawer-shell.tsx`'s
+// `Stacked` story/tests for the exact mechanics this reuses). This
+// component only owns the *open/closed* flag for that nested drawer
+// (`lessonsDrawerOpened`, a plain navigation flag) -- its real content is
+// rendered by `ModuleEditorBody` itself, which is where the Lessons
+// data/handlers this drawer needs already live. It has no dirty-state or
 // Save/Cancel of its own (ANA-126): reordering persists through the Module
 // drawer's own Save changes, the same as every other Module field.
 // `Drawer.Stack`'s context reaches it fine despite it being
@@ -101,11 +87,10 @@ export function EditModuleDrawer({
   onCreate,
   onSave,
 }: EditModuleDrawerProps) {
-  // Same Modal/Drawer-dismiss bridge as `EditModuleModal` -- see that
-  // component's identical `requestCloseRef` doc. Every way `DrawerShell`
-  // can be dismissed (back button, Escape, outside click) funnels through
-  // this one `onClose` prop, which `ModuleEditorBody` routes through its own
-  // unsaved-changes guard before ever actually closing.
+  // Every way `DrawerShell` can be dismissed (back button, Escape, outside
+  // click) funnels through this one `onClose` prop, which `ModuleEditorBody`
+  // routes through its own unsaved-changes guard before ever actually
+  // closing.
   const requestCloseRef = useRef(onClose);
 
   const [lessonsDrawerOpened, setLessonsDrawerOpened] = useState(false);
@@ -181,8 +166,7 @@ export function EditModuleDrawer({
           <ModuleEditorBody
             // Remounts (a fresh local draft) per distinct edit target, and
             // whenever create mode is (re-)entered after a different state
-            // (ANA-129) -- matching `EditModuleModal`'s own identical
-            // per-target/per-mode remount.
+            // (ANA-129).
             key={renderedState.mode === "create" ? "create" : renderedState.id}
             state={renderedState}
             book={book}
@@ -190,7 +174,6 @@ export function EditModuleDrawer({
             onCreate={onCreate}
             onSave={onSave}
             requestCloseRef={requestCloseRef}
-            layout="narrow"
             lessonsDrawerOpened={lessonsDrawerOpened}
             onLessonsDrawerClose={() => setLessonsDrawerOpened(false)}
           />
