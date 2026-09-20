@@ -85,7 +85,7 @@ const PREVIOUS_MODULE_QUESTIONS = [
 
 // Wraps LessonForm with local state so every field edit behaves for real in
 // Storybook -- the component itself is fully controlled and has no state of
-// its own (mirrors LessonsPanelDemo, see lessons-panel.stories.tsx).
+// its own.
 function LessonFormDemo({
   value: initialValue,
   onChange,

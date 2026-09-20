@@ -27,7 +27,7 @@ import { useActiveLanguage } from "./use-active-language";
 
 export type FormFieldType = "text" | "textarea" | "markdown";
 
-export interface FormFieldAiActionArgs<TContext> {
+interface FormFieldAiActionArgs<TContext> {
   /** The text the action runs on. For Translate with AI, and for AI
    * Assistance on every type other than `"markdown"`, this is always the
    * whole current text (the active language's value, when translatable).
@@ -127,11 +127,11 @@ interface FormFieldCommonProps<TContext> {
    * aggregate several fields' `onBusyChange` calls to gate its own action
    * that isn't a field at all, e.g. disabling a Save button so it can't
    * persist a value while that value's own translation is still in flight
-   * (see edit-module-modal.tsx's `aiBusy`, ANA-109 PR review). */
+   * (see module-editor-body.tsx's `aiBusy`, ANA-109 PR review). */
   onBusyChange?: (busy: boolean) => void;
 }
 
-export interface TranslatableFormFieldProps<
+interface TranslatableFormFieldProps<
   TContext = unknown,
 > extends FormFieldCommonProps<TContext> {
   /** Shows the language switch and stores one value per language. */
@@ -167,7 +167,7 @@ export interface TranslatableFormFieldProps<
   aiAssistanceLanguage?: string;
 }
 
-export interface PlainFormFieldProps<
+interface PlainFormFieldProps<
   TContext = unknown,
 > extends FormFieldCommonProps<TContext> {
   translatable?: false;
@@ -402,7 +402,7 @@ function useFormFieldAssistAction<TContext>({
 // ANA-98) that the dashboard's existing AI-assisted editing already uses.
 // Edit Book and Edit Module's own Title/Description/(Long )Description/
 // Content fields are migrated onto this component in book-form.tsx and
-// edit-module-modal.tsx (ANA-97), with Edit Module's fields wired to their
+// module-editor-body.tsx (ANA-97), with Edit Module's fields wired to their
 // full Book/Module AI context in ANA-98.
 export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const {

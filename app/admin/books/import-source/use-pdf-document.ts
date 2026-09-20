@@ -2,7 +2,7 @@
 
 import useSWR from "swr";
 
-import { loadPdfDocument, type PdfDocument } from "@/lib/pdf/pdf-document";
+import { loadPdfDocument } from "@/lib/pdf/pdf-document";
 
 /**
  * Loads a `File` into a pdf.js document. Uses SWR (keyed by the file's own
@@ -37,5 +37,3 @@ export function usePdfDocument(file: File) {
       : null,
   };
 }
-
-export type { PdfDocument };

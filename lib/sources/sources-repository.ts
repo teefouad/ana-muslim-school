@@ -10,7 +10,7 @@ import {
   type SourceWritableFields,
 } from "./types";
 
-export const SOURCES_COLLECTION = "sources";
+const SOURCES_COLLECTION = "sources";
 
 function parseSourceDocument(doc: DocumentSnapshot): Source | null {
   try {

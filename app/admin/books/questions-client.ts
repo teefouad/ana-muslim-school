@@ -9,7 +9,7 @@ import type { Question, QuestionWritableFields } from "@/lib/questions/types";
  * `POST /api/v1/books/{bookId}/modules/{moduleId}/questions` (ANA-62) --
  * creation alone doesn't attach it to any Lesson; the caller is responsible
  * for including the returned id in `Lesson.questions` (ANA-119). */
-export async function createQuestion(
+async function createQuestion(
   bookId: string,
   moduleId: string,
   draft: QuestionWritableFields,
@@ -35,7 +35,7 @@ export async function createQuestion(
 /** Updates a Question's writable fields via
  * `PATCH /api/v1/books/{bookId}/modules/{moduleId}/questions/{questionId}`
  * (ANA-62). */
-export async function updateQuestion(
+async function updateQuestion(
   bookId: string,
   moduleId: string,
   questionId: string,
@@ -62,7 +62,7 @@ export async function updateQuestion(
 /** Persists every local Question draft/edit for a Lesson (ANA-119) -- a new
  * draft (`entry.id === null`) is created via POST, an existing linked
  * Question is updated via PATCH, both through the existing Question APIs.
- * Called only from the Lesson Save flow (edit-module-modal.tsx's
+ * Called only from the Lesson Save flow (module-editor-body.tsx's
  * `handleCreateLesson`/`handleUpdateLesson`), sequentially and in the
  * entries' current display order, so the returned array is exactly the
  * order to persist into `Lesson.questions`. An entry removed from this

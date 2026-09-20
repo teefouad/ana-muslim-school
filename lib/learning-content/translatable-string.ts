@@ -9,6 +9,18 @@ export type TranslatableString = {
   en: string;
 };
 
+/** Picks the value to display for a bilingual field (ANA-128) -- Arabic
+ * first, English otherwise, or `""` when both are blank. Shared by every
+ * admin list/label that shows one of these fields as plain text; each
+ * caller composes its own further fallback (a fixed "Untitled ..." string,
+ * a positional placeholder, or none at all) on top of this one shared
+ * language-preference step. */
+export function preferredTranslatableStringValue(
+  value: TranslatableString,
+): string {
+  return value.ar || value.en;
+}
+
 /** Validates Firestore-sourced data before it's trusted as a `TranslatableString`. */
 export function isValidTranslatableString(
   value: unknown,

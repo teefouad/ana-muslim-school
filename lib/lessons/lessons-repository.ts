@@ -14,7 +14,7 @@ import {
   type LessonWritableFields,
 } from "./types";
 
-export const LESSONS_COLLECTION = "lessons";
+const LESSONS_COLLECTION = "lessons";
 
 function moduleRef(bookId: string, moduleId: string) {
   return getAdminFirestore()

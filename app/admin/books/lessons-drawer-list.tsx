@@ -17,17 +17,22 @@ import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableList } from "@/components/ui/sortable-list";
 import type { Lesson } from "@/lib/lessons/types";
-import { getLessonLabel } from "./lessons-panel";
+import { preferredTranslatableStringValue } from "@/lib/learning-content/translatable-string";
 import styles from "./lessons-drawer-list.module.css";
 
 const LOADING_ROW_COUNT = 3;
 
+function getLessonLabel(lesson: Lesson, index: number): string {
+  return (
+    preferredTranslatableStringValue(lesson.title) || `Lesson ${index + 1}`
+  );
+}
+
 export interface LessonsDrawerListProps {
   /** This Module's real Lessons, in their current display order -- the
-   * caller's own reorder draft layered onto the server list, same
-   * contract as `LessonsPanel.lessons` (ANA-116/117). Fully controlled --
-   * this component owns no persistence or loading of its own, only the
-   * drag/edit/delete wiring. */
+   * caller's own reorder draft layered onto the server list. Fully
+   * controlled -- this component owns no persistence or loading of its
+   * own, only the drag/edit/delete wiring. */
   lessons: Lesson[];
   /** True only for a first, blocking Lessons load (ANA-124) -- renders a
    * few skeleton rows instead of real cards, with no header/footer chrome
@@ -35,15 +40,13 @@ export interface LessonsDrawerListProps {
    * screen, per ANA-124). */
   loading?: boolean;
   /** Fired with the full reordered array once a drag actually changes the
-   * order (never a persistence request) -- same contract as
-   * `LessonsPanel.onLessonsChange`; the caller applies its own
+   * order (never a persistence request) -- the caller applies its own
    * `isValidReorder` guard and owns the pending-order draft. */
   onReorder: (lessons: Lesson[]) => void;
   onEditLesson: (lesson: Lesson) => void;
   /** Persists the deletion of a real Lesson through the caller's existing
-   * Lesson delete behavior, gated behind the same `ConfirmDialog` pattern
-   * `LessonsPanel` already uses. Rejecting leaves the card visible and
-   * surfaces the error below the list. */
+   * Lesson delete behavior, gated behind a `ConfirmDialog`. Rejecting
+   * leaves the card visible and surfaces the error below the list. */
   onDeleteLesson: (lesson: Lesson) => Promise<void>;
   className?: string;
 }
@@ -89,8 +92,8 @@ function LessonCard({
         .join(" ")}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       // Double-clicking a card opens the Lesson editor, same as its own
-      // Edit action (ANA-129) -- matching ModulesPanel's/LessonsPanel's
-      // identical double-click (modules-panel.tsx/lessons-panel.tsx).
+      // Edit action (ANA-129) -- matching ModulesPanel's identical
+      // double-click (modules-panel.tsx).
       onDoubleClick={onEdit}
     >
       <span
@@ -149,11 +152,10 @@ function LessonCardOverlay({
 }
 
 // The Lessons drawer's own list content (ANA-124) -- a simple vertical list
-// of minimal cards, not the ItemList-based `LessonsPanel`. Owns only its own
-// delete-confirmation UI (mirrors `LessonsPanel`'s identical
-// pendingDelete/isDeleting/deleteError pattern); reordering, editing, and
-// the actual delete persistence are all the caller's existing behavior,
-// passed straight through.
+// of minimal cards, not built on `ItemList`. Owns only its own
+// delete-confirmation UI (a pendingDelete/isDeleting/deleteError pattern);
+// reordering, editing, and the actual delete persistence are all the
+// caller's existing behavior, passed straight through.
 export function LessonsDrawerList({
   lessons,
   loading = false,

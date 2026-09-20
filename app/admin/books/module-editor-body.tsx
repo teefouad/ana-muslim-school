@@ -6,13 +6,10 @@ import {
   Alert,
   Box,
   Button,
-  Flex,
   getDefaultZIndex,
   Group,
   Loader,
-  Skeleton,
   Stack,
-  Title,
 } from "@mantine/core";
 
 import { ColorField } from "@/components/ui/color-field";
@@ -48,14 +45,13 @@ import {
   type LessonFieldsValues,
 } from "./lesson-fields";
 import { LessonsDrawerList } from "./lessons-drawer-list";
-import { LessonsPanel } from "./lessons-panel";
 import {
   createEmptyModuleFieldsValues,
   type ModuleFieldsValues,
 } from "./module-fields";
 import type { ModuleQuestionGroup } from "./question-fields";
 import { saveLessonQuestions } from "./questions-client";
-import { ArrowLeft, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -74,14 +70,12 @@ function mergeQuestions(current: Question[], saved: Question[]): Question[] {
   return Array.from(byId.values());
 }
 
-const LESSONS_SKELETON_ROW_COUNT = 3;
-
 // The nested Lessons drawer's own width (ANA-123's placeholder, ANA-124's
 // real content, 500px per ANA-125) -- narrower than the Module drawer's own
 // `DRAWER_WIDTH` (edit-module-drawer.tsx), which this body has no need to
 // know about otherwise. Moved here from edit-module-drawer.tsx now that this
 // body renders the nested `DrawerShell` itself (ANA-124) -- see this file's
-// own `isNarrow` Lessons-drawer JSX below.
+// own Lessons-drawer JSX below.
 const LESSONS_DRAWER_WIDTH = "min(500px, 100vw)";
 
 // The Lesson editor drawer's own width (ANA-125) -- stacked above, and
@@ -89,68 +83,6 @@ const LESSONS_DRAWER_WIDTH = "min(500px, 100vw)";
 // level narrower than its parent" convention `LESSONS_DRAWER_WIDTH` already
 // follows relative to the Module drawer's own width.
 const LESSON_EDITOR_DRAWER_WIDTH = "min(460px, 100vw)";
-
-/** Fixed at the `md`+ breakpoint only (ANA-117) -- Module mode's editor +
- * Lessons list and Lesson mode's own editor render this same height
- * regardless of which is taller, so switching between them never resizes
- * the container itself (each mode's own wrapper below sets `overflowY:
- * "auto"`). Left at `auto` below `md`, where the two columns already stack
- * instead of sitting side by side -- constraining height there would fight
- * that stacked layout's own natural scroll instead of stabilizing anything.
- * Used by the wide/Modal layout's own Module mode and Lesson mode -- the
- * drawer's narrow layout uses auto-height stacking for Module mode instead
- * (ANA-123: it no longer renders the Lessons list, so there's no second
- * column to size against), and, since ANA-125, for its own nested Lesson
- * editor drawer too: that has no sibling content of its own height needs to
- * match, so it's sized by whatever `DrawerShell`'s own body has available
- * instead, same as the drawer's Module mode already is. */
-const EDIT_MODE_CONTENT_HEIGHT = { base: "auto", md: 544 } as const;
-
-// Approximates LessonsPanel/ItemList's own card chrome (ANA-116) --
-// mirrors `[id]/edit/page.tsx`'s `ModulesPanelSkeleton`, sized for this
-// panel's own narrower column instead. Shown only for the initial Lessons
-// load of a Module being edited; swapped for the real panel as soon as
-// `GET .../lessons` resolves.
-function LessonsPanelSkeleton() {
-  return (
-    <Box
-      role="status"
-      aria-label="Loading lessons"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        border: "1px solid var(--mantine-color-default-border)",
-        borderRadius: 12,
-      }}
-    >
-      <Box
-        p="md"
-        style={{
-          borderBottom: "1px solid var(--mantine-color-default-border)",
-        }}
-        aria-hidden="true"
-      >
-        <Skeleton height={14} width={60} />
-        <Skeleton height={11} width={70} mt={6} />
-      </Box>
-      <Stack gap="xs" p="md" style={{ flex: 1 }} aria-hidden="true">
-        {Array.from({ length: LESSONS_SKELETON_ROW_COUNT }).map((_, index) => (
-          <Skeleton key={index} height={40} radius={12} />
-        ))}
-      </Stack>
-      <Box
-        p="md"
-        style={{
-          borderTop: "1px solid var(--mantine-color-default-border)",
-        }}
-        aria-hidden="true"
-      >
-        <Skeleton height={36} radius={8} />
-      </Box>
-    </Box>
-  );
-}
 
 /** `"create"` opens the editor empty, with Save Module as its primary action
  * (ANA-94) -- clicking Add Module no longer inserts anything into the
@@ -164,12 +96,11 @@ function LessonsPanelSkeleton() {
  * (ANA-116); create mode never shows a Lessons list at all (there is no
  * Module id yet to load Lessons for).
  *
- * Shared between the Edit Module modal (`edit-module-modal.tsx`) and the
- * Edit Module drawer (`edit-module-drawer.tsx`, ANA-121) -- only the drawer
- * ever constructs an `"edit"` value; the drawer has no create flow of its
- * own (Add Module stays on the modal), but the type itself stays the same
- * union either container can pass so this body's own mode-branching logic
- * never has to know which container it's mounted in. */
+ * Rendered by the Edit Module drawer (`edit-module-drawer.tsx`, ANA-121),
+ * which constructs both `"create"` (Add Module, ANA-129) and `"edit"`
+ * values -- kept as its own named union (rather than inlined into
+ * `ModuleEditorBodyProps`) so this body's own mode-branching logic reads
+ * against a single named type. */
 export type ModuleEditorState =
   | { mode: "create" }
   | {
@@ -196,9 +127,8 @@ export interface ModuleEditorBodyProps {
    * resolves (see `edit-module-drawer.tsx`'s `onCreate` doc), which gives
    * this component a new `key` at the container level and remounts it
    * fresh in edit mode. Rejecting keeps this instance open as-is and shows
-   * the error. Optional -- the modal (`edit-module-modal.tsx`) and drawer
-   * (`edit-module-drawer.tsx`) both support create mode, but a caller/test
-   * that only ever opens this body in edit mode has no use for it. */
+   * the error. Optional -- a caller/test that only ever opens this body in
+   * edit mode has no use for it. */
   onCreate?: (fields: ModuleFieldsValues) => Promise<void>;
   /** Called with the current field values when Save changes is clicked in
    * edit mode. Same awaited resolve/reject contract as `onCreate`.
@@ -213,27 +143,11 @@ export interface ModuleEditorBodyProps {
     lessonsOrder: string[] | null,
   ) => Promise<void>;
   requestCloseRef: MutableRefObject<() => void>;
-  /** How much horizontal room the owning container gives this body
-   * (ANA-121). `"wide"` (the default, and the only value the modal ever
-   * passes -- its own rendered output is unchanged by this prop's
-   * existence) keeps Module mode's Module-editor+Lessons-list layout
-   * side-by-side from the `md` viewport breakpoint up, same as before this
-   * prop existed. `"narrow"` (the drawer's fixed 500px width, ANA-121) always
-   * stacks that same content in one column instead -- the modal's `md`
-   * breakpoint alone can't tell the two containers apart, since a viewport
-   * wide enough to satisfy it doesn't mean *this* body's own container is:
-   * a 500px drawer full-height on a wide desktop viewport still has no room
-   * for a 300px Lessons column next to the Module form. Nothing else about
-   * either mode's content changes between the two values -- the goal is a
-   * different presentation container, not a redesigned editor. */
-  layout?: "wide" | "narrow";
   /** Whether the nested Lessons drawer (ANA-123 placeholder, ANA-124 real
    * content) is currently open -- owned by `EditModuleDrawer` (a plain
    * navigation flag, not editor state) and threaded through so this body
    * can render that drawer's real content, which needs its own Lessons
-   * data/handlers already loaded here. Ignored (and the drawer never
-   * rendered) unless `layout` is `"narrow"` -- the modal has no nested
-   * Lessons drawer of its own. */
+   * data/handlers already loaded here. */
   lessonsDrawerOpened?: boolean;
   /** Hides the nested Lessons drawer -- wired directly to its own dismiss
    * (Back, Escape, outside click), with no dirty/discard gate of its own
@@ -253,12 +167,9 @@ export function ModuleEditorBody({
   onCreate,
   onSave,
   requestCloseRef,
-  layout = "wide",
   lessonsDrawerOpened = false,
   onLessonsDrawerClose = () => {},
 }: ModuleEditorBodyProps) {
-  const isNarrow = layout === "narrow";
-
   const initialFields =
     state.mode === "edit" ? state.fields : createEmptyModuleFieldsValues();
 
@@ -409,12 +320,12 @@ export function ModuleEditorBody({
   // edited Title (PR review), so it gates dismissing the whole container the
   // same way.
   //
-  // `lessonOrderDraft` counts here for both layouts (ANA-126): reordering
-  // belongs to the Module object itself -- the nested Lessons drawer (narrow
-  // layout only) is purely a display/navigation surface for it, with no
-  // save/discard of its own (see this file's own `isNarrow` Lessons drawer
-  // JSX below), so the only place a pending reorder is ever actually
-  // persisted or discarded is this Module drawer's own Save changes/Cancel.
+  // `lessonOrderDraft` counts here (ANA-126): reordering belongs to the
+  // Module object itself -- the nested Lessons drawer is purely a display/
+  // navigation surface for it, with no save/discard of its own (see this
+  // file's own Lessons drawer JSX below), so the only place a pending
+  // reorder is ever actually persisted or discarded is this Module drawer's
+  // own Save changes/Cancel.
   const isDirty =
     !isSameTranslatedValue(title, initialFields.title) ||
     !isSameTranslatedValue(description, initialFields.description) ||
@@ -438,32 +349,26 @@ export function ModuleEditorBody({
 
   // Which Lesson editor is open, if any (ANA-115) -- `null` means Module
   // mode. `{ lessonId: null }` is New Lesson: a blank, id-less draft that
-  // makes no request of its own (see lessons-panel.tsx) -- LessonEditor
-  // itself decides create vs. update purely from whether this id is
-  // present, so no separate temporary Lesson object is tracked here.
-  // `{ lessonId: "..." }` opens an existing, real Lesson. Edit Module shows
-  // either the Module editor/Lessons list or the open Lesson's editor,
-  // never both (the three-column layout from ANA-111/ANA-114 is removed).
+  // makes no request of its own -- LessonEditor itself decides create vs.
+  // update purely from whether this id is present, so no separate temporary
+  // Lesson object is tracked here. `{ lessonId: "..." }` opens an existing,
+  // real Lesson. Edit Module shows either the Module editor/Lessons list or
+  // the open Lesson's editor, never both (the three-column layout from
+  // ANA-111/ANA-114 is removed).
   //
-  // For the wide/Modal layout, this is also the *only* signal for whether
-  // Lesson mode is showing (`modeContent`'s own `lessonEditorTarget` check
-  // below) -- closing nulls it immediately, swapping straight back to
-  // Module mode, an instant content swap with no transition to preserve.
-  //
-  // The narrow/Drawer layout's own nested Lesson editor drawer (ANA-125 PR
-  // review) instead leaves this set (never nulls it on close) and tracks
-  // open/closed separately via `lessonEditorDrawerOpened` below -- the same
-  // "data vs. plain navigation flag" split `lessonsDrawerOpened` already
-  // uses for the Lessons drawer one level up. Nulling this on close, the way
-  // the wide layout does, would clear the very data (`openLesson`, this
-  // drawer's own title) its `DrawerShell` needs to keep rendering while it
-  // slides shut -- the same "content stays mounted, only the DrawerShell's
-  // own `opened` toggles" contract `LessonsDrawerList` already gets for free
-  // below (it never conditions its own rendering on `lessonsDrawerOpened` at
-  // all) -- clearing it immediately was what was missing the animation (PR
-  // review): the drawer's body swapped to empty at the very first frame of
-  // the close, instead of letting the just-edited Lesson's own fields slide
-  // away with it.
+  // The nested Lesson editor drawer (ANA-125 PR review) leaves this set
+  // (never nulls it on close) and tracks open/closed separately via
+  // `lessonEditorDrawerOpened` below -- the same "data vs. plain navigation
+  // flag" split `lessonsDrawerOpened` already uses for the Lessons drawer
+  // one level up. Nulling this on close would clear the very data
+  // (`openLesson`, this drawer's own title) its `DrawerShell` needs to keep
+  // rendering while it slides shut -- the same "content stays mounted, only
+  // the DrawerShell's own `opened` toggles" contract `LessonsDrawerList`
+  // already gets for free below (it never conditions its own rendering on
+  // `lessonsDrawerOpened` at all) -- clearing it immediately was what was
+  // missing the animation (PR review): the drawer's body swapped to empty at
+  // the very first frame of the close, instead of letting the just-edited
+  // Lesson's own fields slide away with it.
   const [lessonEditorTarget, setLessonEditorTarget] = useState<{
     lessonId: string | null;
   } | null>(null);
@@ -480,16 +385,14 @@ export function ModuleEditorBody({
   // before `LessonEditor` has mounted (its own effect hasn't run yet) still
   // closes the drawer rather than doing nothing.
   const lessonEditorRequestCloseRef = useRef(handleLessonEditorClose);
-  // Forces a fresh `LessonEditor` mount (its own `key` below) on every
-  // narrow-layout open, even a repeat of the exact same target (e.g. New
-  // Lesson, cancelled, New Lesson again) -- since closing no longer nulls
-  // `lessonEditorTarget` for this layout, `openLesson`/`lessonId` alone
-  // would otherwise stay identical across two separate open sessions and
-  // React would reuse the same instance, silently resurrecting whatever
-  // draft was left in it rather than starting fresh. Bumped only by
-  // `handleNewLessonFromDrawer`/`handleEditLessonFromDrawer` (the narrow
-  // drawer's own open actions) -- the wide/Modal layout's own unmount-on-
-  // close (see above) already gets a fresh instance every time without it.
+  // Forces a fresh `LessonEditor` mount (its own `key` below) on every open,
+  // even a repeat of the exact same target (e.g. New Lesson, cancelled, New
+  // Lesson again) -- since closing no longer nulls `lessonEditorTarget`,
+  // `openLesson`/`lessonId` alone would otherwise stay identical across two
+  // separate open sessions and React would reuse the same instance, silently
+  // resurrecting whatever draft was left in it rather than starting fresh.
+  // Bumped only by `handleNewLessonFromDrawer`/`handleEditLessonFromDrawer`
+  // (the drawer's own open actions).
   const [lessonEditorOpenSeq, setLessonEditorOpenSeq] = useState(0);
 
   const openLesson = lessonEditorTarget?.lessonId
@@ -561,15 +464,15 @@ export function ModuleEditorBody({
       { revalidate: true },
     );
     // Switches Lesson mode into editing this now-real Lesson in place
-    // (ANA-129 PR review: saving must never change the screen) -- neither
-    // layout closes Lesson mode on save any more (see `LessonEditor`'s own
+    // (ANA-129 PR review: saving must never change the screen) -- Save
+    // never closes Lesson mode any more (see `LessonEditor`'s own
     // `handleSave`), so without this the editor would be left showing a
     // "New Lesson" draft with no way to tell it had actually saved. The
     // Lessons cache already has `created` (just above), so `openLesson`
     // resolves to it once this re-renders, giving the nested Lesson editor
-    // drawer's own `lessonEditorInner` (and the wide/Modal layout's
-    // identical usage) a new `key` -- a clean remount seeded from the
-    // real, persisted Lesson rather than a blank New Lesson draft.
+    // drawer's own `lessonEditorInner` a new `key` -- a clean remount
+    // seeded from the real, persisted Lesson rather than a blank New Lesson
+    // draft.
     setLessonEditorTarget({ lessonId: created.id });
   }
 
@@ -635,11 +538,11 @@ export function ModuleEditorBody({
   }
 
   // Persists the deletion of a real Lesson through the existing Lesson
-  // DELETE API (ANA-116) -- rejecting propagates to LessonsPanel, which
-  // keeps the row visible and shows the error (see lessons-panel.tsx).
-  // Drops only the deleted Lesson's id from a pending reorder draft, the
-  // same targeted-update the Modules panel's own `handleDeleteModule` uses
-  // for `Book.modules` (`[id]/edit/page.tsx`).
+  // DELETE API (ANA-116) -- rejecting propagates to LessonsDrawerList,
+  // which keeps the row visible and shows the error (see
+  // lessons-drawer-list.tsx). Drops only the deleted Lesson's id from a
+  // pending reorder draft, the same targeted-update the Modules panel's own
+  // `handleDeleteModule` uses for `Book.modules` (`[id]/edit/page.tsx`).
   async function handleDeleteLesson(lesson: Lesson) {
     if (state.mode !== "edit") {
       return;
@@ -665,9 +568,9 @@ export function ModuleEditorBody({
   // (`setLessonEditorTarget`, unchanged from ANA-115), which now opens its
   // own nested Lesson editor drawer stacked above the Lessons drawer
   // (ANA-125, replacing ANA-124's "hide the Lessons drawer, show Lesson mode
-  // inline underneath" behavior) -- see this file's own `isNarrow` Lesson
-  // editor drawer JSX below. The Lessons drawer is never closed here: it
-  // stays mounted/open underneath, exactly as `EditModuleDrawer`'s own Module
+  // inline underneath" behavior) -- see this file's own Lesson editor
+  // drawer JSX below. The Lessons drawer is never closed here: it stays
+  // mounted/open underneath, exactly as `EditModuleDrawer`'s own Module
   // drawer already stays open underneath it. `lessonOrderDraft` isn't reset
   // either way, so a pending reorder is still there once the Lesson editor
   // drawer is closed.
@@ -683,21 +586,14 @@ export function ModuleEditorBody({
     setLessonEditorOpenSeq((seq) => seq + 1);
   }
 
-  // Closes Lesson mode -- the shared `onBack`/`onClose` handler for both
-  // layouts (used by `lessonEditorInner`'s own `<LessonEditor onBack>` and
-  // the narrow Lesson editor drawer's own `onClose` below), branching on
-  // `isNarrow` because the two layouts close it through entirely different
-  // state (see `lessonEditorTarget`'s own doc above): the wide/Modal layout
-  // nulls `lessonEditorTarget` itself to swap straight back to Module mode,
-  // while the narrow/Drawer layout only flips `lessonEditorDrawerOpened`
-  // off, leaving `lessonEditorTarget` (and so `lessonEditorInner`) intact so
-  // the drawer's own closing transition has real content to slide away.
+  // Closes Lesson mode -- the shared `onBack`/`onClose` handler used by
+  // `lessonEditorInner`'s own `<LessonEditor onBack>` and the Lesson editor
+  // drawer's own `onClose` below. Only flips `lessonEditorDrawerOpened` off,
+  // leaving `lessonEditorTarget` (and so `lessonEditorInner`) intact (see
+  // that state's own doc above) so the drawer's own closing transition has
+  // real content to slide away.
   function handleLessonEditorClose() {
-    if (isNarrow) {
-      setLessonEditorDrawerOpened(false);
-    } else {
-      setLessonEditorTarget(null);
-    }
+    setLessonEditorDrawerOpened(false);
   }
 
   // Funnels every way of dismissing the container (Cancel, X, Escape,
@@ -931,37 +827,17 @@ export function ModuleEditorBody({
         onBusyChange={setContentBusy}
       />
 
-      {/* Published + Color: a single responsive row, Published on the left
-          and Color on the right (ANA-117 PR review) -- matching Book form's
-          own Locked/Published row (book-form.tsx), stacking only on narrow
-          screens. The drawer (ANA-123) instead stacks Color, then Published,
-          each its own full row -- its 560px width has no room for the
-          side-by-side row. Published reflects and edits this Module's own
-          persisted `isPublished`, included in both create and update Module
-          persistence (module-fields.ts). */}
-      {isNarrow ? (
-        <>
-          <ColorField value={color} onChange={setColor} />
-          <ToggleCard
-            label="Published"
-            checked={isPublished}
-            onChange={setIsPublished}
-          />
-        </>
-      ) : (
-        <Group align="flex-end" wrap="nowrap">
-          <div style={{ flex: 1 }}>
-            <ToggleCard
-              label="Published"
-              checked={isPublished}
-              onChange={setIsPublished}
-            />
-          </div>
-          <div style={{ flex: 2 }}>
-            <ColorField value={color} onChange={setColor} />
-          </div>
-        </Group>
-      )}
+      {/* Color, then Published, each its own full row (ANA-123) -- the
+          drawer's 560px width has no room for a side-by-side row. Published
+          reflects and edits this Module's own persisted `isPublished`,
+          included in both create and update Module persistence
+          (module-fields.ts). */}
+      <ColorField value={color} onChange={setColor} />
+      <ToggleCard
+        label="Published"
+        checked={isPublished}
+        onChange={setIsPublished}
+      />
 
       {saveError && (
         <Alert color="red" role="alert">
@@ -991,58 +867,15 @@ export function ModuleEditorBody({
     </Group>
   );
 
-  const lessonsPanel = (
-    <LessonsPanel
-      lessons={lessons}
-      onLessonsChange={handleReorderLessons}
-      onEditLesson={(lesson) => setLessonEditorTarget({ lessonId: lesson.id })}
-      onDeleteLesson={handleDeleteLesson}
-      onNewLesson={() => setLessonEditorTarget({ lessonId: null })}
-    />
-  );
-
-  // Create mode keeps its existing single-column layout unchanged. Edit
-  // mode shows either the Module editor + Lessons list (Module mode) or
-  // the open Lesson's own editor (Lesson mode, ANA-115) -- never both; the
-  // three-column layout from ANA-111/ANA-114 is removed. `align="stretch"`
-  // matches the two Module-mode columns to the shared `EDIT_MODE_CONTENT_
-  // HEIGHT` below, the same pattern the Edit Book page already uses for its
-  // own BookForm/ModulesPanel columns (see `[id]/edit/page.tsx`). Both
-  // modes are pinned to that same fixed height (ANA-117) so switching
-  // between them never grows/shrinks the container itself -- only the
-  // fields area scrolls internally when its content is taller (`overflowY:
-  // "auto"`); the footer (Module mode's Cancel/Save, Lesson mode's own Save
-  // via `LessonEditor`'s internal layout) stays pinned outside that scroll
-  // region, never itself scrolled out of view.
-  //
-  // Module mode's Module-editor/Lessons-list split only ever sits side by
-  // side when `layout` is `"wide"` (ANA-121) -- the drawer's fixed 500px
-  // width has no room for a 300px Lessons column next to the Module form
-  // regardless of the viewport's own `md` breakpoint, so `"narrow"` always
-  // stacks the two instead. Nothing else here differs between the two.
-  // Module mode's Cancel/Save changes move into the shared drawer's own
-  // footer via `DrawerFooter` when this body is mounted inside one
-  // (`isNarrow`, ANA-122) instead of rendering inline here -- the drawer
-  // container itself never duplicates this dirty/save logic, it only
-  // supplies the fixed footer region `DrawerFooter` portals into. The modal
-  // (`isNarrow` false) keeps rendering it inline, exactly as before.
-  const moduleFormFooterSlot = isNarrow ? (
-    <DrawerFooter>{moduleFormFooter}</DrawerFooter>
-  ) : (
-    moduleFormFooter
-  );
-
   // Lesson mode's own content -- the questions-loading/unavailable gates
-  // plus the real `LessonEditor` (ANA-115/ANA-116), shared between the wide/
-  // Modal layout's inline Lesson mode below and the narrow/Drawer layout's
-  // own nested Lesson editor drawer (ANA-125, see this file's own `isNarrow`
-  // Lesson editor drawer JSX further down). `lessonEditorTarget &&` narrows
+  // plus the real `LessonEditor` (ANA-115/ANA-116), rendered by the nested
+  // Lesson editor drawer JSX further down. `lessonEditorTarget &&` narrows
   // it to `null` whenever no Lesson editor has ever been opened this
-  // session -- for the narrow/Drawer layout, closing no longer nulls it (see
-  // `lessonEditorTarget`'s own doc above), so this keeps rendering the last
-  // real target throughout that drawer's own closing transition instead of
-  // blanking out, or resetting to an empty New Lesson draft, at the first
-  // frame of the close.
+  // session -- closing no longer nulls it (see `lessonEditorTarget`'s own
+  // doc above), so this keeps rendering the last real target throughout
+  // that drawer's own closing transition instead of blanking out, or
+  // resetting to an empty New Lesson draft, at the first frame of the
+  // close.
   const lessonEditorInner = lessonEditorTarget && (
     <>
       {questionsLoading ? (
@@ -1087,10 +920,8 @@ export function ModuleEditorBody({
           <Box style={{ flex: 1, minHeight: 0 }}>
             <LessonEditor
               // `lessonEditorOpenSeq` (PR review) forces a fresh mount on
-              // every narrow-layout open, even a repeat of the same target
-              // -- see that value's own doc above. Inert for the wide/Modal
-              // layout, which already gets a fresh mount every time from
-              // `lessonEditorTarget` itself nulling out on close.
+              // every open, even a repeat of the same target -- see that
+              // value's own doc above.
               key={`${openLesson?.id ?? "new"}-${lessonEditorOpenSeq}`}
               lesson={openLesson}
               moduleQuestions={moduleQuestions}
@@ -1101,18 +932,9 @@ export function ModuleEditorBody({
               onCreate={handleCreateLesson}
               onUpdate={handleUpdateLesson}
               onBack={handleLessonEditorClose}
-              // Same `layout` this body itself received (ANA-125 PR review)
-              // -- `lessonEditorInner` is shared between the wide/Modal
-              // layout's own inline usage below and the narrow/Drawer
-              // layout's nested Lesson editor drawer further down, and only
-              // the branch matching this body's own `layout` ever actually
-              // renders, so passing it straight through here is always
-              // correct for whichever one does.
-              layout={layout}
-              // Only meaningful for the narrow/Drawer layout (ANA-126) -- see
-              // `lessonEditorRequestCloseRef`'s own doc above and
-              // `LessonEditor`'s own `requestCloseRef` doc (lesson-editor.tsx)
-              // for why this is a no-op for the wide/Modal layout.
+              // See `lessonEditorRequestCloseRef`'s own doc above and
+              // `LessonEditor`'s own `requestCloseRef` doc
+              // (lesson-editor.tsx).
               requestCloseRef={lessonEditorRequestCloseRef}
             />
           </Box>
@@ -1121,134 +943,39 @@ export function ModuleEditorBody({
     </>
   );
 
-  const modeContent =
-    state.mode === "create" || isNarrow ? (
-      // The narrow/Drawer layout's Module mode content never changes for an
-      // open Lesson editor (ANA-125): that now renders in its own nested
-      // drawer stacked above the Lessons drawer instead of replacing this
-      // content (see this file's own Lesson editor drawer JSX further
-      // down), so the Module drawer's own body always shows the Module
-      // fields regardless of `lessonEditorTarget`. Auto-height stacking,
-      // same as create mode -- the Drawer's own body already scrolls the
-      // whole thing, so there's no fixed-height scroll region to coordinate
-      // with a second column the way the wide layout below still does.
-      <Stack gap="lg">
-        {moduleFormFields}
-        {moduleFormFooterSlot}
-      </Stack>
-    ) : lessonEditorTarget ? (
-      // The wide/Modal layout has no nested Lesson editor drawer of its own
-      // -- Lesson mode still replaces the Module editor/Lessons list content
-      // inline here, unchanged from ANA-115/ANA-116, still pinned to the
-      // shared `EDIT_MODE_CONTENT_HEIGHT` (unlike the narrow/Drawer layout's
-      // own nested Lesson editor drawer below, ANA-125 PR review) so it
-      // renders the same height as Module mode's own Module-editor+Lessons-
-      // list split when switching between them inside this same container.
-      <Stack gap="md">
-        <Box h={EDIT_MODE_CONTENT_HEIGHT} style={{ overflowY: "hidden" }}>
-          {lessonEditorInner}
-        </Box>
-      </Stack>
-    ) : (
-      // The wide/Modal layout's `flex: 1` on the Module-fields column and
-      // `align="stretch"` on a *row* Flex both depend on the row's own
-      // cross-axis (vertical) stretch to give the Lessons column a real
-      // height, via the ancestor Stack's fixed `EDIT_MODE_CONTENT_HEIGHT`
-      // (ANA-121 PR review, caught in Storybook, not by jsdom tests --
-      // jsdom never computes real flexbox layout, so a Lessons panel
-      // silently collapsed to zero height with its DOM content still fully
-      // present and queryable).
-      <Stack gap="lg" h={EDIT_MODE_CONTENT_HEIGHT}>
-        <Flex
-          gap="lg"
-          direction={{ base: "column", md: "row" }}
-          align="stretch"
-          style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
-        >
-          <Box style={{ flex: 1, minWidth: 0 }}>{moduleFormFields}</Box>
-          <Box w={{ base: "100%", md: 300 }} style={{ flexShrink: 0 }}>
-            {lessonsLoading ? (
-              <LessonsPanelSkeleton />
-            ) : lessonsError ? (
-              // Non-blocking: a failed Lessons refresh never hides the
-              // panel (whatever it last successfully showed, including a
-              // just-written Lesson applied via `mutateLessons` above)
-              // behind an error state -- it must never be presented as
-              // though the write itself failed (ANA-116).
-              <Stack gap="xs" style={{ height: "100%" }}>
-                <Alert color="red">{lessonsError.message}</Alert>
-                <Box style={{ flex: 1, minHeight: 0 }}>{lessonsPanel}</Box>
-              </Stack>
-            ) : (
-              lessonsPanel
-            )}
-          </Box>
-        </Flex>
-        {moduleFormFooterSlot}
-      </Stack>
-    );
+  // The Module drawer's own body always shows the Module fields regardless
+  // of `lessonEditorTarget` (ANA-125) -- Lesson mode renders in its own
+  // nested drawer stacked above the Lessons drawer instead of replacing
+  // this content (see this file's own Lesson editor drawer JSX further
+  // down). Auto-height stacking -- the Drawer's own body already scrolls
+  // the whole thing. Cancel/Save changes move into the shared drawer's own
+  // footer via `DrawerFooter` (ANA-122) instead of rendering inline here --
+  // the drawer container itself never duplicates this dirty/save logic, it
+  // only supplies the fixed footer region `DrawerFooter` portals into.
+  const modeContent = (
+    <Stack gap="lg">
+      {moduleFormFields}
+      <DrawerFooter>{moduleFormFooter}</DrawerFooter>
+    </Stack>
+  );
 
   return (
     <>
-      {/* Only rendered for the wide/Modal layout (ANA-122) -- the narrow/
-          Drawer layout gets its "Edit Module" title from the container's
-          own real header (`DrawerShell`) instead, and its Lesson-mode title
-          from the nested Lesson editor drawer's own header (ANA-125), so
-          this fixed-pixel-position hack (kept only for the Modal, unchanged
-          from before ANA-122) would otherwise duplicate/overlap both. */}
-      {!isNarrow && (
-        <Title
-          size={18}
-          style={{
-            position: "absolute",
-            zIndex: 99999,
-            top: 20,
-          }}
-        >
-          {state.mode === "create" ? (
-            "Add Module"
-          ) : lessonEditorTarget ? (
-            <Group gap={14}>
-              <Button
-                variant="subtle"
-                color="#fff"
-                p={0}
-                m={-6}
-                w={32}
-                h={32}
-                onClick={handleLessonEditorClose}
-                disabled={isSaving}
-                aria-label="Back to Module"
-              >
-                <ArrowLeft size={14} aria-hidden="true" />
-              </Button>
-              {lessonEditorTarget.lessonId === null
-                ? "New Lesson"
-                : "Edit Lesson"}
-            </Group>
-          ) : (
-            "Edit Module"
-          )}
-        </Title>
-      )}
-
       {modeContent}
       {/* Discard confirmation (PR review) -- gates every way of dismissing
           the container (Cancel, X, Escape, backdrop/outside click, all
           funneled through `handleRequestClose` above) while any field or a
           pending Lesson reorder is unsaved. Rendered here, outside
-          `modeContent`'s own three branches, so it isn't tied to whichever
-          mode happens to be showing when the dismiss was attempted -- same
-          copy as LessonEditor's own identical guard (lesson-editor.tsx) and
-          Module Builder's (import-source-modal.tsx).
+          `modeContent`, so it isn't tied to whichever mode happens to be
+          showing when the dismiss was attempted -- same copy as
+          LessonEditor's own identical guard (lesson-editor.tsx) and Module
+          Builder's (import-source-modal.tsx).
           `zIndex` (ANA-123 PR review) pins this above Mantine's own "popover"
           elevation tier -- the drawer container's own `DrawerShell` gets a
-          *stacked* z-index once `layout="narrow"` (`stackId="module"`,
-          edit-module-drawer.tsx), which sits above Mantine's default modal
-          tier this dialog would otherwise use, burying it underneath the
-          drawer's own overlay instead of on top of it. The modal container
-          never stacks, so this is a no-op there -- still safely above its
-          own default-tier Modal either way. */}
+          *stacked* z-index (`stackId="module"`, edit-module-drawer.tsx),
+          which sits above Mantine's default modal tier this dialog would
+          otherwise use, burying it underneath the drawer's own overlay
+          instead of on top of it. */}
       {confirmingDiscard && (
         <ConfirmDialog
           opened
@@ -1273,61 +1000,51 @@ export function ModuleEditorBody({
           this body. `Drawer.Stack`'s own context (edit-module-drawer.tsx)
           is a React context, not a DOM-adjacency requirement, so this
           `DrawerShell` still stacks correctly above the Module drawer's own
-          despite being mounted several components deeper than it. Only
-          rendered for the narrow/Drawer layout -- the wide/Modal layout has
-          no nested Lessons drawer of its own (see `lessonsPanel` above). */}
-      {isNarrow && (
-        <DrawerShell
-          opened={lessonsDrawerOpened}
-          title="Lessons"
-          onClose={onLessonsDrawerClose}
-          size={LESSONS_DRAWER_WIDTH}
-          stackId="lessons"
-          headerActions={
-            <Button
-              leftSection={<Plus size={16} aria-hidden="true" />}
-              onClick={handleNewLessonFromDrawer}
-              style={{ transition: "background-color 150ms ease" }}
-            >
-              New Lesson
-            </Button>
-          }
-        >
-          {lessonsError && (
-            // Non-blocking, same as the wide/Modal layout's identical
-            // treatment above -- a failed background refresh never hides
-            // whatever this list last successfully showed.
-            <Alert color="red" mb="sm">
-              {lessonsError.message}
-            </Alert>
-          )}
-          <LessonsDrawerList
-            lessons={lessons}
-            loading={lessonsLoading}
-            onReorder={handleReorderLessons}
-            onEditLesson={handleEditLessonFromDrawer}
-            onDeleteLesson={handleDeleteLesson}
-          />
-        </DrawerShell>
-      )}
+          despite being mounted several components deeper than it. */}
+      <DrawerShell
+        opened={lessonsDrawerOpened}
+        title="Lessons"
+        onClose={onLessonsDrawerClose}
+        size={LESSONS_DRAWER_WIDTH}
+        stackId="lessons"
+        headerActions={
+          <Button
+            leftSection={<Plus size={16} aria-hidden="true" />}
+            onClick={handleNewLessonFromDrawer}
+            style={{ transition: "background-color 150ms ease" }}
+          >
+            New Lesson
+          </Button>
+        }
+      >
+        {lessonsError && (
+          // Non-blocking -- a failed background refresh never hides
+          // whatever this list last successfully showed.
+          <Alert color="red" mb="sm">
+            {lessonsError.message}
+          </Alert>
+        )}
+        <LessonsDrawerList
+          lessons={lessons}
+          loading={lessonsLoading}
+          onReorder={handleReorderLessons}
+          onEditLesson={handleEditLessonFromDrawer}
+          onDeleteLesson={handleDeleteLesson}
+        />
+      </DrawerShell>
 
       {/* The Lesson editor drawer (ANA-125): New Lesson/Edit, triggered from
-          the Lessons drawer's own header action/card actions above, now open
-          the existing Lesson configuration UI (`LessonEditor`, unchanged) in
-          a third `DrawerShell` stacked above the Lessons drawer, rather than
-          replacing that drawer's own content -- see `handleNewLessonFromDrawer`/
-          `handleEditLessonFromDrawer`'s doc for what changed. Reuses the same
-          `lessonEditorInner` the wide/Modal layout's own inline Lesson mode
-          renders above -- only the container changed here, never the editor
-          itself or its save behavior (`onCreate`/`onUpdate` still call this
-          body's own `handleCreateLesson`/`handleUpdateLesson`, the existing
-          Lesson create/update API). Unlike the wide/Modal layout's own usage
-          above, this renders `lessonEditorInner` directly -- no
-          `EDIT_MODE_CONTENT_HEIGHT` cap (PR review) -- so it behaves the same
-          way the Module drawer's own content does: no artificial height
-          limit, sized by whatever `DrawerShell`'s own `.body` region actually
-          has available, scrolling that same way if the Lesson form's content
-          is taller than it.
+          the Lessons drawer's own header action/card actions above, open the
+          existing Lesson configuration UI (`LessonEditor`, unchanged) in a
+          third `DrawerShell` stacked above the Lessons drawer, rather than
+          replacing that drawer's own content -- see
+          `handleNewLessonFromDrawer`/`handleEditLessonFromDrawer`'s doc for
+          what changed. Renders `lessonEditorInner` directly -- no
+          fixed-height cap -- so it behaves the same way the Module drawer's
+          own content does: no artificial height limit, sized by whatever
+          `DrawerShell`'s own `.body` region actually has available,
+          scrolling that same way if the Lesson form's content is taller
+          than it.
           `opened` is `lessonEditorDrawerOpened`, not `lessonEditorTarget !==
           null` (PR review) -- see that state's own doc above for why closing
           leaves `lessonEditorTarget` (and so `lessonEditorInner`/this title)
@@ -1337,8 +1054,7 @@ export function ModuleEditorBody({
           drawer, so it inherits the same "only the topmost drawer responds
           to Escape/outside click" behavior, and closing it (Back, Escape,
           outside click) reveals the still-open Lessons drawer underneath --
-          the Lessons drawer is never touched here. Only rendered for the
-          narrow/Drawer layout, same as the Lessons drawer itself.
+          the Lessons drawer is never touched here.
           `onClose` is `() => lessonEditorRequestCloseRef.current()`, not
           `handleLessonEditorClose` directly (ANA-126) -- every way this
           drawer can be dismissed (its own Back button, Escape, outside
@@ -1353,26 +1069,23 @@ export function ModuleEditorBody({
           resolves to `handleLessonEditorClose` itself, via `LessonEditor`'s
           own `onBack` call -- closing only this drawer and revealing the
           still-open Lessons drawer underneath, never anything more. */}
-      {isNarrow && (
-        <DrawerShell
-          opened={lessonEditorDrawerOpened}
-          title={
-            lessonEditorTarget?.lessonId === null ? "New Lesson" : "Edit Lesson"
-          }
-          onClose={() => lessonEditorRequestCloseRef.current()}
-          size={LESSON_EDITOR_DRAWER_WIDTH}
-          stackId="lesson-editor"
-          // No `footer` prop here (PR review) -- `LessonEditor` itself
-          // portals its own Save changes into this drawer's footer region
-          // via `DrawerFooter` once `layout="narrow"` (see `lessonEditorInner`'s
-          // own `<LessonEditor>` call above), the same "the deeply-nested
-          // consumer that owns the action's state portals it in" pattern
-          // `moduleFormFooterSlot` already uses for Module mode's own Save
-          // changes in this same drawer.
-        >
-          {lessonEditorInner}
-        </DrawerShell>
-      )}
+      <DrawerShell
+        opened={lessonEditorDrawerOpened}
+        title={
+          lessonEditorTarget?.lessonId === null ? "New Lesson" : "Edit Lesson"
+        }
+        onClose={() => lessonEditorRequestCloseRef.current()}
+        size={LESSON_EDITOR_DRAWER_WIDTH}
+        stackId="lesson-editor"
+        // No `footer` prop here (PR review) -- `LessonEditor` itself
+        // portals its own Save changes into this drawer's footer region via
+        // `DrawerFooter` (see `lessonEditorInner`'s own `<LessonEditor>`
+        // call above), the same "the deeply-nested consumer that owns the
+        // action's state portals it in" pattern `modeContent` already uses
+        // for Module mode's own Save changes in this same drawer.
+      >
+        {lessonEditorInner}
+      </DrawerShell>
     </>
   );
 }

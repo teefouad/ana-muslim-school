@@ -6,9 +6,9 @@ import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { useClampedStepper } from "./use-clamped-stepper";
 import styles from "./control-group.module.css";
 
-export const MIN_FONT_SCALE_PERCENT = 75;
-export const MAX_FONT_SCALE_PERCENT = 200;
-export const FONT_SCALE_STEP_PERCENT = 25;
+const MIN_FONT_SCALE_PERCENT = 75;
+const MAX_FONT_SCALE_PERCENT = 200;
+const FONT_SCALE_STEP_PERCENT = 25;
 
 export interface FontSizeControlProps {
   value: number;

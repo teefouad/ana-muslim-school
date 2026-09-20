@@ -131,7 +131,7 @@ describe("LessonsDrawerList", () => {
     expect(onEditLesson).toHaveBeenCalledWith(LESSONS[0]);
   });
 
-  it("calls onEditLesson when a card is double-clicked (ANA-129, matching ModulesPanel/LessonsPanel)", () => {
+  it("calls onEditLesson when a card is double-clicked (ANA-129, matching ModulesPanel)", () => {
     const onEditLesson = vi.fn();
     renderList({ onEditLesson });
 

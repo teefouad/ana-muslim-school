@@ -49,7 +49,7 @@ each is wired through a caller-provided `onAiTranslate`/`onAiAssist` function
 plus a matching `getAITranslationContext`/`getAIAssistanceContext` builder
 that supplies whatever domain context that call needs (e.g. a Book id, or a
 Module's other fields) -- `FormField` never hard-codes Book- or Module-
-specific context; see edit-module-modal.tsx's Title/Description/Content
+specific context; see module-editor-body.tsx's Title/Description/Content
 wiring (ANA-98) for the pattern. AI Assistance runs through the shared
 Additional Instructions step (`ai-instructions-modal.tsx`); Translate with
 AI is a deliberate exception and runs directly (ANA-98: it only ever
@@ -65,7 +65,7 @@ about that selection: it only reports whether `text` is a selection via
 caller whose AI task needs the rest of the field's current value as
 surrounding context (e.g. the full Learning Material around a selected
 paragraph) reads `isSelection` and supplies that extra context itself; see
-edit-module-modal.tsx's Content field wiring (`fullMaterial`, ANA-99).
+module-editor-body.tsx's Content field wiring (`fullMaterial`, ANA-99).
 Non-translation AI generation/assistance is Arabic-only end to end for
 Module-level fields (ANA-99): every Module `onAiAssist`/
 `getAIAssistanceContext` wired to a real `/api/v1/ai/assist` call sends and
@@ -102,16 +102,16 @@ translate/assist loading state into a local `fieldBusy` that only ever
 freezes itself. A caller with several `FormField`s in one form must not
 aggregate their busy states into one flag and feed it back into every
 field's `disabled` (or into unrelated, non-AI controls) -- that was the
-book-form.tsx/edit-module-modal.tsx `aiBusy` bug fixed by ANA-109: an
+book-form.tsx/module-editor-body.tsx `aiBusy` bug fixed by ANA-109: an
 in-flight Translate/AI Assistance request on one field must never disable
 any other field or control. `onBusyChange` still reports one field's own
 busy window to its caller for whatever else it might need beyond disabling
-that field itself -- edit-module-modal.tsx aggregates its three fields'
+that field itself -- module-editor-body.tsx aggregates its three fields'
 `onBusyChange` calls into one `aiBusy` flag again, but only to gate its own
 Save Module/Save changes action (never Cancel, and never fed back into any
 field's `disabled`): saving while a translation is still in flight would
 persist the pre-translation value and silently lose the AI result once it
-resolves after the modal has already closed (ANA-109 PR review). book-form.tsx
+resolves after the container has already closed (ANA-109 PR review). book-form.tsx
 has no such save action of its own to gate and wires nothing.
 `translatable-field-header.tsx` is the label + actions + language-switcher
 row `FormField`, `TranslatableTextInput`, and `TranslatableTextArea` all
@@ -268,57 +268,45 @@ see `item-list.module.css`'s `.emptyState`) -- this is for a list with no
 such outer card of its own, e.g. the Questions and Break entries editors.
 Takes the message as `children`.
 
-## Modal vs. Drawer presentation containers
+## Edit Module: thin container + shared body
 
-`app/admin/books/edit-module-modal.tsx` (the Edit Module modal, centered,
-900-1040px) and `app/admin/books/edit-module-drawer.tsx` (the Edit Module
-drawer, right-side, fixed 560px on desktop -- 500px at ANA-121, widened at
-ANA-123 -- migrated onto the shared `DrawerShell` above in ANA-122) are two
-different presentation containers around the exact same editing experience
--- `app/admin/books/module-editor-body.tsx`'s `ModuleEditorBody`, which owns
-every field, AI action, the Lessons list/editor, loading state, and
-save/discard behavior. Neither container duplicates that logic: each is a
-thin wrapper that mounts `ModuleEditorBody` inside its own Mantine `Modal`/
-the shared `DrawerShell`, bridges every way that container can be dismissed
-(X/close button or back arrow, Escape, backdrop/outside click) through the
-body's own unsaved-changes guard via a shared `requestCloseRef` pattern, and
-otherwise gets out of the way. `ModuleEditorBody`'s own `layout` prop
-(`"wide"`, the default the modal never overrides, vs. `"narrow"`, the
-drawer) is what the body branches on for everything the shared shell
-requires it to present differently: whether Module mode renders its
-Module-editor+Lessons-list split side by side using the ItemList-based
-`LessonsPanel`, or -- the drawer, ANA-123/ANA-124 -- omits that inline
-Lessons list/split entirely, moving Lesson management to the drawer's own
-Lessons header action/nested `DrawerShell` instead, with its own
-purpose-built, minimal sortable card list (`lessons-drawer-list.tsx`, not
-`LessonsPanel`/`ItemList`) and no dirty-state/Save-Cancel of its own
-(ANA-126: a pending reorder counts toward `ModuleEditorBody`'s own
-Module-level dirty state instead, see `DrawerShell`'s `headerActions`/
-`stackId` above); whether
-Color/Published render as a single side-by-side row or, in the drawer,
-Color then Published each on their own full row (ANA-123, narrower width
-has no room for the side-by-side row); whether Module mode's own Cancel/
-Save changes render inline or through `DrawerFooter` into the drawer's
-shared footer; and whether Lesson mode's `LessonEditor` content renders
-inline, replacing the modal's own Module-mode content (reached via the
-modal's fixed-pixel-positioned title, kept only for the modal), or -- the
-drawer, ANA-125 -- in its own third nested `DrawerShell` (`stackId=
-"lesson-editor"`, its own header/title from `DrawerShell` itself) stacked
-above the Lessons drawer, opened by New Lesson/Edit inside that Lessons
-drawer, which stays mounted/open underneath rather than being hidden (see
-`DrawerShell`'s `stackId` doc above for the same "child stays a JSX sibling,
-not a DOM descendant, and only the topmost drawer responds to Escape/
-outside click" mechanics one level deeper). This third `DrawerShell`'s own
-`onClose` is wired through a second, deeper `requestCloseRef` bridge
-(ANA-126), the same "container calls `requestCloseRef.current()` instead of
-`onClose` directly" pattern `EditModuleDrawer`/`EditModuleModal` already use
-one level up, so `LessonEditor`'s own unsaved-changes confirmation stays
-authoritative regardless of whether it was dismissed via its Back button,
-Escape, or an outside click -- never the underlying fields/
-behavior themselves. Reach for this same split
--- a shared `*-body.tsx` plus thin container wrappers -- before duplicating
-an existing editor's logic into a second container; don't special-case a
-single monolithic component to support two visual shells instead.
+`app/admin/books/edit-module-drawer.tsx` (the Edit Module drawer, right-side,
+fixed 560px on desktop -- 500px at ANA-121, widened at ANA-123, migrated onto
+the shared `DrawerShell` above in ANA-122) is a thin container around the
+actual editing experience -- `app/admin/books/module-editor-body.tsx`'s
+`ModuleEditorBody`, which owns every field, AI action, the Lessons
+list/editor, loading state, and save/discard behavior. The drawer mounts
+`ModuleEditorBody` inside the shared `DrawerShell`, bridges every way the
+drawer can be dismissed (back arrow, Escape, backdrop/outside click) through
+the body's own unsaved-changes guard via a `requestCloseRef` pattern, and
+otherwise gets out of the way.
+
+`ModuleEditorBody` renders no Lessons list/editor inline (ANA-123): that's a
+Lessons header action that opens a second, nested `DrawerShell` stacked
+above the Module drawer via a shared Mantine `Drawer.Stack`, per `stackId`
+(ANA-122's own stacking support -- see `drawer-shell.tsx`'s `Stacked`
+story/tests for the exact mechanics this reuses), with its own purpose-built,
+minimal sortable card list (`lessons-drawer-list.tsx`) and no dirty-state or
+Save/Cancel of its own (ANA-126: a pending reorder counts toward
+`ModuleEditorBody`'s own Module-level dirty state instead). Lesson mode's
+`LessonEditor` content renders in its own third nested `DrawerShell`
+(`stackId="lesson-editor"`, ANA-125) stacked above the Lessons drawer, opened
+by New Lesson/Edit inside that Lessons drawer, which stays mounted/open
+underneath rather than being hidden (see `DrawerShell`'s `stackId` doc above
+for the same "child stays a JSX sibling, not a DOM descendant, and only the
+topmost drawer responds to Escape/outside click" mechanics one level
+deeper). This third `DrawerShell`'s own `onClose` is wired through a second,
+deeper `requestCloseRef` bridge (ANA-126), the same "container calls
+`requestCloseRef.current()` instead of `onClose` directly" pattern
+`EditModuleDrawer` uses one level up, so `LessonEditor`'s own unsaved-changes
+confirmation stays authoritative regardless of whether it was dismissed via
+its Back button, Escape, or an outside click. Reach for this same split -- a
+shared `*-body.tsx` plus a thin container wrapper -- before duplicating an
+existing editor's logic into a second container.
+
+(An earlier `EditModuleModal` container/`ModuleEditorBody` `layout` prop
+existed alongside this drawer through ANA-127; both were removed in ANA-128
+once the drawer became the only consumer.)
 
 ## Conventions
 

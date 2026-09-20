@@ -158,11 +158,11 @@ describe("QuestionBankPicker", () => {
     renderPicker();
 
     const dialog = screen.getByRole("dialog", { name: "Insert a question" });
-    // Mantine's "popover" elevation tier (300) -- above the narrow/Drawer
-    // layout's nested Lesson editor drawer, which gets a *stacked* z-index
-    // at/above the default "modal" tier (200) this Modal would otherwise
-    // use unstyled (see edit-module-drawer.test.tsx's identical assertion
-    // for `ConfirmDialog`'s own equivalent fix).
+    // Mantine's "popover" elevation tier (300) -- above the nested Lesson
+    // editor drawer, which gets a *stacked* z-index at/above the default
+    // "modal" tier (200) this Modal would otherwise use unstyled (see
+    // edit-module-drawer.test.tsx's identical assertion for `ConfirmDialog`'s
+    // own equivalent fix).
     expect(
       dialog.closest(".mantine-Modal-root")?.getAttribute("style"),
     ).toContain("--mb-z-index: 300");

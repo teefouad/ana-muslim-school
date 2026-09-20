@@ -50,8 +50,8 @@ describe("LessonForm", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  describe("two-column layout (ANA-119)", () => {
-    it("renders Title -> Description -> Position in the left column", () => {
+  describe("field order (ANA-119)", () => {
+    it("renders Title -> Description -> Position in order", () => {
       renderForm();
 
       const form = screen.getByTestId("lesson-form");
@@ -68,29 +68,26 @@ describe("LessonForm", () => {
       );
     });
 
-    // PR review: Position and Published used to share a row inside the left
-    // column -- each now gets its own full-width row, and Published moves
-    // below both columns entirely, so it stays this form's own last field
-    // regardless of which column ends up taller.
-    it("gives Position and Published each their own row, with Published rendered as this form's own last field, below both columns", () => {
+    // PR review: Position and Published used to share a row -- each now
+    // gets its own full-width row, and Published renders last, after the
+    // selected type's own Configuration, regardless of which type is
+    // selected.
+    it("gives Position and Published each their own row, with Published rendered as this form's own last field", () => {
       renderForm();
 
       const form = screen.getByTestId("lesson-form");
-      const published = screen.getByRole("switch", { name: "Published" });
+      expect(
+        screen.getByRole("switch", { name: "Published" }),
+      ).toBeInTheDocument();
 
-      // Published no longer renders inside the two-column grid at all --
-      // proves it isn't sharing a row with Position (or anything else)
-      // inside the left column.
-      expect(form.textContent ?? "").not.toContain("Published");
-      // ...and instead follows the whole grid in the DOM, as a sibling
-      // rather than a descendant -- the exact bitmask (not just a truthy
-      // check) rules out Published having been nested back inside it.
-      expect(form.compareDocumentPosition(published)).toBe(
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      const text = form.textContent ?? "";
+      expect(text.indexOf("Position")).toBeLessThan(
+        text.lastIndexOf("Published"),
       );
+      expect(text.indexOf("Type")).toBeLessThan(text.lastIndexOf("Published"));
     });
 
-    it("renders Type -> the selected type's Configuration in the right column", () => {
+    it("renders Type -> the selected type's Configuration in order", () => {
       renderForm({ value: { ...VALUE, type: "video" } });
 
       const form = screen.getByTestId("lesson-form");
@@ -103,41 +100,14 @@ describe("LessonForm", () => {
       expect(text.indexOf("Type")).toBeLessThan(text.indexOf("Video URL"));
     });
 
-    it("puts Type/Configuration in a different column than Position/Title/Description", () => {
+    it("renders Type/Configuration after Position/Title/Description", () => {
       renderForm();
 
       const form = screen.getByTestId("lesson-form");
-      const [leftColumn, rightColumn] = Array.from(form.children);
-      expect(leftColumn.textContent).toContain("Position");
-      expect(leftColumn.textContent).toContain("Title");
-      expect(leftColumn.textContent).not.toContain("Type");
-      // Published isn't in either column -- it renders below the grid
-      // entirely (see this form's own "own row"/"last field" test above).
-      expect(leftColumn.textContent).not.toContain("Published");
-      expect(rightColumn.textContent).toContain("Type");
-      expect(rightColumn.textContent).not.toContain("Position");
-    });
-
-    it("stacks to a single column below its own 640px container width, splitting into two equal columns above it (ANA-121)", () => {
-      const { container } = renderForm();
-
-      const combinedCss = Array.from(
-        container.querySelectorAll("style[data-mantine-styles]"),
-      )
-        .map((style) => style.textContent ?? "")
-        .join("\n");
-
-      // Mantine's SimpleGrid (`type="container"`, `cols={{ base: 1, "640px":
-      // 2 }}`, ANA-121) sets `--sg-cols` unconditionally to 1, then
-      // overrides it to 2 only inside an `@container` query keyed to this
-      // grid's own rendered width, not the viewport's -- see this form's own
-      // top-level `SimpleGrid` doc comment for why that distinction matters
-      // once this form can render inside the narrow Edit Module drawer, not
-      // just the wide modal.
-      expect(combinedCss).toContain("--sg-cols:1");
-      expect(combinedCss).toMatch(
-        /@container simple-grid \(min-width: 640px\)[^{]*\{[^}]*--sg-cols:2/,
-      );
+      const text = form.textContent ?? "";
+      expect(text.indexOf("Title")).toBeLessThan(text.indexOf("Type"));
+      expect(text.indexOf("Description")).toBeLessThan(text.indexOf("Type"));
+      expect(text.indexOf("Position")).toBeLessThan(text.indexOf("Type"));
     });
   });
 
@@ -192,8 +162,7 @@ describe("LessonForm", () => {
   describe("type-specific Configuration (ANA-118)", () => {
     // Title/Description are plain text inputs (also role "textbox"); the
     // Content field's own contenteditable Markdown editor -- the only one
-    // with a `contenteditable` attribute -- renders last, matching
-    // edit-module-modal.test.tsx's identical convention for Module Content.
+    // with a `contenteditable` attribute -- renders last.
     function getContentEditable(): HTMLElement {
       const textboxes = screen.getAllByRole("textbox");
       return textboxes[textboxes.length - 1];

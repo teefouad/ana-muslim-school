@@ -18,6 +18,7 @@ import {
   suggestBookLongDescription,
 } from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
+import { toTranslatableString } from "./module-fields";
 
 const LANGUAGES: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -71,13 +72,6 @@ function isSameBookFormValues(a: BookFormValues, b: BookFormValues): boolean {
     a.isPublished === b.isPublished &&
     a.color === b.color
   );
-}
-
-function toTranslatableString(value: TranslatedValue): {
-  ar: string;
-  en: string;
-} {
-  return { ar: value.ar ?? "", en: value.en ?? "" };
 }
 
 /**

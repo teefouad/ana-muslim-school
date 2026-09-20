@@ -183,7 +183,7 @@ export async function suggestLessonDescription({
  * Assistance always writes its result back to this same language, so this
  * is never inferred from the Book's own Arabic/English content; it's the
  * active tab at the moment the action was triggered. */
-export type BookFieldLanguage = "ar" | "en";
+type BookFieldLanguage = "ar" | "en";
 
 export interface SuggestBookDescriptionInput {
   text: string;

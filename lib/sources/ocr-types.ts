@@ -1,5 +1,5 @@
 /** One processed page from the Source OCR import flow (ANA-68). */
-export type OcrPageResult = {
+type OcrPageResult = {
   /** 1-based, matching the PDF viewer's own page numbering. */
   pageNumber: number;
   markdown: string;

@@ -5,7 +5,7 @@ import { Box, Group, Stack, Switch, Text } from "@mantine/core";
 
 import styles from "./toggle-card.module.css";
 
-export type ToggleCardVariant = "primary" | "error";
+type ToggleCardVariant = "primary" | "error";
 
 export interface ToggleCardProps {
   label: ReactNode;
