@@ -247,6 +247,30 @@ describe("runOcrService", () => {
     expect(file.delete).toHaveBeenCalled();
   });
 
+  it("maps a Mistral 429 to rate-limited rather than the generic upstream-error", async () => {
+    const file = makeFile();
+    mockStorage(file);
+
+    const rateLimitError = new Error("API error occurred: Status 429");
+    Object.assign(rateLimitError, {
+      statusCode: 429,
+      body: '{"type":"rate_limited","code":"1300"}',
+    });
+    ocrProcessMock.mockRejectedValue(rateLimitError);
+
+    const result = await runOcrService({
+      uid: "user-1",
+      objectPath,
+      pages: [1],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: "rate-limited", message: expect.any(String) },
+    });
+    expect(file.delete).toHaveBeenCalled();
+  });
+
   it("converts 1-based viewer pages to 0-based provider indexes, dedupes/sorts them, normalizes the response, and deletes the temp object", async () => {
     const file = makeFile({
       getMetadata: vi.fn().mockResolvedValue([{ size: "2048" }]),
