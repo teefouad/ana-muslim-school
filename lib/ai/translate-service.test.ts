@@ -53,7 +53,11 @@ describe("translateArabicToEnglishService", () => {
       text: "النص العربي",
     });
 
-    expect(translateArabicToEnglishMock).toHaveBeenCalledWith("النص العربي");
+    expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+      "النص العربي",
+      undefined,
+      undefined,
+    );
     expect(translateArabicToEnglishMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ ok: true, value: { text: "Translated text" } });
   });
@@ -79,5 +83,36 @@ describe("translateArabicToEnglishService", () => {
     await expect(
       translateArabicToEnglishService({ text: "النص العربي" }),
     ).rejects.toThrow("boom");
+  });
+
+  it("passes an admin-edited basePrompt through to the helper (ANA-134)", async () => {
+    translateArabicToEnglishMock.mockResolvedValueOnce("Translated text");
+
+    await translateArabicToEnglishService({
+      text: "النص العربي",
+      basePrompt: "Edited prompt",
+    });
+
+    expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+      "النص العربي",
+      undefined,
+      "Edited prompt",
+    );
+  });
+
+  it("rejects a non-string or blank basePrompt without calling the helper (ANA-134)", async () => {
+    for (const basePrompt of [42, "   "]) {
+      const result = await translateArabicToEnglishService({
+        text: "النص العربي",
+        basePrompt,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: "invalid-input" }),
+      });
+    }
+
+    expect(translateArabicToEnglishMock).not.toHaveBeenCalled();
   });
 });

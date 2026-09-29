@@ -28,7 +28,13 @@ export interface UseTranslateQuestionResult {
   /** Disabled the same way FormField's own Translate with AI action is --
    * there's nothing to translate from an empty Arabic question text. */
   canTranslate: boolean;
-  translate: () => void;
+  /** Whether the base-prompt review dialog (ANA-134) is open -- clicking
+   * Translate opens it instead of translating immediately. */
+  isDialogOpen: boolean;
+  openDialog: () => void;
+  closeDialog: () => void;
+  /** Runs the translation with the admin-confirmed base prompt. */
+  translate: (basePrompt: string) => void;
 }
 
 // Translates a Question's Arabic text/explanation/choice text into English
@@ -47,14 +53,16 @@ export function useTranslateQuestion({
 }: UseTranslateQuestionOptions): UseTranslateQuestionResult {
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const canTranslate = Boolean(question.text.ar?.trim());
 
-  async function runTranslate() {
+  async function runTranslate(basePrompt: string) {
     if (!canTranslate || translating) {
       return;
     }
 
+    setIsDialogOpen(false);
     setError(null);
     setTranslating(true);
     onBusyChange?.(true);
@@ -62,14 +70,14 @@ export function useTranslateQuestion({
     try {
       const explanationAr = question.explanation.ar?.trim();
       const [text, explanation, ...choiceTexts] = await Promise.all([
-        translateArabicToEnglish(question.text.ar ?? ""),
+        translateArabicToEnglish(question.text.ar ?? "", basePrompt),
         explanationAr
-          ? translateArabicToEnglish(explanationAr)
+          ? translateArabicToEnglish(explanationAr, basePrompt)
           : Promise.resolve(question.explanation.en ?? ""),
         ...question.choices.map((choice) => {
           const choiceAr = choice.text.ar?.trim();
           return choiceAr
-            ? translateArabicToEnglish(choiceAr)
+            ? translateArabicToEnglish(choiceAr, basePrompt)
             : Promise.resolve(choice.text.en ?? "");
         }),
       ]);
@@ -108,6 +116,9 @@ export function useTranslateQuestion({
     translating,
     error,
     canTranslate,
-    translate: () => void runTranslate(),
+    isDialogOpen,
+    openDialog: () => setIsDialogOpen(true),
+    closeDialog: () => setIsDialogOpen(false),
+    translate: (basePrompt) => void runTranslate(basePrompt),
   };
 }

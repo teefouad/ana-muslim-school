@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +38,19 @@ const SAMPLE_ENTRIES: WorkspaceModuleEntry[] = [
   },
   { key: "module-2", moduleId: "module-2", material: { ar: "", en: "" } },
 ];
+
+// Translate opens its base-prompt review dialog first (ANA-134); clicks the
+// card's header action, then confirms in that dialog.
+function clickTranslate(index = 0) {
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "Translate to English" })[index],
+  );
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
+}
 
 function renderView(
   overrides: Partial<React.ComponentProps<typeof SavedSourceView>> = {},
@@ -677,13 +690,12 @@ describe("SavedSourceView", () => {
       const onEntriesChange = vi.fn();
       renderView({ entries: SAMPLE_ENTRIES, onEntriesChange });
 
-      fireEvent.click(
-        screen.getAllByRole("button", { name: "Translate to English" })[0],
-      );
+      clickTranslate();
 
       await vi.waitFor(() =>
         expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
           "First material",
+          "Default base prompt for translate.plain",
         ),
       );
       expect(applyLastEntriesUpdate(onEntriesChange, SAMPLE_ENTRIES)).toEqual([
@@ -719,11 +731,12 @@ describe("SavedSourceView", () => {
       renderStatefulView({ entries });
 
       // Start translating Module 1.
-      fireEvent.click(
-        screen.getAllByRole("button", { name: "Translate to English" })[0],
-      );
+      clickTranslate();
       await vi.waitFor(() =>
-        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("Arabic one"),
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+          "Arabic one",
+          "Default base prompt for translate.plain",
+        ),
       );
 
       // Module 1 itself is frozen while its own request is in flight...
@@ -775,12 +788,13 @@ describe("SavedSourceView", () => {
       const onEntriesChange = vi.fn();
       renderView({ entries: entriesWithEnglish, onEntriesChange });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       await vi.waitFor(() =>
-        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("Arabic"),
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+          "Arabic",
+          "Default base prompt for translate.plain",
+        ),
       );
       expect(
         screen.queryByRole("dialog", { name: "Replace English translation?" }),
@@ -819,6 +833,7 @@ describe("SavedSourceView", () => {
           bookId: "book-42",
           text: "First",
           additionalInstructions: undefined,
+          basePrompt: "Default base prompt for assist.content",
         }),
       );
       expect(

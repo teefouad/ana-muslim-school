@@ -195,14 +195,17 @@ export function ModuleBuilderView({
   // flight, so a concurrent change to a *different* temporary Module must
   // survive this resolving late, instead of being silently reverted by a
   // stale array (PR review, blocking).
-  async function handleTranslateModule(moduleId: string) {
+  async function handleTranslateModule(moduleId: string, basePrompt: string) {
     const targetModule = modules.find((module) => module.id === moduleId);
 
     if (!targetModule) {
       return;
     }
 
-    const translated = await translateArabicToEnglish(targetModule.material.ar);
+    const translated = await translateArabicToEnglish(
+      targetModule.material.ar,
+      basePrompt,
+    );
 
     onModulesChange((current) =>
       current.map((module) =>
@@ -232,11 +235,13 @@ export function ModuleBuilderView({
     _language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
+    basePrompt: string,
   ): Promise<string> {
     return assistLearningMaterial({
       bookId,
       text: selectedMarkdown,
       additionalInstructions: instructions,
+      basePrompt,
     });
   }
 

@@ -20,6 +20,8 @@ import {
 } from "@mantine/core";
 import { Languages, Sparkles } from "lucide-react";
 
+import type { AiPromptTask } from "@/lib/ai/base-prompt-tasks";
+
 import { ActionIconButton } from "./action-icon-button";
 import { AiInstructionsModal } from "./ai-instructions-modal";
 import {
@@ -48,6 +50,10 @@ interface FormFieldAiActionArgs<TContext> {
    * left blank. Always `undefined` for Translate with AI, which has no
    * Additional Instructions step (ANA-98). */
   instructions?: string;
+  /** The base prompt the admin confirmed in the AI dialog (ANA-134) -- the
+   * server default when left untouched, their edit otherwise. Callers pass
+   * it straight through to the request as `basePrompt`. */
+  basePrompt: string;
   /** True when `text` is a Markdown selection captured from a `type=
    * "markdown"` field's editor, rather than the field's whole current
    * value (ANA-99) -- lets a domain caller decide whether to supply the
@@ -122,6 +128,10 @@ interface FormFieldCommonProps<TContext> {
    * stays disabled without it. */
   aiAssistance?: boolean;
   onAiAssist?: FormFieldAiAction<TContext>;
+  /** Which AI action's base prompt AI Assistance shows for editing before it
+   * sends (ANA-134). Required for AI Assistance to be enabled -- a prompt
+   * the admin can't inspect is never sent. */
+  aiAssistanceTask?: AiPromptTask;
   /** Invoked once, when AI Assistance is triggered -- supplies whatever
    * domain context `onAiAssist` needs (e.g. a Book id). Never inspected by
    * this component itself. */
@@ -157,6 +167,9 @@ interface TranslatableFormFieldProps<
    * "ar" and an "en" language. */
   aiTranslation?: boolean;
   onAiTranslate?: FormFieldAiAction<TContext>;
+  /** Which AI action's base prompt Translate with AI shows for editing
+   * before it sends (ANA-134). Required for Translate to be enabled. */
+  aiTranslationTask?: AiPromptTask;
   /** Invoked once, when Translate with AI is triggered. */
   getAITranslationContext?: () => TContext;
   /** Pins AI Assistance to always read from, and write its result back to,
@@ -213,6 +226,7 @@ function useFormFieldTranslateAction<TContext>({
   value,
   onChange,
   onAiTranslate,
+  task,
   getContext,
   onBusyChange,
 }: {
@@ -221,23 +235,27 @@ function useFormFieldTranslateAction<TContext>({
   value: TranslatedValue;
   onChange: (value: TranslatedValue) => void;
   onAiTranslate?: FormFieldAiAction<TContext>;
+  task?: AiPromptTask;
   getContext?: () => TContext;
   onBusyChange?: (busy: boolean) => void;
 }) {
-  // Translate with AI deliberately runs directly, with no Additional
-  // Instructions step (ANA-98 -- unlike AI Assistance, which always shows
-  // one): it only ever transforms the whole Arabic value into English,
-  // never something an editor needs to redirect with free-form guidance.
-  // Clicking Translate always runs immediately, with no confirmation step,
-  // even when overwriting a non-empty English value (ANA-102) -- the
+  // Translate with AI has no Additional Instructions step (ANA-98): it only
+  // ever transforms the whole Arabic value into English, never something an
+  // editor needs to redirect with free-form guidance. It does show its base
+  // prompt for review/editing first (ANA-134) -- no AI request is ever sent
+  // with a prompt the admin can't inspect. Beyond that there's no
+  // replace-confirmation, even when overwriting a non-empty English value
+  // (ANA-102) -- the
   // existing English value stays untouched until the request resolves, and
   // a failed request never overwrites it.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
-  async function run() {
+  async function run(basePrompt: string) {
     if (!onAiTranslate) return;
 
+    setOpen(false);
     setLoading(true);
     onBusyChange?.(true);
     setError(null);
@@ -246,6 +264,7 @@ function useFormFieldTranslateAction<TContext>({
       const en = await onAiTranslate({
         text: value.ar ?? "",
         language: "ar",
+        basePrompt,
         isSelection: false,
         context: getContext ? getContext() : (undefined as TContext),
       });
@@ -266,8 +285,22 @@ function useFormFieldTranslateAction<TContext>({
       disabled ||
       loading ||
       !onAiTranslate ||
+      !task ||
       !(value.ar ?? "").trim(),
-    handleClick: () => void run(),
+    handleClick: () => setOpen(true),
+    dialog:
+      open && task ? (
+        <AiInstructionsModal
+          opened
+          title="Translate with AI"
+          description="The AI will translate the Arabic text into English."
+          generateLabel="Translate"
+          promptTask={task}
+          showInstructions={false}
+          onCancel={() => setOpen(false)}
+          onGenerate={(_instructions, basePrompt) => void run(basePrompt)}
+        />
+      ) : null,
   };
 }
 
@@ -292,6 +325,7 @@ function useFormFieldAssistAction<TContext>({
   editorRef,
   onApply,
   onAiAssist,
+  task,
   getContext,
   options,
   onBusyChange,
@@ -305,6 +339,7 @@ function useFormFieldAssistAction<TContext>({
   editorRef: RefObject<MarkdownEditorHandle | null>;
   onApply: (next: string) => void;
   onAiAssist?: FormFieldAiAction<TContext>;
+  task?: AiPromptTask;
   getContext?: () => TContext;
   options?: ReactNode;
   onBusyChange?: (busy: boolean) => void;
@@ -337,7 +372,10 @@ function useFormFieldAssistAction<TContext>({
     setOpen(true);
   }
 
-  async function handleGenerate(instructions: string | undefined) {
+  async function handleGenerate(
+    instructions: string | undefined,
+    basePrompt: string,
+  ) {
     const selection = pendingSelection;
     setOpen(false);
     setPendingSelection(null);
@@ -353,6 +391,7 @@ function useFormFieldAssistAction<TContext>({
         text: selection ? selection.text : activeValue,
         language: translatable ? activeSlug : undefined,
         instructions,
+        basePrompt,
         isSelection: selection !== null,
         context: getContext ? getContext() : (undefined as TContext),
       });
@@ -381,26 +420,31 @@ function useFormFieldAssistAction<TContext>({
     // Deliberately not gated on `activeValue`/selection being non-empty --
     // caller-supplied context alone (e.g. a Module's Learning Material and
     // Book) may be enough to generate a value for a currently-empty field.
-    disabled: !enabled || disabled || loading || !onAiAssist,
+    disabled: !enabled || disabled || loading || !onAiAssist || !task,
     handleClick,
-    dialog: open ? (
-      <AiInstructionsModal
-        opened
-        title="AI Assistance"
-        description={
-          pendingSelection
-            ? "The AI will transform the text you selected. The rest of the field stays untouched."
-            : "The AI will rewrite this field's current text."
-        }
-        onCancel={() => {
-          setOpen(false);
-          setPendingSelection(null);
-        }}
-        onGenerate={(instructions) => void handleGenerate(instructions)}
-      >
-        {options}
-      </AiInstructionsModal>
-    ) : null,
+    dialog:
+      open && task ? (
+        <AiInstructionsModal
+          opened
+          title="AI Assistance"
+          promptTask={task}
+          promptLanguage={translatable ? activeSlug : undefined}
+          description={
+            pendingSelection
+              ? "The AI will transform the text you selected. The rest of the field stays untouched."
+              : "The AI will rewrite this field's current text."
+          }
+          onCancel={() => {
+            setOpen(false);
+            setPendingSelection(null);
+          }}
+          onGenerate={(instructions, basePrompt) =>
+            void handleGenerate(instructions, basePrompt)
+          }
+        >
+          {options}
+        </AiInstructionsModal>
+      ) : null,
   };
 }
 
@@ -431,6 +475,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     markdownProps,
     aiAssistance = false,
     onAiAssist,
+    aiAssistanceTask,
     getAIAssistanceContext,
     aiAssistanceOptions,
     onBusyChange,
@@ -463,6 +508,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     value,
     onChange,
     onAiTranslate: props.translatable ? props.onAiTranslate : undefined,
+    task: props.translatable ? props.aiTranslationTask : undefined,
     getContext: props.translatable ? props.getAITranslationContext : undefined,
     onBusyChange,
   });
@@ -510,6 +556,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     editorRef,
     onApply: applyAssistResult,
     onAiAssist,
+    task: aiAssistanceTask,
     getContext: getAIAssistanceContext,
     options: aiAssistanceOptions,
     onBusyChange,
@@ -640,6 +687,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
         </Alert>
       )}
       {assist.dialog}
+      {translate.dialog}
     </Stack>
   );
 }

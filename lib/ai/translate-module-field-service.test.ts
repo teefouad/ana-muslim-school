@@ -175,6 +175,7 @@ describe("translateModuleFieldService", () => {
       },
       { title: undefined, description: undefined, content: moduleContent },
       "Keep it short",
+      undefined,
     );
     expect(result).toEqual({ ok: true, value: { text: "Translated text" } });
   });

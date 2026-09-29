@@ -5,10 +5,11 @@ import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
-import { Alert, Button, Group, Modal, Text, Textarea } from "@mantine/core";
+import { Alert } from "@mantine/core";
 import { GripVertical, Languages, Sparkles, Trash2 } from "lucide-react";
 
 import { ActionIconButton } from "@/components/ui/action-icon-button";
+import { AiInstructionsModal } from "@/components/ui/ai-instructions-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import {
@@ -82,7 +83,7 @@ export interface LearningMaterialModuleCardProps {
    * failure without touching either draft. The card owns the loading state
    * and never changes which language tab is active (ANA-83) -- success or
    * failure. Omit to hide the translate affordance entirely. */
-  onTranslate?: () => Promise<void>;
+  onTranslate?: (basePrompt: string) => Promise<void>;
   /** AI Assistant (ANA-85, using ANA-74/ANA-85's server-only AI service
    * through the server-only `/api/v1/ai/assist` boundary): operates on the
    * currently *selected* Markdown within the active language's editor only
@@ -115,6 +116,7 @@ export interface LearningMaterialModuleCardProps {
     language: Language,
     instructions: string | undefined,
     selectedMarkdown: string,
+    basePrompt: string,
   ) => Promise<string>;
   /** Renders this card as a non-interactive drag preview (ANA-80): always
    * collapsed regardless of internal state, and the collapse toggle never
@@ -179,7 +181,9 @@ export function LearningMaterialModuleCard({
   // carried over from a previous session), and is entirely local to this
   // card until Generate reads it once.
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
-  const [aiInstructions, setAiInstructions] = useState("");
+  // Translate's own base-prompt dialog (ANA-134) -- opens on click instead
+  // of running immediately, so the prompt is always reviewable first.
+  const [isTranslateDialogOpen, setIsTranslateDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   // The selection AI Assistant captured on click (PR review) -- `capture`
@@ -333,16 +337,17 @@ export function LearningMaterialModuleCard({
     }
   }
 
-  async function runTranslate() {
+  async function runTranslate(basePrompt: string) {
     if (!onTranslate) {
       return;
     }
 
+    setIsTranslateDialogOpen(false);
     setIsTranslating(true);
     setTranslateError(null);
 
     try {
-      await onTranslate();
+      await onTranslate(basePrompt);
       // Leaves the active language tab exactly as the user had it (ANA-83)
       // -- success or failure, only `material.en` changes here.
     } catch (err) {
@@ -355,9 +360,9 @@ export function LearningMaterialModuleCard({
   }
 
   function handleTranslateClick() {
-    // Always runs immediately, with no confirmation step, even when it
-    // will replace a non-empty English draft (ANA-102).
-    void runTranslate();
+    // No replace-confirmation, even when it will replace a non-empty
+    // English draft (ANA-102) -- just the base prompt review (ANA-134).
+    setIsTranslateDialogOpen(true);
   }
 
   function handleCancelPendingAction() {
@@ -381,7 +386,6 @@ export function LearningMaterialModuleCard({
     }
 
     setPendingSelection({ capture, text: selectedMarkdown });
-    setAiInstructions("");
     setAiError(null);
     setIsAiDialogOpen(true);
   }
@@ -393,8 +397,10 @@ export function LearningMaterialModuleCard({
     setIsAiDialogOpen(false);
   }
 
-  async function handleGenerateClick() {
-    const instructions = aiInstructions.trim() || undefined;
+  async function handleGenerateClick(
+    instructions: string | undefined,
+    basePrompt: string,
+  ) {
     const selection = pendingSelection;
     // Closes the dialog immediately on Generate, before the request
     // resolves (spec #6) -- loading then shows on the AI Assistant action
@@ -414,6 +420,7 @@ export function LearningMaterialModuleCard({
         activeLanguage,
         instructions,
         selection.text,
+        basePrompt,
       );
       // Applies the result itself: restores the captured Lexical range and
       // replaces exactly that range using the editor's own selection-aware
@@ -598,32 +605,35 @@ export function LearningMaterialModuleCard({
         />
       )}
       {isAiDialogOpen && (
-        <Modal
+        <AiInstructionsModal
           opened
-          onClose={handleAiDialogCancel}
           title="AI Assistant"
-          centered
-        >
-          <Text size="sm" c="dimmed" mb="md">
-            The AI will transform the text you selected. The rest of the Module,
-            and the other language&rsquo;s draft, stay untouched.
-          </Text>
-          <Textarea
-            label="Additional instructions or context (optional)"
-            value={aiInstructions}
-            onChange={(event) => setAiInstructions(event.currentTarget.value)}
-            autosize
-            minRows={3}
-            maxRows={8}
-            mb="lg"
-          />
-          <Group justify="flex-end" gap="sm">
-            <Button variant="default" onClick={handleAiDialogCancel}>
-              Cancel
-            </Button>
-            <Button onClick={handleGenerateClick}>Generate</Button>
-          </Group>
-        </Modal>
+          description={
+            <>
+              The AI will transform the text you selected. The rest of the
+              Module, and the other language&rsquo;s draft, stay untouched.
+            </>
+          }
+          promptTask="assist.content"
+          onCancel={handleAiDialogCancel}
+          onGenerate={(instructions, basePrompt) =>
+            void handleGenerateClick(instructions, basePrompt)
+          }
+        />
+      )}
+      {isTranslateDialogOpen && (
+        <AiInstructionsModal
+          opened
+          title="Translate to English"
+          description="The AI will translate this Module's Arabic text into English."
+          generateLabel="Translate"
+          promptTask="translate.plain"
+          showInstructions={false}
+          onCancel={() => setIsTranslateDialogOpen(false)}
+          onGenerate={(_instructions, basePrompt) =>
+            void runTranslate(basePrompt)
+          }
+        />
       )}
     </div>
   );

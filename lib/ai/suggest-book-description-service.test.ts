@@ -127,6 +127,7 @@ describe("suggestBookDescriptionService", () => {
       "en",
       "Make it shorter",
       undefined,
+      undefined,
     );
     expect(result).toEqual({
       ok: true,
@@ -162,6 +163,7 @@ describe("suggestBookDescriptionService", () => {
       "ar",
       undefined,
       "### وحدة",
+      undefined,
     );
   });
 
@@ -215,6 +217,7 @@ describe("suggestBookDescriptionService", () => {
       "",
       "",
       "ar",
+      undefined,
       undefined,
       undefined,
     );

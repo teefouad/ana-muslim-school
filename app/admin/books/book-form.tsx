@@ -209,7 +209,10 @@ export function BookForm({
           value={values.title}
           onChange={(title) => updateValues({ title })}
           aiTranslation
-          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiTranslationTask="translate.plain"
+          onAiTranslate={({ text, basePrompt }) =>
+            translateArabicToEnglish(text, basePrompt)
+          }
         />
 
         {/* Description (ANA-100): Translate with AI and AI Assistance, the
@@ -229,8 +232,12 @@ export function BookForm({
           value={values.description}
           onChange={(description) => updateValues({ description })}
           aiTranslation
-          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiTranslationTask="translate.plain"
+          onAiTranslate={({ text, basePrompt }) =>
+            translateArabicToEnglish(text, basePrompt)
+          }
           aiAssistance
+          aiAssistanceTask="assist.bookDescription"
           aiAssistanceOptions={
             hasModulePicker ? (
               <BookModulePicker
@@ -240,12 +247,13 @@ export function BookForm({
               />
             ) : undefined
           }
-          onAiAssist={({ text, language, instructions }) => {
+          onAiAssist={({ text, language, instructions, basePrompt }) => {
             const lang = language === "en" ? "en" : "ar";
             return suggestBookDescription({
               text,
               language: lang,
               additionalInstructions: instructions,
+              basePrompt,
               bookTitle: values.title[lang] ?? "",
               bookLongDescription: values.longDescription[lang] ?? "",
               ...selectedModules(descriptionModuleIds),
@@ -266,8 +274,12 @@ export function BookForm({
           value={values.longDescription}
           onChange={(longDescription) => updateValues({ longDescription })}
           aiTranslation
-          onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+          aiTranslationTask="translate.plain"
+          onAiTranslate={({ text, basePrompt }) =>
+            translateArabicToEnglish(text, basePrompt)
+          }
           aiAssistance
+          aiAssistanceTask="assist.bookLongDescription"
           aiAssistanceOptions={
             hasModulePicker ? (
               <BookModulePicker
@@ -277,12 +289,13 @@ export function BookForm({
               />
             ) : undefined
           }
-          onAiAssist={({ text, language, instructions }) => {
+          onAiAssist={({ text, language, instructions, basePrompt }) => {
             const lang = language === "en" ? "en" : "ar";
             return suggestBookLongDescription({
               text,
               language: lang,
               additionalInstructions: instructions,
+              basePrompt,
               bookTitle: values.title[lang] ?? "",
               bookDescription: values.description[lang] ?? "",
               ...selectedModules(longDescriptionModuleIds),

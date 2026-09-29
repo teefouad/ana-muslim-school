@@ -138,6 +138,7 @@ describe("assistLearningMaterialService", () => {
       { title: undefined, description: undefined },
       undefined,
       "Use more headings",
+      undefined,
     );
     expect(result).toEqual({ ok: true, value: { text: "Refined text" } });
   });
@@ -161,6 +162,7 @@ describe("assistLearningMaterialService", () => {
       expect.anything(),
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -182,6 +184,7 @@ describe("assistLearningMaterialService", () => {
       "Module text",
       expect.anything(),
       { title: "عنوان الوحدة", description: "وصف الوحدة" },
+      undefined,
       undefined,
       undefined,
     );
@@ -233,6 +236,7 @@ describe("assistLearningMaterialService", () => {
       expect.anything(),
       expect.anything(),
       "The complete Learning Material",
+      undefined,
       undefined,
     );
   });

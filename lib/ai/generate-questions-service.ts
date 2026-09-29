@@ -5,6 +5,7 @@ import {
   generateQuestions,
   type GeneratedQuestion,
 } from "./generate-questions";
+import { readBasePrompt } from "./read-base-prompt";
 import { AiTaskError } from "./run-ai-task";
 
 export const MIN_GENERATED_QUESTION_COUNT = 1;
@@ -44,11 +45,18 @@ export async function generateQuestionsService(
       ? body.additionalInstructions.trim() || undefined
       : undefined;
 
+  const basePrompt = readBasePrompt(body.basePrompt);
+
+  if (!basePrompt.ok) {
+    return fail("invalid-input", basePrompt.message);
+  }
+
   try {
     const questions = await generateQuestions(
       body.sourceText,
       body.count,
       additionalInstructions,
+      basePrompt.value,
     );
 
     return ok({ questions });

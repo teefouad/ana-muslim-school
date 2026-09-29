@@ -12,6 +12,7 @@ test("renders the title and description", () => {
   renderWithProvider(
     <AiInstructionsModal
       opened
+      promptTask="assist.title"
       title="AI Assistance"
       description="The AI will rewrite this field's current text."
       onCancel={vi.fn()}
@@ -33,6 +34,7 @@ test("calls onGenerate with trimmed instructions", () => {
   renderWithProvider(
     <AiInstructionsModal
       opened
+      promptTask="assist.title"
       title="AI Assistance"
       description="Description"
       onCancel={vi.fn()}
@@ -46,7 +48,10 @@ test("calls onGenerate with trimmed instructions", () => {
   );
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
-  expect(onGenerate).toHaveBeenCalledWith("Be more formal.");
+  expect(onGenerate).toHaveBeenCalledWith(
+    "Be more formal.",
+    "Default base prompt for assist.title",
+  );
 });
 
 test("calls onGenerate with undefined when instructions are left blank", () => {
@@ -55,6 +60,7 @@ test("calls onGenerate with undefined when instructions are left blank", () => {
   renderWithProvider(
     <AiInstructionsModal
       opened
+      promptTask="assist.title"
       title="AI Assistance"
       description="Description"
       onCancel={vi.fn()}
@@ -64,7 +70,10 @@ test("calls onGenerate with undefined when instructions are left blank", () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
-  expect(onGenerate).toHaveBeenCalledWith(undefined);
+  expect(onGenerate).toHaveBeenCalledWith(
+    undefined,
+    "Default base prompt for assist.title",
+  );
 });
 
 test("calls onCancel when Cancel is clicked", () => {
@@ -73,6 +82,7 @@ test("calls onCancel when Cancel is clicked", () => {
   renderWithProvider(
     <AiInstructionsModal
       opened
+      promptTask="assist.title"
       title="AI Assistance"
       description="Description"
       onCancel={onCancel}
@@ -89,6 +99,7 @@ test("supports custom cancel/generate labels", () => {
   renderWithProvider(
     <AiInstructionsModal
       opened
+      promptTask="assist.title"
       title="Translate with AI"
       description="Description"
       cancelLabel="Never mind"
@@ -102,4 +113,79 @@ test("supports custom cancel/generate labels", () => {
     screen.getByRole("button", { name: "Never mind" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Translate" })).toBeInTheDocument();
+});
+
+test("shows the base prompt in an editable field and submits the edit (ANA-134)", () => {
+  const onGenerate = vi.fn();
+
+  renderWithProvider(
+    <AiInstructionsModal
+      opened
+      promptTask="assist.title"
+      title="AI Assistance"
+      description="Description"
+      onCancel={vi.fn()}
+      onGenerate={onGenerate}
+    />,
+  );
+
+  const prompt = screen.getByLabelText("Base prompt");
+  expect(prompt).toHaveValue("Default base prompt for assist.title");
+
+  fireEvent.change(prompt, { target: { value: "My own prompt" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+  expect(onGenerate).toHaveBeenCalledWith(undefined, "My own prompt");
+});
+
+test("can reset an edited base prompt back to the default (ANA-134)", () => {
+  renderWithProvider(
+    <AiInstructionsModal
+      opened
+      promptTask="assist.title"
+      title="AI Assistance"
+      description="Description"
+      onCancel={vi.fn()}
+      onGenerate={vi.fn()}
+    />,
+  );
+
+  const prompt = screen.getByLabelText("Base prompt");
+  expect(
+    screen.queryByRole("button", { name: "Reset to default" }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.change(prompt, { target: { value: "Changed" } });
+  fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+
+  expect(prompt).toHaveValue("Default base prompt for assist.title");
+});
+
+test("hides the instructions field but still shows the prompt when showInstructions is off", () => {
+  const onGenerate = vi.fn();
+
+  renderWithProvider(
+    <AiInstructionsModal
+      opened
+      promptTask="translate.plain"
+      showInstructions={false}
+      title="Translate with AI"
+      description="Description"
+      generateLabel="Translate"
+      onCancel={vi.fn()}
+      onGenerate={onGenerate}
+    />,
+  );
+
+  expect(
+    screen.queryByLabelText("Additional instructions or context (optional)"),
+  ).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Base prompt")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Translate" }));
+
+  expect(onGenerate).toHaveBeenCalledWith(
+    undefined,
+    "Default base prompt for translate.plain",
+  );
 });

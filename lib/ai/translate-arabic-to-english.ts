@@ -2,7 +2,7 @@ import "server-only";
 
 import { runAiTask } from "./run-ai-task";
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Translate the given Arabic text to natural, concise English.
 
 - Preserve the full meaning faithfully. Do not summarize, expand, or add
@@ -27,10 +27,11 @@ Translate the given Arabic text to natural, concise English.
 export async function translateArabicToEnglish(
   text: string,
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: text,
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
   });
 }

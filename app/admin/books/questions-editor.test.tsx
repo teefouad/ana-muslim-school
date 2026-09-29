@@ -439,6 +439,7 @@ describe("QuestionsEditor", () => {
       expect(generateQuestionsMock).toHaveBeenCalledWith({
         sourceText: "نص المصدر",
         additionalInstructions: undefined,
+        basePrompt: "Default base prompt for generateQuestions",
         count: 5,
       });
       expect(onChange).toHaveBeenCalledWith([

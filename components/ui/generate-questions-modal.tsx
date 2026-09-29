@@ -13,6 +13,8 @@ import {
 } from "@mantine/core";
 
 import { ActionIconButton } from "./action-icon-button";
+import { BasePromptField } from "./base-prompt-field";
+import { useBasePrompt } from "./use-base-prompt";
 
 const DEFAULT_QUESTION_COUNT = 5;
 // Mirrors lib/ai/generate-questions-service.ts's own
@@ -25,6 +27,8 @@ const MAX_QUESTION_COUNT = 20;
 export interface GenerateQuestionsInput {
   sourceText: string;
   additionalInstructions?: string;
+  /** The base prompt shown in the modal (ANA-134) -- default or edited. */
+  basePrompt: string;
   count: number;
 }
 
@@ -63,6 +67,7 @@ export function GenerateQuestionsModal({
   const [sourceText, setSourceText] = useState("");
   const [instructions, setInstructions] = useState("");
   const [count, setCount] = useState(DEFAULT_QUESTION_COUNT);
+  const basePrompt = useBasePrompt("generateQuestions");
 
   const canDecrement = count > MIN_QUESTION_COUNT;
   const canIncrement = count < MAX_QUESTION_COUNT;
@@ -71,6 +76,7 @@ export function GenerateQuestionsModal({
     onGenerate({
       sourceText: sourceText.trim(),
       additionalInstructions: instructions.trim() || undefined,
+      basePrompt: basePrompt.prompt,
       count,
     });
   }
@@ -106,6 +112,8 @@ export function GenerateQuestionsModal({
         disabled={isGenerating}
         mb="md"
       />
+
+      <BasePromptField state={basePrompt} disabled={isGenerating} />
 
       <Textarea
         label="Additional instructions (optional)"
@@ -153,7 +161,7 @@ export function GenerateQuestionsModal({
         </Button>
         <Button
           loading={isGenerating}
-          disabled={!sourceText.trim()}
+          disabled={!sourceText.trim() || !basePrompt.isReady}
           onClick={handleGenerate}
         >
           Generate

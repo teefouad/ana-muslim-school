@@ -23,6 +23,8 @@ export interface AssistLearningMaterialInput {
   bookId: string;
   text: string;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   /** This Module's own Arabic Title/Description, when known (ANA-98/
    * ANA-99) -- lets the AI Assistant orient a Content/Learning Material
    * refinement within its owning Module, not just its Book. Omitted by
@@ -48,6 +50,7 @@ export async function assistLearningMaterial({
   bookId,
   text,
   additionalInstructions,
+  basePrompt,
   moduleTitle,
   moduleDescription,
   fullMaterial,
@@ -56,6 +59,7 @@ export async function assistLearningMaterial({
     bookId,
     text,
     additionalInstructions,
+    basePrompt,
     moduleTitle,
     moduleDescription,
     fullMaterial,
@@ -66,6 +70,8 @@ export interface SuggestModuleTitleInput {
   bookId: string;
   text: string;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   /** This Module's own Arabic Learning Material -- the primary basis the
    * AI grounds a suggested title in (ANA-98/ANA-99). */
   moduleContent: string;
@@ -79,6 +85,7 @@ export async function suggestModuleTitle({
   bookId,
   text,
   additionalInstructions,
+  basePrompt,
   moduleContent,
 }: SuggestModuleTitleInput): Promise<string> {
   return requestAssist({
@@ -86,6 +93,7 @@ export async function suggestModuleTitle({
     field: "title",
     text,
     additionalInstructions,
+    basePrompt,
     moduleContent,
   });
 }
@@ -94,6 +102,8 @@ export interface SuggestModuleDescriptionInput {
   bookId: string;
   text: string;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   moduleTitle: string;
   moduleContent: string;
 }
@@ -107,6 +117,7 @@ export async function suggestModuleDescription({
   bookId,
   text,
   additionalInstructions,
+  basePrompt,
   moduleTitle,
   moduleContent,
 }: SuggestModuleDescriptionInput): Promise<string> {
@@ -115,6 +126,7 @@ export async function suggestModuleDescription({
     field: "description",
     text,
     additionalInstructions,
+    basePrompt,
     moduleTitle,
     moduleContent,
   });
@@ -123,6 +135,8 @@ export async function suggestModuleDescription({
 export interface SuggestLessonFieldInput {
   text: string;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   /** The owning Module's own current Arabic Title/Description/Learning
    * Material (ANA-116) -- always this Module's *current* editor values,
    * including any unsaved edits still held in the Edit Module modal's own
@@ -142,6 +156,7 @@ export interface SuggestLessonFieldInput {
 export async function suggestLessonTitle({
   text,
   additionalInstructions,
+  basePrompt,
   moduleTitle,
   moduleDescription,
   moduleContent,
@@ -150,6 +165,7 @@ export async function suggestLessonTitle({
     field: "lessonTitle",
     text,
     additionalInstructions,
+    basePrompt,
     moduleTitle,
     moduleDescription,
     moduleContent,
@@ -164,6 +180,7 @@ export async function suggestLessonTitle({
 export async function suggestLessonDescription({
   text,
   additionalInstructions,
+  basePrompt,
   moduleTitle,
   moduleDescription,
   moduleContent,
@@ -172,6 +189,7 @@ export async function suggestLessonDescription({
     field: "lessonDescription",
     text,
     additionalInstructions,
+    basePrompt,
     moduleTitle,
     moduleDescription,
     moduleContent,
@@ -189,6 +207,8 @@ export interface SuggestBookDescriptionInput {
   text: string;
   language: BookFieldLanguage;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   /** The Book's own Title/Long Description, in the same `language` as the
    * Description being written (ANA-100, PR review) -- the Book being
    * edited is trusted directly from the caller, not reloaded server-side,
@@ -213,6 +233,7 @@ export async function suggestBookDescription({
   text,
   language,
   additionalInstructions,
+  basePrompt,
   bookTitle,
   bookLongDescription,
   bookId,
@@ -223,6 +244,7 @@ export async function suggestBookDescription({
     text,
     language,
     additionalInstructions,
+    basePrompt,
     bookTitle,
     bookLongDescription,
     ...(moduleIds?.length ? { bookId, moduleIds } : {}),
@@ -233,6 +255,8 @@ export interface SuggestBookLongDescriptionInput {
   text: string;
   language: BookFieldLanguage;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   /** The Book's own Title/Description, in the same `language` as the Long
    * Description being written (ANA-100, PR review) -- see
    * `SuggestBookDescriptionInput` for why this is sent directly rather
@@ -254,6 +278,7 @@ export async function suggestBookLongDescription({
   text,
   language,
   additionalInstructions,
+  basePrompt,
   bookTitle,
   bookDescription,
   bookId,
@@ -264,6 +289,7 @@ export async function suggestBookLongDescription({
     text,
     language,
     additionalInstructions,
+    basePrompt,
     bookTitle,
     bookDescription,
     ...(moduleIds?.length ? { bookId, moduleIds } : {}),

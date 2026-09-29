@@ -10,6 +10,17 @@ import {
 
 const FORM_ID = "test-book-form";
 
+// Translate with AI opens its base-prompt review dialog first (ANA-134);
+// clicks the field's Translate button, then confirms in that dialog.
+function clickTranslate(buttonName: string) {
+  fireEvent.click(screen.getByRole("button", { name: buttonName }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
+}
+
 function renderWithProvider(ui: React.ReactElement) {
   return render(<MantineProvider>{ui}</MantineProvider>);
 }
@@ -784,12 +795,13 @@ describe("BookForm", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Title with AI" }),
-      );
+      clickTranslate("Translate Title with AI");
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestUrl()).toBe("/api/v1/ai/translate");
-      expect(lastRequestBody()).toEqual({ text: "عنوان الكتاب" });
+      expect(lastRequestBody()).toEqual({
+        text: "عنوان الكتاب",
+        basePrompt: "Default base prompt for translate.plain",
+      });
     });
   });
 
@@ -814,9 +826,7 @@ describe("BookForm", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Title with AI" }),
-      );
+      clickTranslate("Translate Title with AI");
 
       await vi.waitFor(() => {
         expect(screen.getByLabelText("Title")).toBeDisabled();
@@ -860,9 +870,7 @@ describe("BookForm", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
+      clickTranslate("Translate Description with AI");
 
       await vi.waitFor(() => {
         expect(screen.getByLabelText("Description")).toBeDisabled();
@@ -892,9 +900,7 @@ describe("BookForm", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Title with AI" }),
-      );
+      clickTranslate("Translate Title with AI");
 
       await screen.findByText("Something went wrong.");
       expect(screen.getByLabelText("Title")).not.toBeDisabled();

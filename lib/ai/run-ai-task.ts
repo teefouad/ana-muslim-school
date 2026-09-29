@@ -20,7 +20,8 @@ export class AiTaskError extends Error {
 export type RunAiTaskInput = {
   /** The content to transform. Always treated as data, never as instructions. */
   input: string;
-  /** Trusted server-side task instructions. Never sourced from a client request. */
+  /** Task instructions: the helper's own default, or the admin-edited prompt
+   * (ANA-134) that the AI dialogs show and submit as `basePrompt`. */
   basePrompt: string;
   /** Trusted editor guidance (ANA-99) -- composed into the same `instructions`
    * channel as `basePrompt`, at equal priority, never appended underneath it

@@ -3,7 +3,7 @@ import "server-only";
 import { runAiTask } from "./run-ai-task";
 import type { SuggestLessonTitleModuleContext } from "./suggest-lesson-title";
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Suggest or improve the one-line description of one Lesson inside a Module
 of Islamic educational content.
 
@@ -78,10 +78,11 @@ export async function suggestLessonDescription(
   currentDescription: string,
   module: SuggestLessonTitleModuleContext,
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: composeInput(currentDescription, module),
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
   });
 }

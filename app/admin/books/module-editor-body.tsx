@@ -710,12 +710,13 @@ export function ModuleEditorBody({
         value={title}
         onChange={setTitle}
         aiTranslation
-        onAiTranslate={({ text, instructions, context }) =>
+        aiTranslationTask="translate.module"
+        onAiTranslate={({ text, basePrompt, context }) =>
           translateModuleField({
             bookId: book.id,
             field: "title",
             text,
-            additionalInstructions: instructions,
+            basePrompt,
             ...context,
           })
         }
@@ -723,11 +724,13 @@ export function ModuleEditorBody({
           moduleContent: content.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, instructions, context }) =>
+        aiAssistanceTask="assist.title"
+        onAiAssist={({ text, basePrompt, instructions, context }) =>
           suggestModuleTitle({
             bookId: book.id,
             text,
             additionalInstructions: instructions,
+            basePrompt,
             ...context,
           })
         }
@@ -749,12 +752,13 @@ export function ModuleEditorBody({
         value={description}
         onChange={setDescription}
         aiTranslation
-        onAiTranslate={({ text, instructions, context }) =>
+        aiTranslationTask="translate.module"
+        onAiTranslate={({ text, basePrompt, context }) =>
           translateModuleField({
             bookId: book.id,
             field: "description",
             text,
-            additionalInstructions: instructions,
+            basePrompt,
             ...context,
           })
         }
@@ -763,11 +767,13 @@ export function ModuleEditorBody({
           moduleContent: content.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, instructions, context }) =>
+        aiAssistanceTask="assist.description"
+        onAiAssist={({ text, basePrompt, instructions, context }) =>
           suggestModuleDescription({
             bookId: book.id,
             text,
             additionalInstructions: instructions,
+            basePrompt,
             ...context,
           })
         }
@@ -797,12 +803,13 @@ export function ModuleEditorBody({
         value={content}
         onChange={setContent}
         aiTranslation
-        onAiTranslate={({ text, instructions, context }) =>
+        aiTranslationTask="translate.module"
+        onAiTranslate={({ text, basePrompt, context }) =>
           translateModuleField({
             bookId: book.id,
             field: "content",
             text,
-            additionalInstructions: instructions,
+            basePrompt,
             ...context,
           })
         }
@@ -811,11 +818,19 @@ export function ModuleEditorBody({
           moduleDescription: description.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, instructions, isSelection, context }) =>
+        aiAssistanceTask="assist.content"
+        onAiAssist={({
+          text,
+          basePrompt,
+          instructions,
+          isSelection,
+          context,
+        }) =>
           assistLearningMaterial({
             bookId: book.id,
             text,
             additionalInstructions: instructions,
+            basePrompt,
             fullMaterial: isSelection ? (content.ar ?? "") : undefined,
             ...context,
           })

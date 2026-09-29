@@ -14,7 +14,7 @@ export type SuggestModuleDescriptionBookContext = {
   longDescription: TranslatableString;
 };
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Suggest or improve the description of one Module inside a Book of Islamic
 educational content.
 
@@ -102,10 +102,11 @@ export async function suggestModuleDescription(
   moduleContent: string,
   book: SuggestModuleDescriptionBookContext,
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: composeInput(currentDescription, moduleTitle, moduleContent, book),
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
   });
 }

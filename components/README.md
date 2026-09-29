@@ -52,10 +52,10 @@ Module's other fields) -- `FormField` never hard-codes Book- or Module-
 specific context; see module-editor-body.tsx's Title/Description/Content
 wiring (ANA-98) for the pattern. AI Assistance runs through the shared
 Additional Instructions step (`ai-instructions-modal.tsx`); Translate with
-AI is a deliberate exception and runs directly (ANA-98: it only ever
-transforms the whole Arabic value into English, never something an editor
-needs to redirect with free-form guidance), preserving the existing
-replace-confirmation dialog when the target language already has content.
+AI opens the same modal with `showInstructions={false}` (ANA-98: it only
+ever transforms the whole Arabic value into English, never something an
+editor needs to redirect with free-form guidance, so it has no free-form
+field -- but it still shows its base prompt, see below).
 A caller that needs extra controls in that dialog passes them as
 `aiAssistanceOptions` (rendered above the instructions field via
 `AiInstructionsModal`'s `children`) and keeps their state itself -- the Book
@@ -346,3 +346,31 @@ once the drawer became the only consumer.)
   callers can use it like any other component. If that wrapper needs to
   expose a ref, pass it as a plain prop (not `ref`) to the dynamically loaded
   component -- `next/dynamic`'s loading wrapper doesn't forward `ref`.
+
+## Base prompt is always visible and editable (ANA-134)
+
+Every AI action shows the base prompt it will send -- in an editable
+textarea -- before the request is made, and the value in that textarea is
+what reaches the model (the untouched default if the admin changes nothing).
+No AI request may be sent with a prompt the admin can't inspect first.
+
+- `use-base-prompt.ts` (`useBasePrompt(task, language?)`) loads the default
+  from `GET /api/v1/ai/base-prompt` via SWR and holds the admin's edit;
+  `base-prompt-field.tsx` (`BasePromptField`) renders it, with a "Reset to
+  default". Both are used by `AiInstructionsModal` and
+  `GenerateQuestionsModal`.
+- `AiInstructionsModal` requires a `promptTask` (a key from
+  `lib/ai/base-prompt-tasks.ts`) and calls `onGenerate(instructions,
+basePrompt)`. Generate stays disabled until the prompt has loaded.
+  `FormField` takes `aiAssistanceTask`/`aiTranslationTask` and keeps the
+  action disabled without one; `basePrompt` arrives on
+  `FormFieldAiActionArgs` and must be forwarded on the request.
+- Server side, every `/api/v1/ai/*` request accepts an optional `basePrompt`
+  (validated by `lib/ai/read-base-prompt.ts`); omitted means the helper's own
+  default. The defaults are exported from each `lib/ai` helper and collected
+  in `lib/ai/base-prompts.ts` -- **a new AI action must add a task key
+  there, export its prompt, accept `basePromptOverride`, and open its dialog
+  with `promptTask`** so this stays consistent.
+- Unit tests get a global synchronous stub of `useBasePrompt` (see
+  `vitest.setup.ts`; default prompt is `Default base prompt for <task>`).
+  Stories that open an AI dialog use `withBasePromptStub`.

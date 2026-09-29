@@ -211,12 +211,17 @@ export function LessonForm({
         value={value.title}
         onChange={(title) => onChange({ title })}
         aiTranslation
-        onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+        aiTranslationTask="translate.plain"
+        onAiTranslate={({ text, basePrompt }) =>
+          translateArabicToEnglish(text, basePrompt)
+        }
         aiAssistance
-        onAiAssist={({ text, instructions }) =>
+        aiAssistanceTask="assist.lessonTitle"
+        onAiAssist={({ text, basePrompt, instructions }) =>
           suggestLessonTitle({
             text,
             additionalInstructions: instructions,
+            basePrompt,
             moduleTitle,
             moduleDescription,
             moduleContent,
@@ -238,12 +243,17 @@ export function LessonForm({
         value={value.description}
         onChange={(description) => onChange({ description })}
         aiTranslation
-        onAiTranslate={({ text }) => translateArabicToEnglish(text)}
+        aiTranslationTask="translate.plain"
+        onAiTranslate={({ text, basePrompt }) =>
+          translateArabicToEnglish(text, basePrompt)
+        }
         aiAssistance
-        onAiAssist={({ text, instructions }) =>
+        aiAssistanceTask="assist.lessonDescription"
+        onAiAssist={({ text, basePrompt, instructions }) =>
           suggestLessonDescription({
             text,
             additionalInstructions: instructions,
+            basePrompt,
             moduleTitle,
             moduleDescription,
             moduleContent,

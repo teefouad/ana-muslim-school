@@ -1,11 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
+import { withBasePromptStub } from "./base-prompt-story-decorator";
 import { GenerateQuestionsModal } from "./generate-questions-modal";
 
 const meta = {
   title: "UI/GenerateQuestionsModal",
   component: GenerateQuestionsModal,
   tags: ["autodocs"],
+  decorators: [withBasePromptStub],
 } satisfies Meta<typeof GenerateQuestionsModal>;
 
 export default meta;

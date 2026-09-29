@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MantineProvider } from "@mantine/core";
@@ -45,6 +46,19 @@ const SAMPLE_RESULT: OcrResult = {
 // `selectionchange` event the browser would -- jsdom doesn't support real
 // cursor-drag selection, matching the approach already used by
 // components/ui/markdown-editor.test.tsx.
+// Translate opens its base-prompt review dialog first (ANA-134); clicks the
+// card's header action, then confirms in that dialog.
+function clickTranslate(index = 0) {
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "Translate to English" })[index],
+  );
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
+}
+
 function selectFirstCharacters(root: HTMLElement, length: number) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const textNode = walker.nextNode() as Text;
@@ -473,12 +487,13 @@ describe("ModuleBuilderView", () => {
       ];
       renderView({ modules, onModulesChange });
 
-      fireEvent.click(
-        screen.getAllByRole("button", { name: "Translate to English" })[0],
-      );
+      clickTranslate();
 
       await vi.waitFor(() =>
-        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("First"),
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+          "First",
+          "Default base prompt for translate.plain",
+        ),
       );
       expect(applyLastModulesUpdate(onModulesChange, modules)).toEqual([
         { id: "module-1", material: { ar: "First", en: "Translated text" } },
@@ -501,11 +516,12 @@ describe("ModuleBuilderView", () => {
       renderStatefulView({ modules });
 
       // Start translating Module 1.
-      fireEvent.click(
-        screen.getAllByRole("button", { name: "Translate to English" })[0],
-      );
+      clickTranslate();
       await vi.waitFor(() =>
-        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("Arabic one"),
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+          "Arabic one",
+          "Default base prompt for translate.plain",
+        ),
       );
 
       // Module 1 itself is frozen while its own request is in flight...
@@ -553,12 +569,13 @@ describe("ModuleBuilderView", () => {
       ];
       renderView({ modules, onModulesChange });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       await vi.waitFor(() =>
-        expect(translateArabicToEnglishMock).toHaveBeenCalledWith("First"),
+        expect(translateArabicToEnglishMock).toHaveBeenCalledWith(
+          "First",
+          "Default base prompt for translate.plain",
+        ),
       );
       expect(
         screen.queryByRole("dialog", { name: "Replace English translation?" }),
@@ -595,6 +612,7 @@ describe("ModuleBuilderView", () => {
           bookId: "book-42",
           text: "First",
           additionalInstructions: undefined,
+          basePrompt: "Default base prompt for assist.content",
         }),
       );
       expect(await screen.findByText("Refined text")).toBeInTheDocument();

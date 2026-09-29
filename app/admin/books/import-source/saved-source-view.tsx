@@ -216,14 +216,17 @@ export function SavedSourceView({
   // this same card's Arabic draft) must survive this resolving late,
   // instead of being silently reverted by a stale array (PR review,
   // blocking).
-  async function handleTranslateEntry(key: string) {
+  async function handleTranslateEntry(key: string, basePrompt: string) {
     const entry = entries.find((candidate) => candidate.key === key);
 
     if (!entry) {
       return;
     }
 
-    const translated = await translateArabicToEnglish(entry.material.ar);
+    const translated = await translateArabicToEnglish(
+      entry.material.ar,
+      basePrompt,
+    );
 
     onEntriesChange((current) =>
       current.map((candidate) =>
@@ -256,11 +259,13 @@ export function SavedSourceView({
     _language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
+    basePrompt: string,
   ): Promise<string> {
     return assistLearningMaterial({
       bookId,
       text: selectedMarkdown,
       additionalInstructions: instructions,
+      basePrompt,
     });
   }
 

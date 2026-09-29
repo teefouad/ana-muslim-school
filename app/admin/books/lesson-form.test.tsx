@@ -6,6 +6,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LessonForm, type LessonFormProps } from "./lesson-form";
 import type { LessonFieldsValues } from "./lesson-fields";
 
+// Translate with AI opens its base-prompt review dialog first (ANA-134);
+// clicks the field's Translate button, then confirms in that dialog.
+function clickTranslate(buttonName: string) {
+  fireEvent.click(screen.getByRole("button", { name: buttonName }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -301,9 +312,7 @@ describe("LessonForm", () => {
     );
     const { onChange } = renderForm();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Translate Title with AI" }),
-    );
+    clickTranslate("Translate Title with AI");
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(fetch).toHaveBeenCalledWith(
@@ -316,7 +325,10 @@ describe("LessonForm", () => {
     ];
     // Plain and context-free -- no `field`/`bookId`, unlike Module Title's
     // own translate request (translateModuleField).
-    expect(JSON.parse(init.body as string)).toEqual({ text: "المقدمة" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      text: "المقدمة",
+      basePrompt: "Default base prompt for translate.plain",
+    });
 
     await vi.waitFor(() =>
       expect(onChange).toHaveBeenCalledWith({
@@ -333,9 +345,7 @@ describe("LessonForm", () => {
     const onTitleBusyChange = vi.fn();
     renderForm({ onTitleBusyChange });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Translate Title with AI" }),
-    );
+    clickTranslate("Translate Title with AI");
 
     await vi.waitFor(() =>
       expect(onTitleBusyChange).toHaveBeenCalledWith(true),
@@ -356,11 +366,7 @@ describe("LessonForm", () => {
     const onDescriptionBusyChange = vi.fn();
     renderForm({ onDescriptionBusyChange });
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Translate Description with AI",
-      }),
-    );
+    clickTranslate("Translate Description with AI");
 
     await vi.waitFor(() =>
       expect(onDescriptionBusyChange).toHaveBeenCalledWith(true),

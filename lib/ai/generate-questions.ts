@@ -13,7 +13,7 @@ export type GeneratedQuestion = {
   choices: GeneratedQuestionChoice[];
 };
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Generate multiple-choice quiz questions for Islamic educational content,
 based on a supplied passage of source text.
 
@@ -121,10 +121,11 @@ export async function generateQuestions(
   sourceText: string,
   count: number,
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<GeneratedQuestion[]> {
   const raw = await runAiTask({
     input: composeInput(sourceText, count),
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
     responseFormat: { name: "generated_questions", schema: RESPONSE_SCHEMA },
   });
