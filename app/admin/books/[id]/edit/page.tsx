@@ -595,6 +595,13 @@ export default function EditBookPage() {
           <Box style={{ flex: 1, minWidth: 0 }}>
             <BookForm
               id={BOOK_FORM_ID}
+              bookId={book.id}
+              modules={
+                modulesData?.map((module) => ({
+                  id: module.id,
+                  label: getModuleLabel(module) || "Untitled module",
+                })) ?? []
+              }
               initialValues={toBookFormValues(book)}
               onSubmit={handleSubmit}
               onDirtyChange={setIsBookFormDirty}

@@ -1,6 +1,10 @@
 import "server-only";
 
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
+import {
+  loadBookModuleContext,
+  readModuleSelection,
+} from "./book-module-context";
 import { AiTaskError } from "./run-ai-task";
 import { suggestBookDescription } from "./suggest-book-description";
 
@@ -18,6 +22,9 @@ import { suggestBookDescription } from "./suggest-book-description";
  * required, since FormField's AI Assistance operates on whichever language
  * tab is active and must write the result back to that same language, not
  * always Arabic.
+ * ANA-133: optional `bookId` + `moduleIds` add the selected Modules' content
+ * as extra context -- loaded server-side (only Modules of that Book), never
+ * trusted from the request body.
  */
 export async function suggestBookDescriptionService(
   body: Record<string, unknown>,
@@ -38,6 +45,24 @@ export async function suggestBookDescriptionService(
     return fail("invalid-input", '`language` must be "ar" or "en".');
   }
 
+  const selection = readModuleSelection(body);
+
+  if (!selection.ok) {
+    return selection;
+  }
+
+  let moduleContext: string | undefined;
+
+  if (selection.value) {
+    const loaded = await loadBookModuleContext(selection.value);
+
+    if (!loaded.ok) {
+      return loaded;
+    }
+
+    moduleContext = loaded.value;
+  }
+
   const additionalInstructions =
     typeof body.additionalInstructions === "string"
       ? body.additionalInstructions.trim() || undefined
@@ -50,6 +75,7 @@ export async function suggestBookDescriptionService(
       body.bookLongDescription,
       body.language,
       additionalInstructions,
+      moduleContext,
     );
 
     return ok({ text });

@@ -678,6 +678,100 @@ describe("BookForm", () => {
       ).toBeInTheDocument();
     });
 
+    describe("module context picker (ANA-133)", () => {
+      const MODULES = [
+        { id: "m1", label: "Module One" },
+        { id: "m2", label: "Module Two" },
+      ];
+
+      async function openDialog(name: string) {
+        fireEvent.click(screen.getByRole("button", { name }));
+        return screen.findByRole("dialog", { name: "AI Assistance" });
+      }
+
+      it.each([
+        ["AI Assistance for Description", "bookDescription"],
+        ["AI Assistance for Long description", "bookLongDescription"],
+      ])(
+        "%s lists every module unchecked and sends only the checked ones",
+        async (buttonName, field) => {
+          (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+            jsonResponse({ data: { text: "x" } }),
+          );
+          renderWithProvider(
+            <BookForm
+              id={FORM_ID}
+              bookId="book-1"
+              modules={MODULES}
+              initialValues={FILLED_VALUES}
+              onSubmit={vi.fn()}
+            />,
+          );
+
+          const dialog = await openDialog(buttonName);
+          const boxes = within(dialog).getAllByRole("checkbox");
+          expect(boxes.map((b) => (b as HTMLInputElement).checked)).toEqual([
+            false,
+            false,
+          ]);
+          expect(
+            within(dialog).getByRole("checkbox", { name: "Module One" }),
+          ).toBeInTheDocument();
+
+          fireEvent.click(
+            within(dialog).getByRole("checkbox", { name: "Module Two" }),
+          );
+          fireEvent.click(
+            within(dialog).getByRole("button", { name: "Generate" }),
+          );
+
+          await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+          expect(lastRequestBody()).toMatchObject({
+            field,
+            bookId: "book-1",
+            moduleIds: ["m2"],
+          });
+        },
+      );
+
+      it("omits bookId/moduleIds when no module is checked", async () => {
+        (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+          jsonResponse({ data: { text: "x" } }),
+        );
+        renderWithProvider(
+          <BookForm
+            id={FORM_ID}
+            bookId="book-1"
+            modules={MODULES}
+            initialValues={FILLED_VALUES}
+            onSubmit={vi.fn()}
+          />,
+        );
+
+        const dialog = await openDialog("AI Assistance for Description");
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Generate" }),
+        );
+
+        await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+        expect(lastRequestBody()).not.toHaveProperty("moduleIds");
+        expect(lastRequestBody()).not.toHaveProperty("bookId");
+      });
+
+      it("shows no picker without a persisted Book's modules", async () => {
+        renderWithProvider(
+          <BookForm
+            id={FORM_ID}
+            initialValues={FILLED_VALUES}
+            onSubmit={vi.fn()}
+          />,
+        );
+
+        const dialog = await openDialog("AI Assistance for Description");
+        expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+      });
+    });
+
     it("Translate with AI sends only the Arabic text -- no field, bookId, or Book context -- for Title/Description/Long description", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         jsonResponse({ data: { text: "Translated" } }),

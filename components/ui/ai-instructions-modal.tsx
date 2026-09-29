@@ -23,6 +23,9 @@ export interface AiInstructionsModalProps {
   onCancel: () => void;
   /** Called with the trimmed instructions, or `undefined` when left blank. */
   onGenerate: (instructions: string | undefined) => void;
+  /** Extra caller-owned controls rendered above the instructions field
+   * (e.g. ANA-133's module picker). */
+  children?: ReactNode;
 }
 
 // The "Additional Instructions" step every AI action (Translate with AI,
@@ -39,6 +42,7 @@ export function AiInstructionsModal({
   generateLabel = "Generate",
   onCancel,
   onGenerate,
+  children,
 }: AiInstructionsModalProps) {
   const [instructions, setInstructions] = useState("");
 
@@ -62,6 +66,7 @@ export function AiInstructionsModal({
       <Text size="sm" c="dimmed" mb="md">
         {description}
       </Text>
+      {children}
       <Textarea
         label="Additional instructions or context (optional)"
         value={instructions}

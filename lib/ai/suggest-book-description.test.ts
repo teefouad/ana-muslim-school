@@ -29,6 +29,19 @@ describe("suggestBookDescription", () => {
     expect(input).toMatch(/وصف طويل للكتاب/);
   });
 
+  it("includes the selected-modules section only when module context is given (ANA-133)", async () => {
+    await suggestBookDescription("", "", "", "ar", undefined, "### وحدة");
+    expect(runAiTaskMock.mock.calls[0][0].input).toMatch(
+      /=== Selected Modules/,
+    );
+    expect(runAiTaskMock.mock.calls[0][0].input).toMatch(/### وحدة/);
+
+    await suggestBookDescription("", "", "", "ar");
+    expect(runAiTaskMock.mock.calls[1][0].input).not.toMatch(
+      /Selected Modules/,
+    );
+  });
+
   it("includes the current description as a section to improve, only when non-empty", async () => {
     await suggestBookDescription("وصف حالي", "", "", "ar");
 

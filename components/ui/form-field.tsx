@@ -1,6 +1,13 @@
 "use client";
 
-import { type RefObject, useEffect, useId, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   Group,
@@ -119,6 +126,11 @@ interface FormFieldCommonProps<TContext> {
    * domain context `onAiAssist` needs (e.g. a Book id). Never inspected by
    * this component itself. */
   getAIAssistanceContext?: () => TContext;
+  /** Extra caller-owned controls shown in the AI Assistance dialog above
+   * the Additional Instructions field (ANA-133: the Book description
+   * fields render a module picker here). FormField stays ignorant of what
+   * they are -- the caller keeps their state and reads it in `onAiAssist`. */
+  aiAssistanceOptions?: ReactNode;
   /** Fires whenever this field's own AI request starts or finishes. This
    * field already disables itself for that window via its own internal
    * `fieldBusy` -- a caller must not feed this back into another field's
@@ -281,6 +293,7 @@ function useFormFieldAssistAction<TContext>({
   onApply,
   onAiAssist,
   getContext,
+  options,
   onBusyChange,
 }: {
   enabled: boolean;
@@ -293,6 +306,7 @@ function useFormFieldAssistAction<TContext>({
   onApply: (next: string) => void;
   onAiAssist?: FormFieldAiAction<TContext>;
   getContext?: () => TContext;
+  options?: ReactNode;
   onBusyChange?: (busy: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -383,7 +397,9 @@ function useFormFieldAssistAction<TContext>({
           setPendingSelection(null);
         }}
         onGenerate={(instructions) => void handleGenerate(instructions)}
-      />
+      >
+        {options}
+      </AiInstructionsModal>
     ) : null,
   };
 }
@@ -416,6 +432,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     aiAssistance = false,
     onAiAssist,
     getAIAssistanceContext,
+    aiAssistanceOptions,
     onBusyChange,
   } = props;
 
@@ -494,6 +511,7 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     onApply: applyAssistResult,
     onAiAssist,
     getContext: getAIAssistanceContext,
+    options: aiAssistanceOptions,
     onBusyChange,
   });
 

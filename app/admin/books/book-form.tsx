@@ -18,6 +18,7 @@ import {
   suggestBookLongDescription,
 } from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
+import { BookModulePicker, type BookModuleOption } from "./book-module-picker";
 import { toTranslatableString } from "./module-fields";
 
 const LANGUAGES: LanguageOption[] = [
@@ -106,7 +107,15 @@ export function BookForm({
   initialValues,
   onSubmit,
   onDirtyChange,
+  bookId,
+  modules,
 }: {
+  /** The persisted Book's id and its Modules (ANA-133) -- when both are
+   * given, the Description/Long description AI dialogs offer a module
+   * picker whose selected Modules ground the generated text. Omitted on
+   * Add Book, where there are no persisted Modules yet. */
+  bookId?: string;
+  modules?: BookModuleOption[];
   /** Form element id. Callers wire a header submit button to this form via
    * `<button type="submit" form={id}>` -- normal HTML form semantics, no
    * ref/imperative submit call needed. */
@@ -150,6 +159,23 @@ export function BookForm({
   // per successful save, which is what "seed once" was guarding against a
   // stray background revalidation doing instead.
   const [baseline, setBaseline] = useState(values);
+  // Modules picked as AI context, one selection per field (ANA-133) --
+  // deliberately not part of `values`, so choosing context never marks the
+  // form dirty. Filtered against the current `modules` when used, so a
+  // Module deleted since it was ticked is never sent.
+  const [descriptionModuleIds, setDescriptionModuleIds] = useState<string[]>(
+    [],
+  );
+  const [longDescriptionModuleIds, setLongDescriptionModuleIds] = useState<
+    string[]
+  >([]);
+  const hasModulePicker = bookId !== undefined && modules !== undefined;
+
+  function selectedModules(ids: string[]) {
+    if (!hasModulePicker) return {};
+    const valid = ids.filter((id) => modules.some((m) => m.id === id));
+    return valid.length ? { bookId, moduleIds: valid } : {};
+  }
 
   function updateValues(patch: Partial<BookFormValues>) {
     const next = { ...values, ...patch };
@@ -205,6 +231,15 @@ export function BookForm({
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
           aiAssistance
+          aiAssistanceOptions={
+            hasModulePicker ? (
+              <BookModulePicker
+                modules={modules}
+                value={descriptionModuleIds}
+                onChange={setDescriptionModuleIds}
+              />
+            ) : undefined
+          }
           onAiAssist={({ text, language, instructions }) => {
             const lang = language === "en" ? "en" : "ar";
             return suggestBookDescription({
@@ -213,6 +248,7 @@ export function BookForm({
               additionalInstructions: instructions,
               bookTitle: values.title[lang] ?? "",
               bookLongDescription: values.longDescription[lang] ?? "",
+              ...selectedModules(descriptionModuleIds),
             });
           }}
         />
@@ -232,6 +268,15 @@ export function BookForm({
           aiTranslation
           onAiTranslate={({ text }) => translateArabicToEnglish(text)}
           aiAssistance
+          aiAssistanceOptions={
+            hasModulePicker ? (
+              <BookModulePicker
+                modules={modules}
+                value={longDescriptionModuleIds}
+                onChange={setLongDescriptionModuleIds}
+              />
+            ) : undefined
+          }
           onAiAssist={({ text, language, instructions }) => {
             const lang = language === "en" ? "en" : "ar";
             return suggestBookLongDescription({
@@ -240,6 +285,7 @@ export function BookForm({
               additionalInstructions: instructions,
               bookTitle: values.title[lang] ?? "",
               bookDescription: values.description[lang] ?? "",
+              ...selectedModules(longDescriptionModuleIds),
             });
           }}
         />

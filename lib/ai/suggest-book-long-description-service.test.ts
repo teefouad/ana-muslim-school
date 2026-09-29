@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { suggestBookLongDescriptionMock } = vi.hoisted(() => ({
-  suggestBookLongDescriptionMock: vi.fn(),
+const { suggestBookLongDescriptionMock, loadBookModuleContextMock } =
+  vi.hoisted(() => ({
+    suggestBookLongDescriptionMock: vi.fn(),
+    loadBookModuleContextMock: vi.fn(),
+  }));
+
+vi.mock("./book-module-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./book-module-context")>()),
+  loadBookModuleContext: loadBookModuleContextMock,
 }));
 
 vi.mock("./suggest-book-long-description", () => ({
@@ -122,10 +129,76 @@ describe("suggestBookLongDescriptionService", () => {
       "وصف",
       "en",
       "Make it shorter",
+      undefined,
     );
     expect(result).toEqual({
       ok: true,
       value: { text: "Suggested long description" },
+    });
+    expect(loadBookModuleContextMock).not.toHaveBeenCalled();
+  });
+
+  it("loads the selected modules server-side and passes their content as context (ANA-133)", async () => {
+    loadBookModuleContextMock.mockResolvedValueOnce({
+      ok: true,
+      value: "### وحدة",
+    });
+    suggestBookLongDescriptionMock.mockResolvedValueOnce("text");
+
+    await suggestBookLongDescriptionService({
+      text: "",
+      bookTitle: "",
+      bookDescription: "",
+      language: "ar",
+      bookId: "b1",
+      moduleIds: ["m1"],
+    });
+
+    expect(loadBookModuleContextMock).toHaveBeenCalledWith({
+      bookId: "b1",
+      moduleIds: ["m1"],
+    });
+    expect(suggestBookLongDescriptionMock).toHaveBeenCalledWith(
+      "",
+      "",
+      "",
+      "ar",
+      undefined,
+      "### وحدة",
+    );
+  });
+
+  it("returns the loader's error, without calling the AI, when the modules are invalid (ANA-133)", async () => {
+    loadBookModuleContextMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "invalid-input", message: "bad modules" },
+    });
+
+    const result = await suggestBookLongDescriptionService({
+      text: "",
+      bookTitle: "",
+      bookDescription: "",
+      language: "ar",
+      bookId: "b1",
+      moduleIds: ["nope"],
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(suggestBookLongDescriptionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects moduleIds without a bookId (ANA-133)", async () => {
+    const result = await suggestBookLongDescriptionService({
+      text: "",
+      bookTitle: "",
+      bookDescription: "",
+      language: "ar",
+      moduleIds: ["m1"],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "invalid-input" },
     });
   });
 
@@ -147,6 +220,7 @@ describe("suggestBookLongDescriptionService", () => {
       "",
       "",
       "ar",
+      undefined,
       undefined,
     );
   });
