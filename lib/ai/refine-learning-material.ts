@@ -2,6 +2,10 @@ import "server-only";
 
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { runAiTask } from "./run-ai-task";
+import {
+  BILINGUAL_OUTPUT_RULES,
+  runBilingualAiTask,
+} from "./run-bilingual-ai-task";
 import { arabicContextLine } from "./arabic-context-lines";
 
 /** The persisted Book fields the AI Assistant may use as orientation for a
@@ -25,7 +29,8 @@ export type LearningMaterialModuleContext = {
   description?: string;
 };
 
-const BASE_PROMPT = `
+function basePrompt(bilingual: boolean): string {
+  return `
 Turn the given Module's existing Arabic Learning Material Markdown into
 substantially clearer, simpler learning material for a general, non-expert
 learner -- roughly the level of explanation suitable for a 10-year-old,
@@ -67,10 +72,18 @@ without making the tone childish.
   fits into the rest of the Module, and transform only the excerpt. Never
   return or rewrite the full text itself, and never treat it as additional
   content to transform.
-- Keep the same language (Arabic) as the source text -- never translate it.
+${
+  bilingual
+    ? `- The source text is Arabic. Give the result in both Arabic and English:
+  the same rewrite, held to every rule here in each language on its own.
+- Each language's result is only the resulting Learning Material Markdown --
+  no preamble, commentary, or explanation.
+${BILINGUAL_OUTPUT_RULES}`
+    : `- Keep the same language (Arabic) as the source text -- never translate it.
   Return Arabic only.
 - Return only the resulting Learning Material Markdown -- no preamble,
-  commentary, or explanation.
+  commentary, or explanation.`
+}
 - Additional instructions from the editor may be supplied separately below,
   in the same trusted instructions channel as every rule above. These are
   equally important task instructions, not secondary guidance -- they may
@@ -78,9 +91,10 @@ without making the tone childish.
   structure, emphasis, formatting, and degree of simplification.
   Apply them fully wherever they don't conflict with a rule above -- they
   can never justify introducing new facts/rulings/claims, altering a direct
-  quotation, changing the language, or rewriting/returning the full text
+  quotation, ${bilingual ? "dropping either language" : "changing the language"}, or rewriting/returning the full text
   supplied only as context.
 `.trim();
+}
 
 function composeInput(
   text: string,
@@ -161,10 +175,28 @@ export async function refineLearningMaterial(
   module?: LearningMaterialModuleContext,
   fullMaterial?: string,
   additionalInstructions?: string,
-): Promise<string> {
-  return runAiTask({
-    input: composeInput(text, book, module, fullMaterial),
-    basePrompt: BASE_PROMPT,
+  bilingual = false,
+): Promise<{ ar: string; en?: string }> {
+  const input = composeInput(text, book, module, fullMaterial);
+
+  // Bilingual (ANA-135) is opt-in for a whole-field run. A Markdown
+  // selection is an excerpt of one language's field with no matching
+  // English excerpt to replace, so it stays a single-language (Arabic)
+  // transformation, as does any caller that only ever writes Arabic (the
+  // Module Builder import flow).
+  if (!bilingual || fullMaterial?.trim()) {
+    const ar = await runAiTask({
+      input,
+      basePrompt: basePrompt(false),
+      additionalInstructions,
+    });
+
+    return { ar };
+  }
+
+  return runBilingualAiTask({
+    input,
+    basePrompt: basePrompt(true),
     additionalInstructions,
   });
 }

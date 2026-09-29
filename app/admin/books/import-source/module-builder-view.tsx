@@ -233,11 +233,13 @@ export function ModuleBuilderView({
     instructions: string | undefined,
     selectedMarkdown: string,
   ): Promise<string> {
-    return assistLearningMaterial({
+    const result = await assistLearningMaterial({
       bookId,
       text: selectedMarkdown,
       additionalInstructions: instructions,
     });
+
+    return result.ar;
   }
 
   const reorderDisabled = isFinishing || backDisabled;

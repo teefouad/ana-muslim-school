@@ -413,11 +413,11 @@ describe("QuestionsEditor", () => {
     it("generating appends the returned questions, expanded, and closes the modal", async () => {
       generateQuestionsMock.mockResolvedValue([
         {
-          text: "سؤال مولّد",
-          explanation: "شرح",
+          text: { ar: "سؤال مولّد", en: "Generated question" },
+          explanation: { ar: "شرح", en: "Explanation" },
           choices: [
-            { text: "خطأ", isCorrect: false },
-            { text: "صحيح", isCorrect: true },
+            { text: { ar: "خطأ", en: "Wrong" }, isCorrect: false },
+            { text: { ar: "صحيح", en: "Right" }, isCorrect: true },
           ],
         },
       ]);
@@ -445,7 +445,7 @@ describe("QuestionsEditor", () => {
         ...QUESTIONS,
         expect.objectContaining({
           id: null,
-          text: { ar: "سؤال مولّد" },
+          text: { ar: "سؤال مولّد", en: "Generated question" },
         }),
       ]);
       // Newly generated, so it renders expanded, consistent with New/Insert.

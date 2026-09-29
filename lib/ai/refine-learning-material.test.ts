@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { runAiTaskMock } = vi.hoisted(() => ({ runAiTaskMock: vi.fn() }));
 
-vi.mock("./run-ai-task", () => ({ runAiTask: runAiTaskMock }));
+vi.mock("./run-ai-task", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./run-ai-task")>()),
+  runAiTask: runAiTaskMock,
+}));
 
 const { refineLearningMaterial } = await import("./refine-learning-material");
 
@@ -21,7 +24,7 @@ describe("refineLearningMaterial", () => {
       longDescription: EMPTY,
     });
 
-    expect(result).toBe("refined markdown");
+    expect(result).toEqual({ ar: "refined markdown" });
     expect(runAiTaskMock).toHaveBeenCalledTimes(1);
   });
 
@@ -220,5 +223,53 @@ describe("refineLearningMaterial", () => {
     const basePromptWith = runAiTaskMock.mock.calls[0][0].basePrompt;
 
     expect(basePromptWith).toBe(basePromptWithout);
+  });
+  describe("bilingual mode (ANA-135)", () => {
+    const BOOK = { title: EMPTY, description: EMPTY, longDescription: EMPTY };
+
+    it("returns Arabic only by default -- the single-language prompt, no structured output", async () => {
+      await refineLearningMaterial("text", BOOK);
+
+      const call = runAiTaskMock.mock.calls[0][0];
+      expect(call.responseFormat).toBeUndefined();
+      expect(call.basePrompt).toMatch(/return arabic only/i);
+    });
+
+    it("requests both languages, each held to the rules on its own, when bilingual", async () => {
+      runAiTaskMock.mockResolvedValue(
+        JSON.stringify({ ar: "مبسط", en: "Simplified" }),
+      );
+
+      const result = await refineLearningMaterial(
+        "text",
+        BOOK,
+        undefined,
+        undefined,
+        "at most 50 words",
+        true,
+      );
+
+      expect(result).toEqual({ ar: "مبسط", en: "Simplified" });
+      const call = runAiTaskMock.mock.calls[0][0];
+      expect(call.responseFormat.schema.required).toEqual(["ar", "en"]);
+      expect(call.basePrompt).toMatch(/BOTH languages/);
+      expect(call.basePrompt).not.toMatch(/return arabic only/i);
+      expect(call.additionalInstructions).toBe("at most 50 words");
+    });
+
+    it("stays Arabic-only for a selection even when bilingual is requested", async () => {
+      await refineLearningMaterial(
+        "excerpt",
+        BOOK,
+        undefined,
+        "full text",
+        undefined,
+        true,
+      );
+
+      const call = runAiTaskMock.mock.calls[0][0];
+      expect(call.responseFormat).toBeUndefined();
+      expect(call.basePrompt).toMatch(/return arabic only/i);
+    });
   });
 });

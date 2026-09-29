@@ -571,7 +571,7 @@ describe("ModuleBuilderView", () => {
 
   describe("AI Assistant", () => {
     it("sends only the selected Markdown and bookId, and applies the result to only the selected range (ANA-85, PR review)", async () => {
-      assistLearningMaterialMock.mockResolvedValueOnce("Refined text");
+      assistLearningMaterialMock.mockResolvedValueOnce({ ar: "Refined text" });
       const modules: TempModule[] = [
         { id: "module-1", material: { ar: "First", en: "" } },
         { id: "module-2", material: { ar: "Second", en: "" } },
@@ -602,10 +602,10 @@ describe("ModuleBuilderView", () => {
     });
 
     it("applies its result against the latest modules when it resolves, preserving a concurrent edit made to a different card while it was in flight", async () => {
-      let resolveAssist: (value: string) => void = () => {};
+      let resolveAssist: (value: { ar: string }) => void = () => {};
       assistLearningMaterialMock.mockImplementationOnce(
         () =>
-          new Promise<string>((resolve) => {
+          new Promise<{ ar: string }>((resolve) => {
             resolveAssist = resolve;
           }),
       );
@@ -646,7 +646,7 @@ describe("ModuleBuilderView", () => {
       await user.type(editors[1], "!");
       expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
 
-      resolveAssist("Refined one");
+      resolveAssist({ ar: "Refined one" });
 
       // Module 1 unfreezes once the request resolves -- AI Assistant
       // itself goes back to *disabled* rather than enabled, since applying

@@ -14,11 +14,11 @@ const { AiTaskError } = await import("./run-ai-task");
 const ONE_GENERATED_QUESTION = JSON.stringify({
   questions: [
     {
-      text: "سؤال؟",
-      explanation: "شرح",
+      text: { ar: "سؤال؟", en: "Question?" },
+      explanation: { ar: "شرح", en: "Explanation" },
       choices: [
-        { text: "خطأ", isCorrect: false },
-        { text: "صحيح", isCorrect: true },
+        { text: { ar: "خطأ", en: "Wrong" }, isCorrect: false },
+        { text: { ar: "صحيح", en: "Right" }, isCorrect: true },
       ],
     },
   ],
@@ -67,14 +67,17 @@ describe("generateQuestions", () => {
     );
   });
 
-  it("uses a fixed base prompt that requires Arabic output and forbids inventing facts", async () => {
+  it("uses a fixed base prompt that requires both languages, each held to the constraints on its own, and forbids inventing facts", async () => {
     runAiTaskMock.mockResolvedValueOnce(ONE_GENERATED_QUESTION);
 
     await generateQuestions("نص المصدر", 1);
 
     const basePrompt: string = runAiTaskMock.mock.calls[0][0].basePrompt;
     expect(basePrompt).toMatch(/do not introduce islamic rulings/i);
-    expect(basePrompt).toMatch(/return arabic only/i);
+    expect(basePrompt).toMatch(/both Arabic \("ar"\) and English \("en"\)/);
+    expect(basePrompt).toMatch(
+      /applies to the Arabic result AND to\s+the English result/,
+    );
     expect(basePrompt).toMatch(/exactly one correct choice/i);
   });
 
@@ -85,11 +88,11 @@ describe("generateQuestions", () => {
 
     expect(result).toEqual([
       {
-        text: "سؤال؟",
-        explanation: "شرح",
+        text: { ar: "سؤال؟", en: "Question?" },
+        explanation: { ar: "شرح", en: "Explanation" },
         choices: [
-          { text: "خطأ", isCorrect: false },
-          { text: "صحيح", isCorrect: true },
+          { text: { ar: "خطأ", en: "Wrong" }, isCorrect: false },
+          { text: { ar: "صحيح", en: "Right" }, isCorrect: true },
         ],
       },
     ]);
@@ -114,6 +117,24 @@ describe("generateQuestions", () => {
   it("rejects a response whose questions don't match the expected shape", async () => {
     runAiTaskMock.mockResolvedValueOnce(
       JSON.stringify({ questions: [{ text: "سؤال؟" }] }),
+    );
+
+    await expect(generateQuestions("نص المصدر", 1)).rejects.toBeInstanceOf(
+      AiTaskError,
+    );
+  });
+
+  it("rejects a question whose text is only in one language (ANA-135)", async () => {
+    runAiTaskMock.mockResolvedValueOnce(
+      JSON.stringify({
+        questions: [
+          {
+            text: "سؤال؟",
+            explanation: { ar: "شرح", en: "Explanation" },
+            choices: [],
+          },
+        ],
+      }),
     );
 
     await expect(generateQuestions("نص المصدر", 1)).rejects.toBeInstanceOf(

@@ -16,6 +16,7 @@ import type { Question } from "@/lib/questions/types";
 import {
   suggestLessonDescription,
   suggestLessonTitle,
+  toFieldValue,
 } from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
 import { LessonBreakConfig } from "./lesson-break-config";
@@ -213,22 +214,17 @@ export function LessonForm({
         aiTranslation
         onAiTranslate={({ text }) => translateArabicToEnglish(text)}
         aiAssistance
-        onAiAssist={({ text, instructions }) =>
-          suggestLessonTitle({
-            text,
-            additionalInstructions: instructions,
-            moduleTitle,
-            moduleDescription,
-            moduleContent,
-          })
+        onAiAssist={async ({ values, instructions }) =>
+          toFieldValue(
+            await suggestLessonTitle({
+              text: values.ar ?? "",
+              additionalInstructions: instructions,
+              moduleTitle,
+              moduleDescription,
+              moduleContent,
+            }),
+          )
         }
-        // Suggest always generates Arabic (see suggest-lesson-title.ts's
-        // base prompt) -- pinned here so running it while the English tab
-        // is active can never write that Arabic result into `en`
-        // (ANA-116 PR review). Translate with AI is unaffected: it
-        // already only ever reads `ar` and writes `en` on its own,
-        // regardless of the active tab.
-        aiAssistanceLanguage="ar"
         onBusyChange={onTitleBusyChange}
       />
 
@@ -240,18 +236,17 @@ export function LessonForm({
         aiTranslation
         onAiTranslate={({ text }) => translateArabicToEnglish(text)}
         aiAssistance
-        onAiAssist={({ text, instructions }) =>
-          suggestLessonDescription({
-            text,
-            additionalInstructions: instructions,
-            moduleTitle,
-            moduleDescription,
-            moduleContent,
-          })
+        onAiAssist={async ({ values, instructions }) =>
+          toFieldValue(
+            await suggestLessonDescription({
+              text: values.ar ?? "",
+              additionalInstructions: instructions,
+              moduleTitle,
+              moduleDescription,
+              moduleContent,
+            }),
+          )
         }
-        // See Title's identical `aiAssistanceLanguage` above (ANA-116 PR
-        // review) -- Description's own Suggest is equally Arabic-only.
-        aiAssistanceLanguage="ar"
         onBusyChange={onDescriptionBusyChange}
       />
 

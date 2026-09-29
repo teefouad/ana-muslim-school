@@ -62,7 +62,10 @@ describe("suggestModuleDescriptionService", () => {
       ok: true,
       value: SAMPLE_BOOK,
     });
-    suggestModuleDescriptionMock.mockResolvedValueOnce("Suggested description");
+    suggestModuleDescriptionMock.mockResolvedValueOnce({
+      ar: "وصف",
+      en: "Suggested description",
+    });
 
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
@@ -73,7 +76,7 @@ describe("suggestModuleDescriptionService", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { text: "Suggested description" },
+      value: { ar: "وصف", en: "Suggested description" },
     });
   });
 
@@ -142,7 +145,10 @@ describe("suggestModuleDescriptionService", () => {
       ok: true,
       value: SAMPLE_BOOK,
     });
-    suggestModuleDescriptionMock.mockResolvedValueOnce("Suggested description");
+    suggestModuleDescriptionMock.mockResolvedValueOnce({
+      ar: "وصف",
+      en: "Suggested description",
+    });
 
     const result = await suggestModuleDescriptionService({
       bookId: "book-1",
@@ -166,7 +172,7 @@ describe("suggestModuleDescriptionService", () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: { text: "Suggested description" },
+      value: { ar: "وصف", en: "Suggested description" },
     });
   });
 

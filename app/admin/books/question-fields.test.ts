@@ -58,33 +58,30 @@ describe("toQuestionFieldEntry", () => {
   });
 });
 
-describe("fromGeneratedQuestion (ANA-131)", () => {
-  it("seeds an Arabic-only draft with no linked id, leaving English blank for Translate", () => {
+describe("fromGeneratedQuestion (ANA-131, ANA-135)", () => {
+  it("seeds a bilingual draft with no linked id", () => {
     const entry = fromGeneratedQuestion({
-      text: "سؤال؟",
-      explanation: "شرح",
+      text: { ar: "سؤال؟", en: "Question?" },
+      explanation: { ar: "شرح", en: "Explanation" },
       choices: [
-        { text: "أ", isCorrect: false },
-        { text: "ب", isCorrect: true },
+        { text: { ar: "أ", en: "A" }, isCorrect: false },
+        { text: { ar: "ب", en: "B" }, isCorrect: true },
       ],
     });
 
     expect(entry.id).toBeNull();
-    expect(entry.text).toEqual({ ar: "سؤال؟" });
-    expect(entry.explanation).toEqual({ ar: "شرح" });
+    expect(entry.text).toEqual({ ar: "سؤال؟", en: "Question?" });
+    expect(entry.explanation).toEqual({ ar: "شرح", en: "Explanation" });
     expect(entry.choices).toEqual([
-      { text: { ar: "أ" }, isCorrect: false },
-      { text: { ar: "ب" }, isCorrect: true },
+      { text: { ar: "أ", en: "A" }, isCorrect: false },
+      { text: { ar: "ب", en: "B" }, isCorrect: true },
     ]);
     expect(entry.rawText.ar).toBe(
       ["سؤال؟", "", "شرح", "", "[ ] أ", "[x] ب"].join("\n"),
     );
-    expect(entry.text.en).toBeUndefined();
-    expect(entry.explanation.en).toBeUndefined();
-    expect(entry.choices.every((choice) => choice.text.en === undefined)).toBe(
-      true,
+    expect(entry.rawText.en).toBe(
+      ["Question?", "", "Explanation", "", "[ ] A", "[x] B"].join("\n"),
     );
-    expect(entry.key).toEqual(expect.any(String));
   });
 });
 

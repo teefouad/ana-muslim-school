@@ -288,7 +288,9 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
 
     it("applies a Title suggestion only to Title, never Description", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "اقتراح للعنوان" } }),
+        jsonResponse({
+          data: { ar: "اقتراح للعنوان", en: "Title suggestion" },
+        }),
       );
       renderEditor();
 

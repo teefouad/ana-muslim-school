@@ -799,7 +799,7 @@ describe("SavedSourceView", () => {
 
   describe("AI Assistant", () => {
     it("sends only the selected Markdown and bookId, and applies the result to only the selected range (ANA-85, PR review)", async () => {
-      assistLearningMaterialMock.mockResolvedValueOnce("Refined text");
+      assistLearningMaterialMock.mockResolvedValueOnce({ ar: "Refined text" });
       renderStatefulView({ bookId: "book-42", entries: SAMPLE_ENTRIES });
 
       const editors = await findMaterialEditors();
@@ -827,10 +827,10 @@ describe("SavedSourceView", () => {
     });
 
     it("applies its result against the latest entries when it resolves, preserving a concurrent edit made to a different card while it was in flight", async () => {
-      let resolveAssist: (value: string) => void = () => {};
+      let resolveAssist: (value: { ar: string }) => void = () => {};
       assistLearningMaterialMock.mockImplementationOnce(
         () =>
-          new Promise<string>((resolve) => {
+          new Promise<{ ar: string }>((resolve) => {
             resolveAssist = resolve;
           }),
       );
@@ -875,7 +875,7 @@ describe("SavedSourceView", () => {
       await user.type(editors[1], "!");
       expect(await screen.findByText("Arabic two!")).toBeInTheDocument();
 
-      resolveAssist("Refined one");
+      resolveAssist({ ar: "Refined one" });
 
       // AI Assistant itself goes back to *disabled* once resolved, since
       // applying the result clears the selection it was operating on

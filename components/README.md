@@ -70,36 +70,28 @@ caller whose AI task needs the rest of the field's current value as
 surrounding context (e.g. the full Learning Material around a selected
 paragraph) reads `isSelection` and supplies that extra context itself; see
 module-editor-body.tsx's Content field wiring (`fullMaterial`, ANA-99).
-Non-translation AI generation/assistance is Arabic-only end to end for
-Module-level fields (ANA-99): every Module `onAiAssist`/
-`getAIAssistanceContext` wired to a real `/api/v1/ai/assist` call sends and
-expects only Arabic text/context, never a bilingual `{ ar, en }` shape.
-Book-level AI Assistance (`bookDescription`/`bookLongDescription`, ANA-100)
-is the one deliberate exception: since `FormField` lets an editor run AI
-Assistance from either language tab, Book field AI Assistance follows
-whichever language is active (`language` on `FormFieldAiActionArgs`) --
-context is sent in that same language and the AI is required to write its
-result in that same language, so switching to the English tab and running
-AI Assistance there can never overwrite the Arabic value (PR review, ANA-100
--- see suggest-book-description.ts's/suggest-book-long-description.ts's
-language-parameterized base prompt, and book-form.tsx's `onAiAssist`, which
-builds this context inline rather than through `getAIAssistanceContext`
-since only `onAiAssist`'s own args carry `language`).
+AI Assistance returns both languages (ANA-135). A translatable field's
+`onAiAssist` may resolve to a `TranslatedValue` (`{ ar, en }`) instead of a
+string, and `FormField` applies it to every language at once -- the AI wrote
+the English side itself, under the same constraints as the Arabic side (word
+limits, format, tone), rather than translating the Arabic afterwards. Arabic
+is always replaced; if English already has different content, `FormField`
+first asks "Replace the English text too?" -- "Replace both" applies both
+values, "Keep English" (also Escape) replaces only Arabic. The args carry
+`values` (every language's current value), so a caller sends both languages
+whichever tab is active instead of following the active tab; see book-form.tsx
+(both languages of Title/Description/Long description are sent) and
+module-editor-body.tsx/lesson-form.tsx (context is still always the Module's
+Arabic value, ANA-99). A caller returns a plain string for a single-language
+result -- a Markdown selection is always one: it is an excerpt of one
+language's field, so the Content field returns `result.ar` for a selection
+and both languages only for a whole-field run (`bilingual: true`). On the
+server every bilingual action goes through `runBilingualAiTask`
+(lib/ai/run-bilingual-ai-task.ts), which requests `{ ar, en }` via Structured
+Outputs and whose `BILINGUAL_OUTPUT_RULES` are appended to each action's base
+prompt -- new AI Assistance actions must use it rather than generating one
+language and translating.
 
-A third shape exists for a translatable field whose AI Assistance always
-generates one fixed language regardless of which tab is active -- e.g. a
-Lesson Title/Description Suggest, which always returns Arabic even though
-the field itself stays translatable so English can still be filled in
-separately via Translate with AI (ANA-116 PR review). Unlike the two
-contracts above, this one _is_ enforced by `FormField` itself, via the
-`aiAssistanceLanguage` prop: when set, AI Assistance's whole-field (non-
-selection) source text and apply target are pinned to that language,
-overriding the default tab-following `activeSlug`, so running it from the
-English tab can never write the fixed language's output into `en` (see
-lesson-form.tsx's Title/Description wiring). Omit
-`aiAssistanceLanguage` for either of the two contracts above -- `FormField`
-otherwise stays language-agnostic, so which one applies is each caller's
-responsibility.
 Both actions share the same busy/disabled/error handling, scoped to that one
 field: `FormField` combines its own `disabled` prop with its own
 translate/assist loading state into a local `fieldBusy` that only ever

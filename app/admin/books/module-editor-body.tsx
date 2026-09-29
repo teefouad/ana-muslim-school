@@ -30,6 +30,7 @@ import {
   assistLearningMaterial,
   suggestModuleDescription,
   suggestModuleTitle,
+  toFieldValue,
 } from "./import-source/ai-assist-client";
 import {
   createLesson,
@@ -700,10 +701,10 @@ export function ModuleEditorBody({
           grounded in this Module's own Arabic Learning Material plus the
           Book's title/description/longDescription -- naming this Module,
           never restating the Book's own title or summarizing the Learning
-          Material (see suggest-module-title.ts's base prompt). Every AI
-          call here is Arabic-only end to end: context sent to the server is
-          always this Module's Arabic value, never the bilingual `{ ar, en }`
-          shape (ANA-99). */}
+          Material (see suggest-module-title.ts's base prompt). Context sent
+          to the server is always this Module's Arabic value (ANA-99); AI
+          Assistance's *result* is both languages (ANA-135), written under
+          the same rules in each. */}
       <FormField
         label="Title"
         translatable
@@ -723,13 +724,15 @@ export function ModuleEditorBody({
           moduleContent: content.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, instructions, context }) =>
-          suggestModuleTitle({
-            bookId: book.id,
-            text,
-            additionalInstructions: instructions,
-            ...context,
-          })
+        onAiAssist={async ({ values, instructions, context }) =>
+          toFieldValue(
+            await suggestModuleTitle({
+              bookId: book.id,
+              text: values.ar ?? "",
+              additionalInstructions: instructions,
+              ...context,
+            }),
+          )
         }
         getAIAssistanceContext={() => ({
           moduleContent: content.ar ?? "",
@@ -763,13 +766,15 @@ export function ModuleEditorBody({
           moduleContent: content.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, instructions, context }) =>
-          suggestModuleDescription({
-            bookId: book.id,
-            text,
-            additionalInstructions: instructions,
-            ...context,
-          })
+        onAiAssist={async ({ values, instructions, context }) =>
+          toFieldValue(
+            await suggestModuleDescription({
+              bookId: book.id,
+              text: values.ar ?? "",
+              additionalInstructions: instructions,
+              ...context,
+            }),
+          )
         }
         getAIAssistanceContext={() => ({
           moduleTitle: title.ar ?? "",
@@ -811,15 +816,27 @@ export function ModuleEditorBody({
           moduleDescription: description.ar ?? "",
         })}
         aiAssistance
-        onAiAssist={({ text, instructions, isSelection, context }) =>
-          assistLearningMaterial({
+        onAiAssist={async ({
+          text,
+          values,
+          instructions,
+          isSelection,
+          context,
+        }) => {
+          const result = await assistLearningMaterial({
             bookId: book.id,
-            text,
+            text: isSelection ? text : (values.ar ?? ""),
             additionalInstructions: instructions,
             fullMaterial: isSelection ? (content.ar ?? "") : undefined,
+            bilingual: !isSelection,
             ...context,
-          })
-        }
+          });
+
+          // A selection is an excerpt of the active tab's text, so it
+          // replaces just that range; a whole-field run fills both
+          // languages (ANA-135).
+          return isSelection ? result.ar : toFieldValue(result);
+        }}
         getAIAssistanceContext={() => ({
           moduleTitle: title.ar ?? "",
           moduleDescription: description.ar ?? "",

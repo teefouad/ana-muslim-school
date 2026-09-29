@@ -5,7 +5,9 @@ import {
   loadBookModuleContext,
   readModuleSelection,
 } from "./book-module-context";
+import { readOptionalString } from "./read-optional-string";
 import { AiTaskError } from "./run-ai-task";
+import type { BilingualText } from "./run-bilingual-ai-task";
 import { suggestBookLongDescription } from "./suggest-book-long-description";
 
 /**
@@ -28,7 +30,7 @@ import { suggestBookLongDescription } from "./suggest-book-long-description";
  */
 export async function suggestBookLongDescriptionService(
   body: Record<string, unknown>,
-): Promise<ServiceResult<{ text: string }>> {
+): Promise<ServiceResult<BilingualText>> {
   if (typeof body.text !== "string") {
     return fail("invalid-input", "`text` must be a string.");
   }
@@ -41,8 +43,19 @@ export async function suggestBookLongDescriptionService(
     return fail("invalid-input", "`bookDescription` must be a string.");
   }
 
-  if (body.language !== "ar" && body.language !== "en") {
-    return fail("invalid-input", '`language` must be "ar" or "en".');
+  const textEn = readOptionalString(body.textEn);
+  if (!textEn.ok) {
+    return fail("invalid-input", "`textEn` must be a string.");
+  }
+
+  const bookTitleEn = readOptionalString(body.bookTitleEn);
+  if (!bookTitleEn.ok) {
+    return fail("invalid-input", "`bookTitleEn` must be a string.");
+  }
+
+  const bookDescriptionEn = readOptionalString(body.bookDescriptionEn);
+  if (!bookDescriptionEn.ok) {
+    return fail("invalid-input", "`bookDescriptionEn` must be a string.");
   }
 
   const selection = readModuleSelection(body);
@@ -69,16 +82,15 @@ export async function suggestBookLongDescriptionService(
       : undefined;
 
   try {
-    const text = await suggestBookLongDescription(
-      body.text,
-      body.bookTitle,
-      body.bookDescription,
-      body.language,
+    const result = await suggestBookLongDescription(
+      { ar: body.text, en: textEn.value ?? "" },
+      { ar: body.bookTitle, en: bookTitleEn.value ?? "" },
+      { ar: body.bookDescription, en: bookDescriptionEn.value ?? "" },
       additionalInstructions,
       moduleContext,
     );
 
-    return ok({ text });
+    return ok(result);
   } catch (error) {
     if (error instanceof AiTaskError) {
       return fail("upstream-error", "AI Assistant failed. Please try again.");

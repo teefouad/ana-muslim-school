@@ -71,7 +71,10 @@ describe("suggestModuleTitleService", () => {
       ok: true,
       value: SAMPLE_BOOK,
     });
-    suggestModuleTitleMock.mockResolvedValueOnce("Suggested title");
+    suggestModuleTitleMock.mockResolvedValueOnce({
+      ar: "عنوان",
+      en: "Suggested title",
+    });
 
     const result = await suggestModuleTitleService({
       bookId: "book-1",
@@ -79,7 +82,10 @@ describe("suggestModuleTitleService", () => {
       moduleContent: MODULE_CONTENT,
     });
 
-    expect(result).toEqual({ ok: true, value: { text: "Suggested title" } });
+    expect(result).toEqual({
+      ok: true,
+      value: { ar: "عنوان", en: "Suggested title" },
+    });
   });
 
   it("returns invalid-input when moduleContent is missing or not a string", async () => {
@@ -130,7 +136,10 @@ describe("suggestModuleTitleService", () => {
       ok: true,
       value: SAMPLE_BOOK,
     });
-    suggestModuleTitleMock.mockResolvedValueOnce("Suggested title");
+    suggestModuleTitleMock.mockResolvedValueOnce({
+      ar: "عنوان",
+      en: "Suggested title",
+    });
 
     const result = await suggestModuleTitleService({
       bookId: "book-1",
@@ -150,7 +159,10 @@ describe("suggestModuleTitleService", () => {
       },
       "Make it shorter",
     );
-    expect(result).toEqual({ ok: true, value: { text: "Suggested title" } });
+    expect(result).toEqual({
+      ok: true,
+      value: { ar: "عنوان", en: "Suggested title" },
+    });
   });
 
   it("maps an AiTaskError to an upstream-error, without leaking its message", async () => {

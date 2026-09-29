@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   Alert,
+  getDefaultZIndex,
   Group,
   Stack,
   Text,
@@ -22,6 +23,7 @@ import { Languages, Sparkles } from "lucide-react";
 
 import { ActionIconButton } from "./action-icon-button";
 import { AiInstructionsModal } from "./ai-instructions-modal";
+import { ConfirmDialog } from "./confirm-dialog";
 import {
   MarkdownEditor,
   type MarkdownEditorHandle,
@@ -44,6 +46,10 @@ interface FormFieldAiActionArgs<TContext> {
   text: string;
   /** The active language slug, when this field is translatable. */
   language?: string;
+  /** Every language's current value, when this field is translatable --
+   * lets a bilingual AI Assistance call (ANA-135) send both languages'
+   * current text, whichever tab is active. Empty for a plain field. */
+  values: TranslatedValue;
   /** The Additional Instructions step's trimmed input, or `undefined` when
    * left blank. Always `undefined` for Translate with AI, which has no
    * Additional Instructions step (ANA-98). */
@@ -72,6 +78,15 @@ interface FormFieldAiActionArgs<TContext> {
 export type FormFieldAiAction<TContext> = (
   args: FormFieldAiActionArgs<TContext>,
 ) => Promise<string>;
+
+/** AI Assistance's action (ANA-135): resolves to a single replacement
+ * string (the active language's text, or a Markdown selection), or -- for a
+ * translatable field's whole-value run -- to one value per language, applied
+ * to both languages at once (see `FormField`'s replace-English
+ * confirmation). */
+export type FormFieldAiAssistAction<TContext> = (
+  args: FormFieldAiActionArgs<TContext>,
+) => Promise<string | TranslatedValue>;
 
 const DEFAULT_LANGUAGES: readonly LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -121,7 +136,7 @@ interface FormFieldCommonProps<TContext> {
    * back to the whole value otherwise. Requires `onAiAssist` -- the button
    * stays disabled without it. */
   aiAssistance?: boolean;
-  onAiAssist?: FormFieldAiAction<TContext>;
+  onAiAssist?: FormFieldAiAssistAction<TContext>;
   /** Invoked once, when AI Assistance is triggered -- supplies whatever
    * domain context `onAiAssist` needs (e.g. a Book id). Never inspected by
    * this component itself. */
@@ -159,24 +174,6 @@ interface TranslatableFormFieldProps<
   onAiTranslate?: FormFieldAiAction<TContext>;
   /** Invoked once, when Translate with AI is triggered. */
   getAITranslationContext?: () => TContext;
-  /** Pins AI Assistance to always read from, and write its result back to,
-   * this one language -- independent of whichever tab is currently active
-   * (ANA-116 PR review). For a field whose `onAiAssist` is documented to
-   * always generate one fixed language (e.g. a Lesson Title/Description
-   * Suggest that always returns Arabic, while the field itself stays
-   * translatable so English can still be filled in separately via
-   * Translate with AI or typed by hand), the default behavior -- writing
-   * the result into whichever tab is active when Generate is clicked --
-   * would silently write that fixed language's output into the *other*
-   * language's slot the moment an editor switches tabs first. Omit for the
-   * default, tab-following behavior (e.g. Book-level `bookDescription`/
-   * `bookLongDescription`, whose own prompt is required to match whichever
-   * language `FormFieldAiActionArgs.language` reports, see
-   * components/README.md). Only affects the whole-field apply path -- for
-   * `type="markdown"`, a Markdown-selection AI Assistance run still targets
-   * whichever tab's editor the selection was made in, so this option only
-   * makes sense for a field that never runs AI Assistance on a selection. */
-  aiAssistanceLanguage?: string;
 }
 
 interface PlainFormFieldProps<
@@ -246,6 +243,7 @@ function useFormFieldTranslateAction<TContext>({
       const en = await onAiTranslate({
         text: value.ar ?? "",
         language: "ar",
+        values: value,
         isSelection: false,
         context: getContext ? getContext() : (undefined as TContext),
       });
@@ -289,6 +287,7 @@ function useFormFieldAssistAction<TContext>({
   translatable,
   activeSlug,
   activeValue,
+  values,
   editorRef,
   onApply,
   onAiAssist,
@@ -302,9 +301,10 @@ function useFormFieldAssistAction<TContext>({
   translatable: boolean;
   activeSlug: string | undefined;
   activeValue: string;
+  values: TranslatedValue;
   editorRef: RefObject<MarkdownEditorHandle | null>;
-  onApply: (next: string) => void;
-  onAiAssist?: FormFieldAiAction<TContext>;
+  onApply: (next: string | TranslatedValue) => void;
+  onAiAssist?: FormFieldAiAssistAction<TContext>;
   getContext?: () => TContext;
   options?: ReactNode;
   onBusyChange?: (busy: boolean) => void;
@@ -352,18 +352,28 @@ function useFormFieldAssistAction<TContext>({
       const refined = await onAiAssist({
         text: selection ? selection.text : activeValue,
         language: translatable ? activeSlug : undefined,
+        values: translatable ? values : {},
         instructions,
         isSelection: selection !== null,
         context: getContext ? getContext() : (undefined as TContext),
       });
 
       if (selection) {
+        // A selection is an excerpt of one language's field, so it only
+        // ever gets a single-language result (ANA-135).
+        const excerpt =
+          typeof refined === "string" ? refined : refined[activeSlug ?? ""];
+
+        if (excerpt === undefined) {
+          throw new Error("The AI result had no text for this selection.");
+        }
+
         // Replaces exactly the captured range using the editor's own
         // selection-aware node insertion (never a text search against the
         // original selected text, which may recur elsewhere in the
         // document) -- this fires the editor's own `onChange`, routing
         // through `onApply` exactly like a manual edit would.
-        editorRef.current?.replaceCapturedSelection(selection.capture, refined);
+        editorRef.current?.replaceCapturedSelection(selection.capture, excerpt);
       } else {
         onApply(refined);
       }
@@ -478,26 +488,47 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
   const editorRef = useRef<MarkdownEditorHandle>(null);
   const [shown, setShown] = useState({ slug: activeSlug, value: activeValue });
 
-  // `aiAssistanceLanguage` (ANA-116 PR review) pins AI Assistance's whole-
-  // field (non-selection) source text and apply target to one fixed
-  // language, overriding the default tab-following `activeSlug`/
-  // `setActiveValue` -- see the prop's own doc for why. `undefined` (the
-  // default) falls through to the existing tab-following behavior
-  // unchanged.
-  const aiAssistanceLanguage = props.translatable
-    ? props.aiAssistanceLanguage
-    : undefined;
-  const assistSlug = aiAssistanceLanguage ?? activeSlug;
-  const assistSourceValue = aiAssistanceLanguage
-    ? (value[aiAssistanceLanguage] ?? "")
-    : activeValue;
+  // AI Assistance's whole-field result may carry one value per language
+  // (ANA-135). Arabic (the first language) is always replaced; when another
+  // language already has different content, the editor is asked whether to
+  // overwrite it too, or keep it and replace only Arabic. Nothing is applied
+  // until they answer, and dismissing the dialog counts as keeping it.
+  const [pendingBilingual, setPendingBilingual] =
+    useState<TranslatedValue | null>(null);
+  const primarySlug = languages[0]?.slug;
 
-  function applyAssistResult(next: string) {
-    if (aiAssistanceLanguage) {
-      onChange({ ...value, [aiAssistanceLanguage]: next });
+  function applyAssistResult(next: string | TranslatedValue) {
+    if (typeof next === "string") {
+      setActiveValue(next);
       return;
     }
-    setActiveValue(next);
+
+    if (!translatable || !primarySlug) return;
+
+    const wouldOverwrite = Object.keys(next).some(
+      (slug) =>
+        slug !== primarySlug &&
+        (value[slug] ?? "").trim() !== "" &&
+        value[slug] !== next[slug],
+    );
+
+    if (wouldOverwrite) {
+      setPendingBilingual(next);
+      return;
+    }
+
+    onChange({ ...value, ...next });
+  }
+
+  function resolvePendingBilingual(replaceAll: boolean) {
+    if (!pendingBilingual || !primarySlug) return;
+
+    onChange(
+      replaceAll
+        ? { ...value, ...pendingBilingual }
+        : { ...value, [primarySlug]: pendingBilingual[primarySlug] ?? "" },
+    );
+    setPendingBilingual(null);
   }
 
   const assist = useFormFieldAssistAction({
@@ -505,8 +536,9 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
     disabled,
     type,
     translatable,
-    activeSlug: assistSlug,
-    activeValue: assistSourceValue,
+    activeSlug,
+    activeValue,
+    values: value,
     editorRef,
     onApply: applyAssistResult,
     onAiAssist,
@@ -640,6 +672,16 @@ export function FormField<TContext = unknown>(props: FormFieldProps<TContext>) {
         </Alert>
       )}
       {assist.dialog}
+      <ConfirmDialog
+        opened={pendingBilingual !== null}
+        title="Replace the English text too?"
+        description="The AI also wrote new English text, but this field already has English. Replace both, or keep the existing English and update only the Arabic?"
+        confirmLabel="Replace both"
+        cancelLabel="Keep English"
+        onConfirm={() => resolvePendingBilingual(true)}
+        onCancel={() => resolvePendingBilingual(false)}
+        zIndex={getDefaultZIndex("popover")}
+      />
     </Stack>
   );
 }

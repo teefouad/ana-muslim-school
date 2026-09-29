@@ -404,7 +404,7 @@ describe("LessonForm", () => {
 
     it("sends the current Module Title/Description/Content as context for Title's AI Assistance, applying the result to Title only", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "اقتراح" } }),
+        jsonResponse({ data: { ar: "اقتراح", en: "Suggestion" } }),
       );
       const { onChange } = renderForm();
 
@@ -430,14 +430,16 @@ describe("LessonForm", () => {
       });
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({
-          title: { ar: "اقتراح", en: "" },
+          title: { ar: "اقتراح", en: "Suggestion" },
         }),
       );
     });
 
     it("sends the current Module Title/Description/Content as context for Description's AI Assistance, applying the result to Description only", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف مقترح" } }),
+        jsonResponse({
+          data: { ar: "وصف مقترح", en: "Suggested description" },
+        }),
       );
       const { onChange } = renderForm();
 
@@ -461,14 +463,14 @@ describe("LessonForm", () => {
       });
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({
-          description: { ar: "وصف مقترح", en: "" },
+          description: { ar: "وصف مقترح", en: "Suggested description" },
         }),
       );
     });
 
-    it("writes Title's Suggest result to Arabic even when the English tab is active, without touching English (ANA-116 PR review)", async () => {
+    it("fills both Title languages from Arabic-sourced text even when the English tab is active (ANA-135)", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "اقتراح" } }),
+        jsonResponse({ data: { ar: "اقتراح", en: "Suggestion" } }),
       );
       const { onChange } = renderForm();
 
@@ -487,25 +489,24 @@ describe("LessonForm", () => {
       });
       fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
 
-      // Suggest always generates Arabic -- even sourced from and written to
-      // `ar`, never the currently active `en` tab.
+      // The request is always sourced from `ar`, whichever tab is active,
+      // and the result fills both languages.
       expect(lastRequestBody()).toMatchObject({
         field: "lessonTitle",
         text: "المقدمة",
       });
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({
-          title: { ar: "اقتراح", en: "" },
+          title: { ar: "اقتراح", en: "Suggestion" },
         }),
       );
-      expect(onChange).not.toHaveBeenCalledWith({
-        title: { ar: "المقدمة", en: "اقتراح" },
-      });
     });
 
-    it("writes Description's Suggest result to Arabic even when the English tab is active, without touching English (ANA-116 PR review)", async () => {
+    it("fills both Description languages from Arabic-sourced text even when the English tab is active (ANA-135)", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف مقترح" } }),
+        jsonResponse({
+          data: { ar: "وصف مقترح", en: "Suggested description" },
+        }),
       );
       const { onChange } = renderForm();
 
@@ -532,12 +533,9 @@ describe("LessonForm", () => {
       });
       await vi.waitFor(() =>
         expect(onChange).toHaveBeenCalledWith({
-          description: { ar: "وصف مقترح", en: "" },
+          description: { ar: "وصف مقترح", en: "Suggested description" },
         }),
       );
-      expect(onChange).not.toHaveBeenCalledWith({
-        description: { ar: "وصف قصير", en: "وصف مقترح" },
-      });
     });
 
     it("reports Title's own AI Assistance busy state through onTitleBusyChange", async () => {
@@ -560,7 +558,7 @@ describe("LessonForm", () => {
         expect(onTitleBusyChange).toHaveBeenCalledWith(true),
       );
 
-      resolveAssist(jsonResponse({ data: { text: "اقتراح" } }));
+      resolveAssist(jsonResponse({ data: { ar: "اقتراح", en: "Suggestion" } }));
 
       await vi.waitFor(() =>
         expect(onTitleBusyChange).toHaveBeenCalledWith(false),
