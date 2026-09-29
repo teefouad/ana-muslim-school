@@ -27,6 +27,13 @@ export type RunAiTaskInput = {
    * as ordinary `input` content. */
   additionalInstructions?: string;
   maxOutputTokens?: number;
+  /** Requests Structured Outputs (ANA-131, Generate Questions) instead of
+   * free-form text -- forwarded to the Responses API's own `json_schema`
+   * format so the model is constrained to `schema` rather than merely told
+   * "output JSON" in `basePrompt`, which can still get wrapped in prose or a
+   * Markdown code fence. The result still comes back as a plain string (see
+   * `output_text` below); the caller parses/validates it. */
+  responseFormat?: { name: string; schema: Record<string, unknown> };
 };
 
 /**
@@ -62,6 +69,7 @@ export async function runAiTask({
   basePrompt,
   additionalInstructions,
   maxOutputTokens,
+  responseFormat,
 }: RunAiTaskInput): Promise<string> {
   const client = getOpenAiClient();
 
@@ -74,6 +82,18 @@ export async function runAiTask({
       input,
       ...(maxOutputTokens != null
         ? { max_output_tokens: maxOutputTokens }
+        : {}),
+      ...(responseFormat
+        ? {
+            text: {
+              format: {
+                type: "json_schema",
+                name: responseFormat.name,
+                schema: responseFormat.schema,
+                strict: true,
+              },
+            },
+          }
         : {}),
     });
   } catch (error) {

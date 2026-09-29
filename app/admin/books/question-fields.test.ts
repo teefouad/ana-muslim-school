@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Question } from "@/lib/questions/types";
 import {
   applyParsedQuestionText,
+  fromGeneratedQuestion,
   hasInvalidQuestionText,
   isSameQuestionEntries,
   makeQuestionFieldEntry,
@@ -54,6 +55,36 @@ describe("toQuestionFieldEntry", () => {
     expect(entry.rawText.en).toBe(
       ["What is Salah?", "", "Explanation", "", "[ ] A", "[x] B"].join("\n"),
     );
+  });
+});
+
+describe("fromGeneratedQuestion (ANA-131)", () => {
+  it("seeds an Arabic-only draft with no linked id, leaving English blank for Translate", () => {
+    const entry = fromGeneratedQuestion({
+      text: "سؤال؟",
+      explanation: "شرح",
+      choices: [
+        { text: "أ", isCorrect: false },
+        { text: "ب", isCorrect: true },
+      ],
+    });
+
+    expect(entry.id).toBeNull();
+    expect(entry.text).toEqual({ ar: "سؤال؟" });
+    expect(entry.explanation).toEqual({ ar: "شرح" });
+    expect(entry.choices).toEqual([
+      { text: { ar: "أ" }, isCorrect: false },
+      { text: { ar: "ب" }, isCorrect: true },
+    ]);
+    expect(entry.rawText.ar).toBe(
+      ["سؤال؟", "", "شرح", "", "[ ] أ", "[x] ب"].join("\n"),
+    );
+    expect(entry.text.en).toBeUndefined();
+    expect(entry.explanation.en).toBeUndefined();
+    expect(entry.choices.every((choice) => choice.text.en === undefined)).toBe(
+      true,
+    );
+    expect(entry.key).toEqual(expect.any(String));
   });
 });
 
