@@ -14,6 +14,7 @@ import styles from "./color-swatch-picker.module.css";
 // (gray, dark, white, black, ...) that aren't meant for this picker, so the
 // set is spelled out explicitly here rather than derived from it.
 const SWATCH_COLOR_NAMES = [
+  "black",
   "night",
   "cream",
   "orange",
@@ -21,8 +22,9 @@ const SWATCH_COLOR_NAMES = [
   "yellow",
   "lime",
   "green",
-  "teal",
+  "gray",
   "dark",
+  "teal",
   "cyan",
   "blue",
   "indigo",
@@ -81,7 +83,7 @@ export function ColorSwatchPicker({
         .join(" ")}
     >
       {SWATCH_COLOR_NAMES.map((name) => {
-        const token: ApplicationColorToken = `${name}.6`;
+        const token: ApplicationColorToken = name;
         const selected = value === token;
 
         return (
