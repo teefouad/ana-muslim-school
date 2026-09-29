@@ -195,6 +195,11 @@ export interface SuggestBookDescriptionInput {
    * since a Book being created has no persisted id yet to reload from. */
   bookTitle: string;
   bookLongDescription: string;
+  /** ANA-133: the persisted Book and the Modules the editor picked as extra
+   * AI context -- the server loads their content itself (only Modules of
+   * `bookId`), so only ids are sent. Omitted when none are selected. */
+  bookId?: string;
+  moduleIds?: string[];
 }
 
 /** Suggests or improves a Book's Description via `POST /api/v1/ai/assist`
@@ -210,6 +215,8 @@ export async function suggestBookDescription({
   additionalInstructions,
   bookTitle,
   bookLongDescription,
+  bookId,
+  moduleIds,
 }: SuggestBookDescriptionInput): Promise<string> {
   return requestAssist({
     field: "bookDescription",
@@ -218,6 +225,7 @@ export async function suggestBookDescription({
     additionalInstructions,
     bookTitle,
     bookLongDescription,
+    ...(moduleIds?.length ? { bookId, moduleIds } : {}),
   });
 }
 
@@ -231,6 +239,9 @@ export interface SuggestBookLongDescriptionInput {
    * than reloaded server-side. */
   bookTitle: string;
   bookDescription: string;
+  /** See `SuggestBookDescriptionInput` (ANA-133). */
+  bookId?: string;
+  moduleIds?: string[];
 }
 
 /** Suggests or improves a Book's Long Description via
@@ -245,6 +256,8 @@ export async function suggestBookLongDescription({
   additionalInstructions,
   bookTitle,
   bookDescription,
+  bookId,
+  moduleIds,
 }: SuggestBookLongDescriptionInput): Promise<string> {
   return requestAssist({
     field: "bookLongDescription",
@@ -253,5 +266,6 @@ export async function suggestBookLongDescription({
     additionalInstructions,
     bookTitle,
     bookDescription,
+    ...(moduleIds?.length ? { bookId, moduleIds } : {}),
   });
 }

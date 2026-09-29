@@ -56,7 +56,11 @@ AI is a deliberate exception and runs directly (ANA-98: it only ever
 transforms the whole Arabic value into English, never something an editor
 needs to redirect with free-form guidance), preserving the existing
 replace-confirmation dialog when the target language already has content.
-AI Assistance stays enabled on an empty field -- caller context alone may
+A caller that needs extra controls in that dialog passes them as
+`aiAssistanceOptions` (rendered above the instructions field via
+`AiInstructionsModal`'s `children`) and keeps their state itself -- the Book
+form's module picker for Description/Long description (ANA-133) works this
+way. AI Assistance stays enabled on an empty field -- caller context alone may
 be enough to generate a value -- and for `type="markdown"` operates on the
 editor's current selection when there is one, replacing only that range,
 falling back to the whole value otherwise. `FormField` stays domain-agnostic
