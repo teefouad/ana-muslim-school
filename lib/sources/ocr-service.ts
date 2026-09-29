@@ -207,7 +207,32 @@ export async function runOcrService({
         docSizeBytes: sizeBytes,
         pages: resultPages,
       });
-    } catch {
+    } catch (error) {
+      // Mistral SDK errors (MistralError/SDKError) carry the real
+      // statusCode/body from the upstream response -- logged here so a
+      // failure is diagnosable from server logs alone, instead of requiring
+      // a live reproduction against the Mistral API to find out what
+      // actually happened (this previously collapsed every failure --
+      // auth, rate limiting, a malformed request, Mistral being down --
+      // into one indistinguishable "OCR processing failed" message).
+      const statusCode =
+        error instanceof Error && "statusCode" in error
+          ? (error as { statusCode?: unknown }).statusCode
+          : undefined;
+      const body =
+        error instanceof Error && "body" in error
+          ? (error as { body?: unknown }).body
+          : undefined;
+
+      console.error("Mistral OCR request failed", { statusCode, body, error });
+
+      if (statusCode === 429) {
+        return fail(
+          "rate-limited",
+          "The OCR provider is rate-limiting requests right now. Please wait a moment and try again.",
+        );
+      }
+
       return fail("upstream-error", "OCR processing failed. Please try again.");
     }
   } finally {

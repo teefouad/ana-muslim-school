@@ -10,9 +10,18 @@
  * `too-large` and `upstream-error` were added for the Source OCR import flow
  * (ANA-68), which -- unlike plain CRUD -- can fail because the uploaded PDF
  * exceeds the size limit, or because Firebase Storage/Mistral itself fails.
+ * `rate-limited` was split out from `upstream-error` so a provider throttling
+ * requests (HTTP 429) is distinguishable -- both in the HTTP status returned
+ * to the client and in the message shown -- from Mistral being unreachable
+ * or erroring outright.
  */
 export type ServiceErrorCode =
-  "invalid-input" | "not-found" | "conflict" | "too-large" | "upstream-error";
+  | "invalid-input"
+  | "not-found"
+  | "conflict"
+  | "too-large"
+  | "upstream-error"
+  | "rate-limited";
 
 export type ServiceError = {
   code: ServiceErrorCode;
