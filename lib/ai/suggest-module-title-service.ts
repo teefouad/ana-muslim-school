@@ -3,6 +3,7 @@ import "server-only";
 import { getBookByIdService } from "@/lib/books/books-service";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { AiTaskError } from "./run-ai-task";
+import type { BilingualText } from "./run-bilingual-ai-task";
 import { suggestModuleTitle } from "./suggest-module-title";
 
 /**
@@ -16,7 +17,7 @@ import { suggestModuleTitle } from "./suggest-module-title";
  */
 export async function suggestModuleTitleService(
   body: Record<string, unknown>,
-): Promise<ServiceResult<{ text: string }>> {
+): Promise<ServiceResult<BilingualText>> {
   if (typeof body.bookId !== "string" || body.bookId.trim().length === 0) {
     return fail("invalid-input", "`bookId` must be a non-empty string.");
   }
@@ -41,7 +42,7 @@ export async function suggestModuleTitleService(
   }
 
   try {
-    const text = await suggestModuleTitle(
+    const result = await suggestModuleTitle(
       body.text,
       body.moduleContent,
       {
@@ -52,7 +53,7 @@ export async function suggestModuleTitleService(
       additionalInstructions,
     );
 
-    return ok({ text });
+    return ok(result);
   } catch (error) {
     if (error instanceof AiTaskError) {
       return fail("upstream-error", "AI Assistant failed. Please try again.");

@@ -1,13 +1,19 @@
 import { readErrorMessage } from "./fetch-json";
 
+/** Every generated string carries both languages (ANA-135). */
+export interface GeneratedText {
+  ar: string;
+  en: string;
+}
+
 export interface GeneratedQuestionChoice {
-  text: string;
+  text: GeneratedText;
   isCorrect: boolean;
 }
 
 export interface GeneratedQuestion {
-  text: string;
-  explanation: string;
+  text: GeneratedText;
+  explanation: GeneratedText;
   choices: GeneratedQuestionChoice[];
 }
 

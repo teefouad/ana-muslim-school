@@ -16,10 +16,15 @@ import type { Book, BookWritableFields } from "@/lib/books/types";
 import {
   suggestBookDescription,
   suggestBookLongDescription,
+  toFieldValue,
 } from "./import-source/ai-assist-client";
 import { translateArabicToEnglish } from "./import-source/translate-client";
 import { BookModulePicker, type BookModuleOption } from "./book-module-picker";
 import { toTranslatableString } from "./module-fields";
+
+function bilingualValue(value: TranslatedValue) {
+  return { ar: value.ar ?? "", en: value.en ?? "" };
+}
 
 const LANGUAGES: LanguageOption[] = [
   { slug: "ar", label: "Arabic" },
@@ -217,11 +222,10 @@ export function BookForm({
             (see suggest-book-description.ts's base prompt) -- this Book's
             own fields are trusted directly, never reloaded server-side, so
             this works identically before the Book is ever created.
-            AI Assistance operates on whichever language tab is active
-            (PR review) -- `language` picks which language's Title/Long
-            Description context is sent and which language the AI must
-            write its result in, so switching to the English tab never
-            has AI Assistance write Arabic into the English value. */}
+            AI Assistance sends both languages' current values and returns
+            both a fresh Arabic and English description (ANA-135); an
+            existing English value is only overwritten after FormField's
+            confirmation. */}
         <FormField
           label="Description"
           translatable
@@ -240,23 +244,23 @@ export function BookForm({
               />
             ) : undefined
           }
-          onAiAssist={({ text, language, instructions }) => {
-            const lang = language === "en" ? "en" : "ar";
-            return suggestBookDescription({
-              text,
-              language: lang,
-              additionalInstructions: instructions,
-              bookTitle: values.title[lang] ?? "",
-              bookLongDescription: values.longDescription[lang] ?? "",
-              ...selectedModules(descriptionModuleIds),
-            });
-          }}
+          onAiAssist={async ({ instructions }) =>
+            toFieldValue(
+              await suggestBookDescription({
+                text: bilingualValue(values.description),
+                additionalInstructions: instructions,
+                bookTitle: bilingualValue(values.title),
+                bookLongDescription: bilingualValue(values.longDescription),
+                ...selectedModules(descriptionModuleIds),
+              }),
+            )
+          }
         />
 
         {/* Long description (ANA-100): Translate with AI and AI Assistance,
             the latter grounded in this Book's own Title and (short)
             Description (see suggest-book-long-description.ts's base
-            prompt) -- same active-language handling as Description above
+            prompt) -- same bilingual handling as Description above
             (PR review). */}
         <FormField
           label="Long description"
@@ -277,17 +281,17 @@ export function BookForm({
               />
             ) : undefined
           }
-          onAiAssist={({ text, language, instructions }) => {
-            const lang = language === "en" ? "en" : "ar";
-            return suggestBookLongDescription({
-              text,
-              language: lang,
-              additionalInstructions: instructions,
-              bookTitle: values.title[lang] ?? "",
-              bookDescription: values.description[lang] ?? "",
-              ...selectedModules(longDescriptionModuleIds),
-            });
-          }}
+          onAiAssist={async ({ instructions }) =>
+            toFieldValue(
+              await suggestBookLongDescription({
+                text: bilingualValue(values.longDescription),
+                additionalInstructions: instructions,
+                bookTitle: bilingualValue(values.title),
+                bookDescription: bilingualValue(values.description),
+                ...selectedModules(longDescriptionModuleIds),
+              }),
+            )
+          }
         />
 
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">

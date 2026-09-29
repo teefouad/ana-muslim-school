@@ -20,11 +20,14 @@ import { refineLearningMaterial } from "./refine-learning-material";
  * Builder import flow) has nothing to supply here. `fullMaterial`, when
  * supplied, is this Module's complete Arabic Learning Material, sent when
  * `text` is only a Markdown selection within it (ANA-99) -- surrounding
- * context only, never a second transformation target.
+ * context only, never a second transformation target. `bilingual: true`
+ * (ANA-135) asks for the whole Learning Material back in both Arabic and
+ * English; without it (a selection, or the Arabic-only Module Builder import
+ * flow) the result is Arabic only.
  */
 export async function assistLearningMaterialService(
   body: Record<string, unknown>,
-): Promise<ServiceResult<{ text: string }>> {
+): Promise<ServiceResult<{ ar: string; en?: string }>> {
   if (typeof body.bookId !== "string" || body.bookId.trim().length === 0) {
     return fail("invalid-input", "`bookId` must be a non-empty string.");
   }
@@ -48,6 +51,10 @@ export async function assistLearningMaterialService(
     return fail("invalid-input", "`fullMaterial` must be a string.");
   }
 
+  if (body.bilingual !== undefined && typeof body.bilingual !== "boolean") {
+    return fail("invalid-input", "`bilingual` must be a boolean.");
+  }
+
   const additionalInstructions =
     typeof body.additionalInstructions === "string"
       ? body.additionalInstructions.trim() || undefined
@@ -60,7 +67,7 @@ export async function assistLearningMaterialService(
   }
 
   try {
-    const text = await refineLearningMaterial(
+    const result = await refineLearningMaterial(
       body.text,
       {
         title: bookResult.value.title,
@@ -70,9 +77,10 @@ export async function assistLearningMaterialService(
       { title: moduleTitle.value, description: moduleDescription.value },
       fullMaterial.value,
       additionalInstructions,
+      body.bilingual === true,
     );
 
-    return ok({ text });
+    return ok(result);
   } catch (error) {
     if (error instanceof AiTaskError) {
       return fail("upstream-error", "AI Assistant failed. Please try again.");

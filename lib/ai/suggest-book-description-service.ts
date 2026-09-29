@@ -5,7 +5,9 @@ import {
   loadBookModuleContext,
   readModuleSelection,
 } from "./book-module-context";
+import { readOptionalString } from "./read-optional-string";
 import { AiTaskError } from "./run-ai-task";
+import type { BilingualText } from "./run-bilingual-ai-task";
 import { suggestBookDescription } from "./suggest-book-description";
 
 /**
@@ -17,18 +19,14 @@ import { suggestBookDescription } from "./suggest-book-description";
  * so this works identically for a Book that hasn't been created yet
  * (Add Book) and one being edited. `text` (the current description) may be
  * empty: `bookTitle`/`bookLongDescription` context alone can be enough to
- * draft a description for a Book that has neither yet. `language` is the
- * language of the Description field actually being written (PR review) --
- * required, since FormField's AI Assistance operates on whichever language
- * tab is active and must write the result back to that same language, not
- * always Arabic.
+ * draft a description for a Book that has neither yet.
  * ANA-133: optional `bookId` + `moduleIds` add the selected Modules' content
  * as extra context -- loaded server-side (only Modules of that Book), never
  * trusted from the request body.
  */
 export async function suggestBookDescriptionService(
   body: Record<string, unknown>,
-): Promise<ServiceResult<{ text: string }>> {
+): Promise<ServiceResult<BilingualText>> {
   if (typeof body.text !== "string") {
     return fail("invalid-input", "`text` must be a string.");
   }
@@ -41,8 +39,19 @@ export async function suggestBookDescriptionService(
     return fail("invalid-input", "`bookLongDescription` must be a string.");
   }
 
-  if (body.language !== "ar" && body.language !== "en") {
-    return fail("invalid-input", '`language` must be "ar" or "en".');
+  const textEn = readOptionalString(body.textEn);
+  if (!textEn.ok) {
+    return fail("invalid-input", "`textEn` must be a string.");
+  }
+
+  const bookTitleEn = readOptionalString(body.bookTitleEn);
+  if (!bookTitleEn.ok) {
+    return fail("invalid-input", "`bookTitleEn` must be a string.");
+  }
+
+  const bookLongDescriptionEn = readOptionalString(body.bookLongDescriptionEn);
+  if (!bookLongDescriptionEn.ok) {
+    return fail("invalid-input", "`bookLongDescriptionEn` must be a string.");
   }
 
   const selection = readModuleSelection(body);
@@ -69,16 +78,15 @@ export async function suggestBookDescriptionService(
       : undefined;
 
   try {
-    const text = await suggestBookDescription(
-      body.text,
-      body.bookTitle,
-      body.bookLongDescription,
-      body.language,
+    const result = await suggestBookDescription(
+      { ar: body.text, en: textEn.value ?? "" },
+      { ar: body.bookTitle, en: bookTitleEn.value ?? "" },
+      { ar: body.bookLongDescription, en: bookLongDescriptionEn.value ?? "" },
       additionalInstructions,
       moduleContext,
     );
 
-    return ok({ text });
+    return ok(result);
   } catch (error) {
     if (error instanceof AiTaskError) {
       return fail("upstream-error", "AI Assistant failed. Please try again.");

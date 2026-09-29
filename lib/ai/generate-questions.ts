@@ -1,15 +1,19 @@
 import "server-only";
 
 import { AiTaskError, runAiTask } from "./run-ai-task";
+import { BILINGUAL_OUTPUT_RULES } from "./run-bilingual-ai-task";
+
+/** Every generated string carries both languages (ANA-135). */
+export type GeneratedText = { ar: string; en: string };
 
 export type GeneratedQuestionChoice = {
-  text: string;
+  text: GeneratedText;
   isCorrect: boolean;
 };
 
 export type GeneratedQuestion = {
-  text: string;
-  explanation: string;
+  text: GeneratedText;
+  explanation: GeneratedText;
   choices: GeneratedQuestionChoice[];
 };
 
@@ -31,14 +35,24 @@ based on a supplied passage of source text.
   question.
 - The explanation should briefly justify the correct choice using only the
   source text.
-- The source text is always Arabic. Return Arabic only, for every question,
-  explanation, and choice.
+- The source text is always Arabic. Return every question text,
+  explanation, and choice text in both Arabic ("ar") and English ("en").
+  A choice has one shared isCorrect flag and one position, so its English
+  and Arabic texts are always the same choice, in the same order.
+${BILINGUAL_OUTPUT_RULES}
 - Additional instructions from the editor may be supplied separately below,
   in the same trusted instructions channel as every rule above -- equally
   important task instructions, not secondary guidance. Apply them fully
   wherever they don't conflict with a rule above -- they can never justify
-  inventing new facts or switching away from Arabic.
+  inventing new facts or dropping either language.
 `.trim();
+
+const TEXT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: { ar: { type: "string" }, en: { type: "string" } },
+  required: ["ar", "en"],
+};
 
 const RESPONSE_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -50,15 +64,15 @@ const RESPONSE_SCHEMA: Record<string, unknown> = {
         type: "object",
         additionalProperties: false,
         properties: {
-          text: { type: "string" },
-          explanation: { type: "string" },
+          text: TEXT_SCHEMA,
+          explanation: TEXT_SCHEMA,
           choices: {
             type: "array",
             items: {
               type: "object",
               additionalProperties: false,
               properties: {
-                text: { type: "string" },
+                text: TEXT_SCHEMA,
                 isCorrect: { type: "boolean" },
               },
               required: ["text", "isCorrect"],
@@ -82,6 +96,16 @@ function composeInput(sourceText: string, count: number): string {
   ].join("\n");
 }
 
+function isGeneratedText(value: unknown): value is GeneratedText {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const v = value as Record<string, unknown>;
+
+  return typeof v.ar === "string" && typeof v.en === "string";
+}
+
 function isGeneratedQuestionChoice(
   value: unknown,
 ): value is GeneratedQuestionChoice {
@@ -91,7 +115,7 @@ function isGeneratedQuestionChoice(
 
   const v = value as Record<string, unknown>;
 
-  return typeof v.text === "string" && typeof v.isCorrect === "boolean";
+  return isGeneratedText(v.text) && typeof v.isCorrect === "boolean";
 }
 
 function isGeneratedQuestion(value: unknown): value is GeneratedQuestion {
@@ -102,8 +126,8 @@ function isGeneratedQuestion(value: unknown): value is GeneratedQuestion {
   const v = value as Record<string, unknown>;
 
   return (
-    typeof v.text === "string" &&
-    typeof v.explanation === "string" &&
+    isGeneratedText(v.text) &&
+    isGeneratedText(v.explanation) &&
     Array.isArray(v.choices) &&
     v.choices.every(isGeneratedQuestionChoice)
   );

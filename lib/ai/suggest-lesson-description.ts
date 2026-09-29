@@ -1,6 +1,10 @@
 import "server-only";
 
-import { runAiTask } from "./run-ai-task";
+import {
+  BILINGUAL_OUTPUT_RULES,
+  runBilingualAiTask,
+  type BilingualText,
+} from "./run-bilingual-ai-task";
 import type { SuggestLessonTitleModuleContext } from "./suggest-lesson-title";
 
 const BASE_PROMPT = `
@@ -21,16 +25,17 @@ of Islamic educational content.
 - Do not introduce Islamic rulings, claims, examples, evidence, names,
   numbers, or other facts that are not already present in the Module
   context.
-- The Module context, and this Lesson, are always Arabic. Return Arabic
-  only.
-- Return only the description text itself -- no preamble, quotation marks,
-  labels, commentary, or Markdown formatting.
+- The source material is Arabic. Give the result in both Arabic and English
+  (see the bilingual output rules below).
+- Each language's result is only the description text itself -- no preamble,
+  quotation marks, labels, commentary, or Markdown formatting.
+${BILINGUAL_OUTPUT_RULES}
 - Additional instructions from the editor may be supplied separately
   below, in the same trusted instructions channel as every rule above --
   equally important task instructions, not secondary guidance. They may
   guide tone, length, and style. Apply them fully wherever they don't
   conflict with a rule above -- they can never justify inventing new facts
-  or switching away from Arabic.
+  or dropping either language.
 `.trim();
 
 function composeInput(
@@ -78,8 +83,8 @@ export async function suggestLessonDescription(
   currentDescription: string,
   module: SuggestLessonTitleModuleContext,
   additionalInstructions?: string,
-): Promise<string> {
-  return runAiTask({
+): Promise<BilingualText> {
+  return runBilingualAiTask({
     input: composeInput(currentDescription, module),
     basePrompt: BASE_PROMPT,
     additionalInstructions,

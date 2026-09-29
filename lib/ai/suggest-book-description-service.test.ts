@@ -30,7 +30,6 @@ describe("suggestBookDescriptionService", () => {
       text: 42,
       bookTitle: "",
       bookLongDescription: "",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -44,7 +43,6 @@ describe("suggestBookDescriptionService", () => {
     const result = await suggestBookDescriptionService({
       text: "",
       bookLongDescription: "",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -58,7 +56,6 @@ describe("suggestBookDescriptionService", () => {
     const result = await suggestBookDescriptionService({
       text: "",
       bookTitle: "",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -68,69 +65,62 @@ describe("suggestBookDescriptionService", () => {
     expect(suggestBookDescriptionMock).not.toHaveBeenCalled();
   });
 
-  it("returns invalid-input for a language other than ar/en (PR review: AI Assistance must operate on the active language)", async () => {
-    const missing = await suggestBookDescriptionService({
-      text: "",
-      bookTitle: "",
-      bookLongDescription: "",
-    });
-    expect(missing).toEqual({
-      ok: false,
-      error: expect.objectContaining({ code: "invalid-input" }),
-    });
+  it.each(["textEn", "bookTitleEn", "bookLongDescriptionEn"])(
+    "returns invalid-input when the optional English sibling `%s` isn't a string (ANA-135)",
+    async (field) => {
+      const result = await suggestBookDescriptionService({
+        text: "",
+        bookTitle: "",
+        bookLongDescription: "",
+        [field]: 42,
+      });
 
-    const invalid = await suggestBookDescriptionService({
-      text: "",
-      bookTitle: "",
-      bookLongDescription: "",
-      language: "fr",
-    });
-    expect(invalid).toEqual({
-      ok: false,
-      error: expect.objectContaining({ code: "invalid-input" }),
-    });
-
-    expect(suggestBookDescriptionMock).not.toHaveBeenCalled();
-  });
+      expect(result).toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: "invalid-input" }),
+      });
+      expect(suggestBookDescriptionMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("allows empty text -- bookTitle/bookLongDescription context alone may be enough to suggest a description", async () => {
-    suggestBookDescriptionMock.mockResolvedValueOnce("Suggested description");
+    suggestBookDescriptionMock.mockResolvedValueOnce({ ar: "نص", en: "Text" });
 
     const result = await suggestBookDescriptionService({
       text: "",
       bookTitle: "عنوان",
       bookLongDescription: "وصف طويل",
-      language: "ar",
     });
 
     expect(result).toEqual({
       ok: true,
-      value: { text: "Suggested description" },
+      value: { ar: "نص", en: "Text" },
     });
   });
 
-  it("never loads a Book server-side -- calls the helper directly with the request body's own fields, including language", async () => {
-    suggestBookDescriptionMock.mockResolvedValueOnce("Suggested description");
+  it("never loads a Book server-side -- calls the helper directly with the request body's own fields, in both languages", async () => {
+    suggestBookDescriptionMock.mockResolvedValueOnce({ ar: "نص", en: "Text" });
 
     const result = await suggestBookDescriptionService({
       text: "وصف حالي",
+      textEn: "Current",
       bookTitle: "عنوان",
+      bookTitleEn: "Title",
       bookLongDescription: "وصف طويل",
-      language: "en",
+      bookLongDescriptionEn: "Long",
       additionalInstructions: "  Make it shorter  ",
     });
 
     expect(suggestBookDescriptionMock).toHaveBeenCalledWith(
-      "وصف حالي",
-      "عنوان",
-      "وصف طويل",
-      "en",
+      { ar: "وصف حالي", en: "Current" },
+      { ar: "عنوان", en: "Title" },
+      { ar: "وصف طويل", en: "Long" },
       "Make it shorter",
       undefined,
     );
     expect(result).toEqual({
       ok: true,
-      value: { text: "Suggested description" },
+      value: { ar: "نص", en: "Text" },
     });
     expect(loadBookModuleContextMock).not.toHaveBeenCalled();
   });
@@ -140,13 +130,12 @@ describe("suggestBookDescriptionService", () => {
       ok: true,
       value: "### وحدة",
     });
-    suggestBookDescriptionMock.mockResolvedValueOnce("text");
+    suggestBookDescriptionMock.mockResolvedValueOnce({ ar: "نص", en: "Text" });
 
     await suggestBookDescriptionService({
       text: "",
       bookTitle: "",
       bookLongDescription: "",
-      language: "ar",
       bookId: "b1",
       moduleIds: ["m1"],
     });
@@ -156,10 +145,9 @@ describe("suggestBookDescriptionService", () => {
       moduleIds: ["m1"],
     });
     expect(suggestBookDescriptionMock).toHaveBeenCalledWith(
-      "",
-      "",
-      "",
-      "ar",
+      { ar: "", en: "" },
+      { ar: "", en: "" },
+      { ar: "", en: "" },
       undefined,
       "### وحدة",
     );
@@ -175,7 +163,6 @@ describe("suggestBookDescriptionService", () => {
       text: "",
       bookTitle: "",
       bookLongDescription: "",
-      language: "ar",
       bookId: "b1",
       moduleIds: ["nope"],
     });
@@ -189,7 +176,6 @@ describe("suggestBookDescriptionService", () => {
       text: "",
       bookTitle: "",
       bookLongDescription: "",
-      language: "ar",
       moduleIds: ["m1"],
     });
 
@@ -200,21 +186,19 @@ describe("suggestBookDescriptionService", () => {
   });
 
   it("treats whitespace-only additional instructions as absent", async () => {
-    suggestBookDescriptionMock.mockResolvedValueOnce("Suggested description");
+    suggestBookDescriptionMock.mockResolvedValueOnce({ ar: "نص", en: "Text" });
 
     await suggestBookDescriptionService({
       text: "",
       bookTitle: "",
       bookLongDescription: "",
-      language: "ar",
       additionalInstructions: "   ",
     });
 
     expect(suggestBookDescriptionMock).toHaveBeenCalledWith(
-      "",
-      "",
-      "",
-      "ar",
+      { ar: "", en: "" },
+      { ar: "", en: "" },
+      { ar: "", en: "" },
       undefined,
       undefined,
     );
@@ -229,7 +213,6 @@ describe("suggestBookDescriptionService", () => {
       text: "",
       bookTitle: "",
       bookLongDescription: "",
-      language: "ar",
     });
 
     expect(result).toEqual({
@@ -246,7 +229,6 @@ describe("suggestBookDescriptionService", () => {
         text: "",
         bookTitle: "",
         bookLongDescription: "",
-        language: "ar",
       }),
     ).rejects.toThrow("boom");
   });

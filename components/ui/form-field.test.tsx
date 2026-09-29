@@ -247,6 +247,7 @@ describe("FormField", () => {
       expect(onAiAssist).toHaveBeenCalledWith({
         text: "وصف",
         language: "ar",
+        values: { ar: "وصف" },
         instructions: "Make it shorter",
         isSelection: false,
         context: { bookId: "book-1" },
@@ -286,26 +287,8 @@ describe("FormField", () => {
     });
   });
 
-  describe("aiAssistanceLanguage pins AI Assistance to one fixed language (ANA-116 PR review)", () => {
-    it("reads from and writes to the pinned language, not the active tab", async () => {
-      const onChange = vi.fn();
-      const onAiAssist = vi.fn().mockResolvedValue("اقتراح");
-
-      renderWithProvider(
-        <FormField
-          label="Title"
-          translatable
-          value={{ ar: "عنوان", en: "Title" }}
-          onChange={onChange}
-          aiAssistance
-          onAiAssist={onAiAssist}
-          aiAssistanceLanguage="ar"
-        />,
-      );
-
-      fireEvent.click(screen.getByRole("radio", { name: "English" }));
-      expect(screen.getByLabelText("Title")).toHaveValue("Title");
-
+  describe("bilingual AI Assistance results (ANA-135)", () => {
+    async function runAssist() {
       fireEvent.click(
         screen.getByRole("button", { name: "AI Assistance for Title" }),
       );
@@ -313,52 +296,124 @@ describe("FormField", () => {
         name: "AI Assistance",
       });
       fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    }
+
+    it("sends every language's current value, whichever tab is active", async () => {
+      const onAiAssist = vi.fn().mockResolvedValue({ ar: "ا", en: "A" });
+
+      renderWithProvider(
+        <FormField
+          label="Title"
+          translatable
+          value={{ ar: "عنوان", en: "" }}
+          onChange={vi.fn()}
+          aiAssistance
+          onAiAssist={onAiAssist}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("radio", { name: "English" }));
+      await runAssist();
 
       expect(onAiAssist).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "عنوان", language: "ar" }),
+        expect.objectContaining({ values: { ar: "عنوان", en: "" } }),
       );
-      await vi.waitFor(() =>
-        expect(onChange).toHaveBeenCalledWith({ ar: "اقتراح", en: "Title" }),
-      );
-      // Never written into the active (English) tab instead.
-      expect(onChange).not.toHaveBeenCalledWith({
-        ar: "عنوان",
-        en: "اقتراح",
-      });
     });
 
-    it("falls back to the default tab-following behavior when omitted", async () => {
+    it("fills both languages at once, without asking, when English is empty", async () => {
       const onChange = vi.fn();
-      const onAiAssist = vi.fn().mockResolvedValue("Suggested");
 
       renderWithProvider(
         <FormField
           label="Title"
           translatable
-          value={{ ar: "عنوان", en: "Title" }}
+          value={{ ar: "عنوان", en: "  " }}
           onChange={onChange}
           aiAssistance
-          onAiAssist={onAiAssist}
+          onAiAssist={vi.fn().mockResolvedValue({ ar: "جديد", en: "New" })}
         />,
       );
 
-      fireEvent.click(screen.getByRole("radio", { name: "English" }));
-      fireEvent.click(
-        screen.getByRole("button", { name: "AI Assistance for Title" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "AI Assistance",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+      await runAssist();
 
-      expect(onAiAssist).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "Title", language: "en" }),
-      );
       await vi.waitFor(() =>
-        expect(onChange).toHaveBeenCalledWith({
-          ar: "عنوان",
-          en: "Suggested",
-        }),
+        expect(onChange).toHaveBeenCalledWith({ ar: "جديد", en: "New" }),
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("asks before overwriting an existing English value, and replaces both when confirmed", async () => {
+      const onChange = vi.fn();
+
+      renderWithProvider(
+        <FormField
+          label="Title"
+          translatable
+          value={{ ar: "عنوان", en: "Old" }}
+          onChange={onChange}
+          aiAssistance
+          onAiAssist={vi.fn().mockResolvedValue({ ar: "جديد", en: "New" })}
+        />,
+      );
+
+      await runAssist();
+
+      const confirm = await screen.findByRole("dialog", {
+        name: "Replace the English text too?",
+      });
+      expect(onChange).not.toHaveBeenCalled();
+
+      fireEvent.click(
+        within(confirm).getByRole("button", { name: "Replace both" }),
+      );
+
+      expect(onChange).toHaveBeenCalledWith({ ar: "جديد", en: "New" });
+    });
+
+    it("replaces only Arabic and keeps the English when the editor declines", async () => {
+      const onChange = vi.fn();
+
+      renderWithProvider(
+        <FormField
+          label="Title"
+          translatable
+          value={{ ar: "عنوان", en: "Old" }}
+          onChange={onChange}
+          aiAssistance
+          onAiAssist={vi.fn().mockResolvedValue({ ar: "جديد", en: "New" })}
+        />,
+      );
+
+      await runAssist();
+
+      const confirm = await screen.findByRole("dialog", {
+        name: "Replace the English text too?",
+      });
+      fireEvent.click(
+        within(confirm).getByRole("button", { name: "Keep English" }),
+      );
+
+      expect(onChange).toHaveBeenCalledWith({ ar: "جديد", en: "Old" });
+    });
+
+    it("does not ask when the generated English equals the existing English", async () => {
+      const onChange = vi.fn();
+
+      renderWithProvider(
+        <FormField
+          label="Title"
+          translatable
+          value={{ ar: "عنوان", en: "Same" }}
+          onChange={onChange}
+          aiAssistance
+          onAiAssist={vi.fn().mockResolvedValue({ ar: "جديد", en: "Same" })}
+        />,
+      );
+
+      await runAssist();
+
+      await vi.waitFor(() =>
+        expect(onChange).toHaveBeenCalledWith({ ar: "جديد", en: "Same" }),
       );
     });
   });
@@ -479,6 +534,7 @@ describe("FormField", () => {
         expect(onAiTranslate).toHaveBeenCalledWith({
           text: "وصف",
           language: "ar",
+          values: { ar: "وصف", en: "" },
           isSelection: false,
           context: { bookId: "book-1" },
         }),

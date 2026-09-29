@@ -1,7 +1,11 @@
 import "server-only";
 
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
-import { runAiTask } from "./run-ai-task";
+import {
+  BILINGUAL_OUTPUT_RULES,
+  runBilingualAiTask,
+  type BilingualText,
+} from "./run-bilingual-ai-task";
 import { arabicContextLine } from "./arabic-context-lines";
 
 /** The persisted Book fields the AI Assistant may use as orientation for a
@@ -35,16 +39,17 @@ educational content.
 - Do not introduce Islamic rulings, claims, examples, evidence, names,
   numbers, or other facts that are not already present in the Module's
   Learning Material.
-- The Module's Learning Material, and this Module, are always Arabic.
-  Return Arabic only.
-- Return only the title text itself -- no preamble, quotation marks,
-  labels, commentary, or Markdown formatting.
+- The source material is Arabic. Give the result in both Arabic and English
+  (see the bilingual output rules below).
+- Each language's result is only the title text itself -- no preamble,
+  quotation marks, labels, commentary, or Markdown formatting.
+${BILINGUAL_OUTPUT_RULES}
 - Additional instructions from the editor may be supplied separately
   below, in the same trusted instructions channel as every rule above --
   equally important task instructions, not secondary guidance. They may
   guide tone, length, and style. Apply them fully wherever they don't
   conflict with a rule above -- they can never justify inventing new facts,
-  naming this Module after the Book, or switching away from Arabic.
+  naming this Module after the Book, or dropping either language.
 `.trim();
 
 function composeInput(
@@ -97,8 +102,8 @@ export async function suggestModuleTitle(
   moduleContent: string,
   book: SuggestModuleTitleBookContext,
   additionalInstructions?: string,
-): Promise<string> {
-  return runAiTask({
+): Promise<BilingualText> {
+  return runBilingualAiTask({
     input: composeInput(currentTitle, moduleContent, book),
     basePrompt: BASE_PROMPT,
     additionalInstructions,

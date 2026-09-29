@@ -1,6 +1,10 @@
 import "server-only";
 
-import { runAiTask } from "./run-ai-task";
+import {
+  BILINGUAL_OUTPUT_RULES,
+  runBilingualAiTask,
+  type BilingualText,
+} from "./run-bilingual-ai-task";
 
 /** The owning Module's own Arabic context the AI Assistant grounds a Lesson
  * title in (ANA-116) -- always trusted directly from the caller, exactly
@@ -33,16 +37,17 @@ educational content.
 - Do not introduce Islamic rulings, claims, examples, evidence, names,
   numbers, or other facts that are not already present in the Module
   context.
-- The Module context, and this Lesson, are always Arabic. Return Arabic
-  only.
-- Return only the title text itself -- no preamble, quotation marks,
-  labels, commentary, or Markdown formatting.
+- The source material is Arabic. Give the result in both Arabic and English
+  (see the bilingual output rules below).
+- Each language's result is only the title text itself -- no preamble,
+  quotation marks, labels, commentary, or Markdown formatting.
+${BILINGUAL_OUTPUT_RULES}
 - Additional instructions from the editor may be supplied separately
   below, in the same trusted instructions channel as every rule above --
   equally important task instructions, not secondary guidance. They may
   guide tone, length, and style. Apply them fully wherever they don't
   conflict with a rule above -- they can never justify inventing new facts,
-  naming this Lesson after the Module, or switching away from Arabic.
+  naming this Lesson after the Module, or dropping either language.
 `.trim();
 
 function composeInput(
@@ -89,8 +94,8 @@ export async function suggestLessonTitle(
   currentTitle: string,
   module: SuggestLessonTitleModuleContext,
   additionalInstructions?: string,
-): Promise<string> {
-  return runAiTask({
+): Promise<BilingualText> {
+  return runBilingualAiTask({
     input: composeInput(currentTitle, module),
     basePrompt: BASE_PROMPT,
     additionalInstructions,

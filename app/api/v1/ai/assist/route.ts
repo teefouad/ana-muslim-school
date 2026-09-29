@@ -45,7 +45,11 @@ const FIELDS = [
  * Module-level AI Assistance. Every `field` shares this one REST boundary
  * and `books.update` permission check (see
  * lib/auth/require-books-permission.ts). Never persists anything itself --
- * the caller applies the returned text to its own draft state.
+ * the caller applies the returned text to its own draft state. Every
+ * `field` responds with `{ ar, en }` (ANA-135) -- both languages generated
+ * under the same constraints -- except a `content` request without
+ * `bilingual: true` (a Markdown selection, or the Arabic-only Module Builder
+ * import flow), which responds with `{ ar }` only.
  */
 export async function POST(request: Request) {
   const auth = await requireBooksPermission("update");

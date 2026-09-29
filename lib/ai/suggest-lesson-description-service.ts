@@ -2,6 +2,7 @@ import "server-only";
 
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
 import { AiTaskError } from "./run-ai-task";
+import type { BilingualText } from "./run-bilingual-ai-task";
 import { suggestLessonDescription } from "./suggest-lesson-description";
 
 /**
@@ -15,7 +16,7 @@ import { suggestLessonDescription } from "./suggest-lesson-description";
  */
 export async function suggestLessonDescriptionService(
   body: Record<string, unknown>,
-): Promise<ServiceResult<{ text: string }>> {
+): Promise<ServiceResult<BilingualText>> {
   if (typeof body.text !== "string") {
     return fail("invalid-input", "`text` must be a string.");
   }
@@ -38,7 +39,7 @@ export async function suggestLessonDescriptionService(
       : undefined;
 
   try {
-    const text = await suggestLessonDescription(
+    const result = await suggestLessonDescription(
       body.text,
       {
         moduleTitle: body.moduleTitle,
@@ -48,7 +49,7 @@ export async function suggestLessonDescriptionService(
       additionalInstructions,
     );
 
-    return ok({ text });
+    return ok(result);
   } catch (error) {
     if (error instanceof AiTaskError) {
       return fail("upstream-error", "AI Assistant failed. Please try again.");

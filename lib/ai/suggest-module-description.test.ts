@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { runAiTaskMock } = vi.hoisted(() => ({ runAiTaskMock: vi.fn() }));
 
-vi.mock("./run-ai-task", () => ({ runAiTask: runAiTaskMock }));
+vi.mock("./run-ai-task", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./run-ai-task")>()),
+  runAiTask: runAiTaskMock,
+}));
 
 const { suggestModuleDescription } =
   await import("./suggest-module-description");
@@ -11,7 +14,9 @@ const EMPTY = { ar: "", en: "" };
 
 beforeEach(() => {
   vi.resetAllMocks();
-  runAiTaskMock.mockResolvedValue("Suggested description");
+  runAiTaskMock.mockResolvedValue(
+    JSON.stringify({ ar: "وصف مقترح", en: "Suggested description" }),
+  );
 });
 
 describe("suggestModuleDescription", () => {
@@ -22,7 +27,7 @@ describe("suggestModuleDescription", () => {
       longDescription: EMPTY,
     });
 
-    expect(result).toBe("Suggested description");
+    expect(result).toEqual({ ar: "وصف مقترح", en: "Suggested description" });
     expect(runAiTaskMock).toHaveBeenCalledTimes(1);
   });
 
@@ -105,7 +110,7 @@ describe("suggestModuleDescription", () => {
       /never a restatement of the Book's own description/i,
     );
     expect(basePrompt).toMatch(/do not introduce islamic rulings/i);
-    expect(basePrompt).toMatch(/return arabic only/i);
+    expect(basePrompt).toMatch(/both arabic and english/i);
     expect(basePrompt).toMatch(/no preamble/i);
   });
 
@@ -145,5 +150,36 @@ describe("suggestModuleDescription", () => {
     const basePromptWith = runAiTaskMock.mock.calls[0][0].basePrompt;
 
     expect(basePromptWith).toBe(basePromptWithout);
+  });
+  it("requests structured output with both languages, and states the constraints apply to each independently (ANA-135)", async () => {
+    await suggestModuleDescription(
+      "",
+      "",
+      "",
+      {
+        title: EMPTY,
+        description: EMPTY,
+        longDescription: EMPTY,
+      },
+      "at most 12 words",
+    );
+
+    const call = runAiTaskMock.mock.calls[0][0];
+    expect(call.responseFormat.schema.required).toEqual(["ar", "en"]);
+    expect(call.basePrompt).toMatch(/BOTH languages/);
+    expect(call.basePrompt).toMatch(/each on its own/);
+    expect(call.additionalInstructions).toBe("at most 12 words");
+  });
+
+  it("throws an AiTaskError when the response is missing either language", async () => {
+    runAiTaskMock.mockResolvedValue(JSON.stringify({ ar: "فقط", en: "" }));
+
+    await expect(
+      suggestModuleDescription("", "", "", {
+        title: EMPTY,
+        description: EMPTY,
+        longDescription: EMPTY,
+      }),
+    ).rejects.toThrow(/both Arabic and English/);
   });
 });

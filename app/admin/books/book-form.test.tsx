@@ -507,9 +507,27 @@ describe("BookForm", () => {
       ).toBeInTheDocument();
     });
 
-    it("sends bookTitle/bookLongDescription context (no bookId) for Description AI Assistance, and applies the result", async () => {
+    async function runAssist(buttonName: string) {
+      fireEvent.click(screen.getByRole("button", { name: buttonName }));
+      const dialog = await screen.findByRole("dialog", {
+        name: "AI Assistance",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    }
+
+    const BILINGUAL_VALUES = {
+      ...createEmptyBookFormValues(),
+      title: { ar: "عنوان الكتاب", en: "Book Title" },
+      description: { ar: "وصف قصير", en: "Short description" },
+      longDescription: { ar: "وصف طويل", en: "Long description" },
+    };
+
+    it("sends both languages of every field (no bookId) for Description AI Assistance, and fills Arabic and English when English is empty (ANA-135)", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف محسّن" } }),
+        jsonResponse({
+          data: { ar: "وصف محسّن", en: "Improved description" },
+        }),
       );
       renderWithProvider(
         <BookForm
@@ -519,38 +537,42 @@ describe("BookForm", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "AI Assistance for Description" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "AI Assistance",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+      await runAssist("AI Assistance for Description");
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestUrl()).toBe("/api/v1/ai/assist");
       expect(lastRequestBody()).toMatchObject({
         field: "bookDescription",
         text: "وصف قصير",
-        language: "ar",
+        textEn: "",
         bookTitle: "عنوان الكتاب",
+        bookTitleEn: "",
         bookLongDescription: "وصف طويل",
+        bookLongDescriptionEn: "",
       });
       expect(lastRequestBody()).not.toHaveProperty("bookId");
+      expect(lastRequestBody()).not.toHaveProperty("language");
 
       expect(await screen.findByDisplayValue("وصف محسّن")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Replace the English text too?" }),
+      ).not.toBeInTheDocument();
+
+      // English was filled by the same call, not left for a Translate step.
+      const switchers = screen.getAllByRole("radiogroup", { name: "Language" });
+      fireEvent.click(
+        within(switchers[1]).getByRole("radio", { name: "English" }),
+      );
+      expect(
+        screen.getByDisplayValue("Improved description"),
+      ).toBeInTheDocument();
     });
 
-    it("runs AI Assistance on the active English tab, sends English context and language: en, and applies the result to English only -- not Arabic (PR review regression)", async () => {
+    it("sends the existing English values too, and asks before overwriting an existing English description; keeping English updates only Arabic (ANA-135)", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Improved description" } }),
+        jsonResponse({
+          data: { ar: "وصف محسّن", en: "Improved description" },
+        }),
       );
-      const BILINGUAL_VALUES = {
-        ...createEmptyBookFormValues(),
-        title: { ar: "عنوان الكتاب", en: "Book Title" },
-        description: { ar: "وصف قصير", en: "Short description" },
-        longDescription: { ar: "وصف طويل", en: "Long description" },
-      };
       renderWithProvider(
         <BookForm
           id={FORM_ID}
@@ -559,44 +581,70 @@ describe("BookForm", () => {
         />,
       );
 
-      // Title, Description, Long description, in that order.
+      await runAssist("AI Assistance for Description");
+
+      expect(lastRequestBody()).toMatchObject({
+        text: "وصف قصير",
+        textEn: "Short description",
+        bookTitle: "عنوان الكتاب",
+        bookTitleEn: "Book Title",
+        bookLongDescription: "وصف طويل",
+        bookLongDescriptionEn: "Long description",
+      });
+
+      const confirm = await screen.findByRole("dialog", {
+        name: "Replace the English text too?",
+      });
+      fireEvent.click(
+        within(confirm).getByRole("button", { name: "Keep English" }),
+      );
+
+      expect(await screen.findByDisplayValue("وصف محسّن")).toBeInTheDocument();
       const switchers = screen.getAllByRole("radiogroup", { name: "Language" });
       fireEvent.click(
         within(switchers[1]).getByRole("radio", { name: "English" }),
       );
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "AI Assistance for Description" }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "AI Assistance",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
-
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
-      expect(lastRequestBody()).toMatchObject({
-        field: "bookDescription",
-        text: "Short description",
-        language: "en",
-        bookTitle: "Book Title",
-        bookLongDescription: "Long description",
-      });
-
-      expect(
-        await screen.findByDisplayValue("Improved description"),
-      ).toBeInTheDocument();
-
-      // Switching back to Arabic must show the untouched Arabic value --
-      // the AI result must never have landed there.
-      fireEvent.click(
-        within(switchers[1]).getByRole("radio", { name: "Arabic" }),
-      );
-      expect(screen.getByDisplayValue("وصف قصير")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Short description")).toBeInTheDocument();
     });
 
-    it("sends bookTitle/bookDescription context (no bookId) for Long description AI Assistance, and applies the result", async () => {
+    it("replaces both languages of Description when the editor confirms the overwrite (ANA-135)", async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "وصف طويل محسّن" } }),
+        jsonResponse({
+          data: { ar: "وصف محسّن", en: "Improved description" },
+        }),
+      );
+      renderWithProvider(
+        <BookForm
+          id={FORM_ID}
+          initialValues={BILINGUAL_VALUES}
+          onSubmit={vi.fn()}
+        />,
+      );
+
+      await runAssist("AI Assistance for Description");
+
+      const confirm = await screen.findByRole("dialog", {
+        name: "Replace the English text too?",
+      });
+      fireEvent.click(
+        within(confirm).getByRole("button", { name: "Replace both" }),
+      );
+
+      expect(await screen.findByDisplayValue("وصف محسّن")).toBeInTheDocument();
+      const switchers = screen.getAllByRole("radiogroup", { name: "Language" });
+      fireEvent.click(
+        within(switchers[1]).getByRole("radio", { name: "English" }),
+      );
+      expect(
+        screen.getByDisplayValue("Improved description"),
+      ).toBeInTheDocument();
+    });
+
+    it("sends both languages of every field (no bookId) for Long description AI Assistance, and applies both results (ANA-135)", async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse({
+          data: { ar: "وصف طويل محسّن", en: "Improved long description" },
+        }),
       );
       renderWithProvider(
         <BookForm
@@ -606,73 +654,25 @@ describe("BookForm", () => {
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "AI Assistance for Long description",
-        }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "AI Assistance",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+      await runAssist("AI Assistance for Long description");
 
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
       expect(lastRequestUrl()).toBe("/api/v1/ai/assist");
       expect(lastRequestBody()).toMatchObject({
         field: "bookLongDescription",
         text: "وصف طويل",
-        language: "ar",
+        textEn: "",
         bookTitle: "عنوان الكتاب",
         bookDescription: "وصف قصير",
       });
       expect(lastRequestBody()).not.toHaveProperty("bookId");
+      expect(lastRequestBody()).not.toHaveProperty("language");
 
       expect(await screen.findByText("وصف طويل محسّن")).toBeInTheDocument();
-    });
 
-    it("runs Long description AI Assistance on the active English tab, sends English context and language: en (PR review regression)", async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-        jsonResponse({ data: { text: "Improved long description" } }),
-      );
-      const BILINGUAL_VALUES = {
-        ...createEmptyBookFormValues(),
-        title: { ar: "عنوان الكتاب", en: "Book Title" },
-        description: { ar: "وصف قصير", en: "Short description" },
-        longDescription: { ar: "وصف طويل", en: "Long description" },
-      };
-      renderWithProvider(
-        <BookForm
-          id={FORM_ID}
-          initialValues={BILINGUAL_VALUES}
-          onSubmit={vi.fn()}
-        />,
-      );
-
-      // Title, Description, Long description, in that order.
       const switchers = screen.getAllByRole("radiogroup", { name: "Language" });
       fireEvent.click(
         within(switchers[2]).getByRole("radio", { name: "English" }),
       );
-
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "AI Assistance for Long description",
-        }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "AI Assistance",
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
-
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
-      expect(lastRequestBody()).toMatchObject({
-        field: "bookLongDescription",
-        text: "Long description",
-        language: "en",
-        bookTitle: "Book Title",
-        bookDescription: "Short description",
-      });
-
       expect(
         await screen.findByText("Improved long description"),
       ).toBeInTheDocument();
@@ -696,7 +696,7 @@ describe("BookForm", () => {
         "%s lists every module unchecked and sends only the checked ones",
         async (buttonName, field) => {
           (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-            jsonResponse({ data: { text: "x" } }),
+            jsonResponse({ data: { ar: "x", en: "x" } }),
           );
           renderWithProvider(
             <BookForm
@@ -736,7 +736,7 @@ describe("BookForm", () => {
 
       it("omits bookId/moduleIds when no module is checked", async () => {
         (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-          jsonResponse({ data: { text: "x" } }),
+          jsonResponse({ data: { ar: "x", en: "x" } }),
         );
         renderWithProvider(
           <BookForm

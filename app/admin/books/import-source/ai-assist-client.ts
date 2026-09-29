@@ -1,9 +1,28 @@
 import { readErrorMessage } from "../fetch-json";
 
+/** Adapts an `AssistResult` to `FormField`'s per-language value shape
+ * (dropping an absent `en`). */
+export function toFieldValue(result: AssistResult): Record<string, string> {
+  return result.en === undefined
+    ? { ar: result.ar }
+    : { ar: result.ar, en: result.en };
+}
+
+/** One AI Assistant result (ANA-135): the Arabic and English text, each
+ * generated under the action's rules on its own. `en` is absent only for a
+ * Learning Material selection, which is a single-language excerpt. */
+export interface AssistResult {
+  ar: string;
+  en?: string;
+}
+
 /** POSTs one AI Assistant request to `/api/v1/ai/assist` and returns its
- * refined/suggested text -- shared by every `field` variant below so the
- * fetch/error/response-unwrap boilerplate lives in exactly one place. */
-async function requestAssist(body: Record<string, unknown>): Promise<string> {
+ * refined/suggested text in both languages -- shared by every `field`
+ * variant below so the fetch/error/response-unwrap boilerplate lives in
+ * exactly one place. */
+async function requestAssist(
+  body: Record<string, unknown>,
+): Promise<AssistResult> {
   const response = await fetch("/api/v1/ai/assist", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -14,9 +33,9 @@ async function requestAssist(body: Record<string, unknown>): Promise<string> {
     throw new Error(await readErrorMessage(response));
   }
 
-  const { data } = (await response.json()) as { data: { text: string } };
+  const { data } = (await response.json()) as { data: AssistResult };
 
-  return data.text;
+  return data;
 }
 
 export interface AssistLearningMaterialInput {
@@ -35,6 +54,11 @@ export interface AssistLearningMaterialInput {
    * -- surrounding context for the AI, never a second transformation
    * target. Omitted when `text` already is the whole Learning Material. */
   fullMaterial?: string;
+  /** Asks for the whole Learning Material back in both Arabic and English
+   * (ANA-135). Never combined with `fullMaterial` (a selection is always
+   * Arabic-only); omitted by the Module Builder import flow, which only
+   * ever writes Arabic. */
+  bilingual?: boolean;
 }
 
 /** Runs the Module AI Assistant on a Learning Material draft via
@@ -51,7 +75,8 @@ export async function assistLearningMaterial({
   moduleTitle,
   moduleDescription,
   fullMaterial,
-}: AssistLearningMaterialInput): Promise<string> {
+  bilingual,
+}: AssistLearningMaterialInput): Promise<AssistResult> {
   return requestAssist({
     bookId,
     text,
@@ -59,6 +84,7 @@ export async function assistLearningMaterial({
     moduleTitle,
     moduleDescription,
     fullMaterial,
+    bilingual,
   });
 }
 
@@ -80,7 +106,7 @@ export async function suggestModuleTitle({
   text,
   additionalInstructions,
   moduleContent,
-}: SuggestModuleTitleInput): Promise<string> {
+}: SuggestModuleTitleInput): Promise<AssistResult> {
   return requestAssist({
     bookId,
     field: "title",
@@ -109,7 +135,7 @@ export async function suggestModuleDescription({
   additionalInstructions,
   moduleTitle,
   moduleContent,
-}: SuggestModuleDescriptionInput): Promise<string> {
+}: SuggestModuleDescriptionInput): Promise<AssistResult> {
   return requestAssist({
     bookId,
     field: "description",
@@ -145,7 +171,7 @@ export async function suggestLessonTitle({
   moduleTitle,
   moduleDescription,
   moduleContent,
-}: SuggestLessonFieldInput): Promise<string> {
+}: SuggestLessonFieldInput): Promise<AssistResult> {
   return requestAssist({
     field: "lessonTitle",
     text,
@@ -167,7 +193,7 @@ export async function suggestLessonDescription({
   moduleTitle,
   moduleDescription,
   moduleContent,
-}: SuggestLessonFieldInput): Promise<string> {
+}: SuggestLessonFieldInput): Promise<AssistResult> {
   return requestAssist({
     field: "lessonDescription",
     text,
@@ -178,23 +204,23 @@ export async function suggestLessonDescription({
   });
 }
 
-/** The language of the Book field actually being written -- whichever
- * language tab is active in `FormField` (ANA-100, PR review). AI
- * Assistance always writes its result back to this same language, so this
- * is never inferred from the Book's own Arabic/English content; it's the
- * active tab at the moment the action was triggered. */
-type BookFieldLanguage = "ar" | "en";
+/** A Book field's current value in both languages (ANA-135). Either side
+ * may be empty -- whichever language the editor has filled in still grounds
+ * the AI, which returns a fresh Arabic and English result regardless. */
+interface BilingualValue {
+  ar: string;
+  en: string;
+}
 
 export interface SuggestBookDescriptionInput {
-  text: string;
-  language: BookFieldLanguage;
+  text: BilingualValue;
   additionalInstructions?: string;
-  /** The Book's own Title/Long Description, in the same `language` as the
-   * Description being written (ANA-100, PR review) -- the Book being
-   * edited is trusted directly from the caller, not reloaded server-side,
-   * since a Book being created has no persisted id yet to reload from. */
-  bookTitle: string;
-  bookLongDescription: string;
+  /** The Book's own Title/Long Description in both languages (ANA-100,
+   * ANA-135) -- the Book being edited is trusted directly from the caller,
+   * not reloaded server-side, since a Book being created has no persisted
+   * id yet to reload from. */
+  bookTitle: BilingualValue;
+  bookLongDescription: BilingualValue;
   /** ANA-133: the persisted Book and the Modules the editor picked as extra
    * AI context -- the server loads their content itself (only Modules of
    * `bookId`), so only ids are sent. Omitted when none are selected. */
@@ -206,39 +232,37 @@ export interface SuggestBookDescriptionInput {
  * (`field: "bookDescription"`, ANA-100) -- unlike the Module-level assist
  * functions above, this never sends a `bookId`: a Book's own fields are
  * always this same Book, so its context is sent directly, not reloaded
- * server-side. Returns only the suggested description text, in `language`
- * -- callers apply it to their own Description draft, in that same
- * language. */
+ * server-side. Returns the suggested description in both languages --
+ * callers apply it to their own Description draft. */
 export async function suggestBookDescription({
   text,
-  language,
   additionalInstructions,
   bookTitle,
   bookLongDescription,
   bookId,
   moduleIds,
-}: SuggestBookDescriptionInput): Promise<string> {
+}: SuggestBookDescriptionInput): Promise<AssistResult> {
   return requestAssist({
     field: "bookDescription",
-    text,
-    language,
+    text: text.ar,
+    textEn: text.en,
     additionalInstructions,
-    bookTitle,
-    bookLongDescription,
+    bookTitle: bookTitle.ar,
+    bookTitleEn: bookTitle.en,
+    bookLongDescription: bookLongDescription.ar,
+    bookLongDescriptionEn: bookLongDescription.en,
     ...(moduleIds?.length ? { bookId, moduleIds } : {}),
   });
 }
 
 export interface SuggestBookLongDescriptionInput {
-  text: string;
-  language: BookFieldLanguage;
+  text: BilingualValue;
   additionalInstructions?: string;
-  /** The Book's own Title/Description, in the same `language` as the Long
-   * Description being written (ANA-100, PR review) -- see
-   * `SuggestBookDescriptionInput` for why this is sent directly rather
-   * than reloaded server-side. */
-  bookTitle: string;
-  bookDescription: string;
+  /** The Book's own Title/Description in both languages (ANA-100,
+   * ANA-135) -- see `SuggestBookDescriptionInput` for why this is sent
+   * directly rather than reloaded server-side. */
+  bookTitle: BilingualValue;
+  bookDescription: BilingualValue;
   /** See `SuggestBookDescriptionInput` (ANA-133). */
   bookId?: string;
   moduleIds?: string[];
@@ -247,25 +271,25 @@ export interface SuggestBookLongDescriptionInput {
 /** Suggests or improves a Book's Long Description via
  * `POST /api/v1/ai/assist` (`field: "bookLongDescription"`, ANA-100) --
  * see `suggestBookDescription` for why this never sends a `bookId`.
- * Returns only the suggested long description text, in `language` --
- * callers apply it to their own Long Description draft, in that same
- * language. */
+ * Returns the suggested long description in both languages -- callers
+ * apply it to their own Long Description draft. */
 export async function suggestBookLongDescription({
   text,
-  language,
   additionalInstructions,
   bookTitle,
   bookDescription,
   bookId,
   moduleIds,
-}: SuggestBookLongDescriptionInput): Promise<string> {
+}: SuggestBookLongDescriptionInput): Promise<AssistResult> {
   return requestAssist({
     field: "bookLongDescription",
-    text,
-    language,
+    text: text.ar,
+    textEn: text.en,
     additionalInstructions,
-    bookTitle,
-    bookDescription,
+    bookTitle: bookTitle.ar,
+    bookTitleEn: bookTitle.en,
+    bookDescription: bookDescription.ar,
+    bookDescriptionEn: bookDescription.en,
     ...(moduleIds?.length ? { bookId, moduleIds } : {}),
   });
 }

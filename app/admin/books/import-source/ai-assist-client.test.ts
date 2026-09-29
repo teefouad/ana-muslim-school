@@ -6,6 +6,7 @@ import {
   suggestBookLongDescription,
   suggestModuleDescription,
   suggestModuleTitle,
+  toFieldValue,
 } from "./ai-assist-client";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -26,7 +27,7 @@ afterEach(() => {
 describe("assistLearningMaterial", () => {
   it("POSTs bookId/text/additionalInstructions to /api/v1/ai/assist and returns the refined text", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Refined text" } }),
+      jsonResponse({ data: { ar: "Refined text" } }),
     );
 
     const result = await assistLearningMaterial({
@@ -44,12 +45,12 @@ describe("assistLearningMaterial", () => {
         additionalInstructions: "Use more headings",
       }),
     });
-    expect(result).toBe("Refined text");
+    expect(result).toEqual({ ar: "Refined text" });
   });
 
   it("omits additionalInstructions from the payload when not provided", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Refined text" } }),
+      jsonResponse({ data: { ar: "Refined text" } }),
     );
 
     await assistLearningMaterial({
@@ -84,7 +85,7 @@ describe("assistLearningMaterial", () => {
 
   it("includes moduleTitle/moduleDescription in the payload when supplied (ANA-98/ANA-99)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Refined text" } }),
+      jsonResponse({ data: { ar: "Refined text" } }),
     );
 
     await assistLearningMaterial({
@@ -109,7 +110,7 @@ describe("assistLearningMaterial", () => {
 
   it("includes fullMaterial in the payload when supplied, for a Markdown selection (ANA-99)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Refined excerpt" } }),
+      jsonResponse({ data: { ar: "Refined excerpt" } }),
     );
 
     await assistLearningMaterial({
@@ -134,7 +135,7 @@ describe("assistLearningMaterial", () => {
 describe("suggestModuleTitle", () => {
   it("POSTs field: title, bookId, text, and moduleContent to /api/v1/ai/assist", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Suggested title" } }),
+      jsonResponse({ data: { ar: "Suggested title" } }),
     );
 
     const result = await suggestModuleTitle({
@@ -153,7 +154,7 @@ describe("suggestModuleTitle", () => {
         moduleContent: "محتوى",
       }),
     });
-    expect(result).toBe("Suggested title");
+    expect(result).toEqual({ ar: "Suggested title" });
   });
 
   it("throws the server's error message on failure", async () => {
@@ -174,7 +175,7 @@ describe("suggestModuleTitle", () => {
 describe("suggestModuleDescription", () => {
   it("POSTs field: description, bookId, text, moduleTitle, and moduleContent to /api/v1/ai/assist", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Suggested description" } }),
+      jsonResponse({ data: { ar: "Suggested description" } }),
     );
 
     const result = await suggestModuleDescription({
@@ -195,7 +196,7 @@ describe("suggestModuleDescription", () => {
         moduleContent: "محتوى",
       }),
     });
-    expect(result).toBe("Suggested description");
+    expect(result).toEqual({ ar: "Suggested description" });
   });
 
   it("throws the server's error message on failure", async () => {
@@ -215,16 +216,15 @@ describe("suggestModuleDescription", () => {
 });
 
 describe("suggestBookDescription", () => {
-  it("POSTs field: bookDescription, text, language, bookTitle, and bookLongDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
+  it("POSTs field: bookDescription with both languages of text, bookTitle, and bookLongDescription, with no bookId, and returns both languages (ANA-100, ANA-135)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Suggested description" } }),
+      jsonResponse({ data: { ar: "وصف مقترح", en: "Suggested description" } }),
     );
 
     const result = await suggestBookDescription({
-      text: "",
-      language: "ar",
-      bookTitle: "عنوان",
-      bookLongDescription: "وصف طويل",
+      text: { ar: "وصف حالي", en: "Current" },
+      bookTitle: { ar: "عنوان", en: "Title" },
+      bookLongDescription: { ar: "وصف طويل", en: "" },
     });
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/ai/assist", {
@@ -232,68 +232,74 @@ describe("suggestBookDescription", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         field: "bookDescription",
-        text: "",
-        language: "ar",
+        text: "وصف حالي",
+        textEn: "Current",
         bookTitle: "عنوان",
+        bookTitleEn: "Title",
         bookLongDescription: "وصف طويل",
+        bookLongDescriptionEn: "",
       }),
     });
-    expect(result).toBe("Suggested description");
+    expect(result).toEqual({ ar: "وصف مقترح", en: "Suggested description" });
   });
 
-  it("POSTs language: en when the English tab is the one being assisted (PR review)", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Suggested description" } }),
+  it("sends the selected Modules' ids with the Book id, only when some are selected (ANA-133)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      jsonResponse({ data: { ar: "ع", en: "e" } }),
     );
+    const empty = { ar: "", en: "" };
 
     await suggestBookDescription({
-      text: "",
-      language: "en",
-      bookTitle: "Title",
-      bookLongDescription: "Long description",
+      text: empty,
+      bookTitle: empty,
+      bookLongDescription: empty,
+      bookId: "book-1",
+      moduleIds: ["m1"],
+    });
+    await suggestBookDescription({
+      text: empty,
+      bookTitle: empty,
+      bookLongDescription: empty,
+      bookId: "book-1",
+      moduleIds: [],
     });
 
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/ai/assist",
-      expect.objectContaining({
-        body: JSON.stringify({
-          field: "bookDescription",
-          text: "",
-          language: "en",
-          bookTitle: "Title",
-          bookLongDescription: "Long description",
-        }),
-      }),
+    const [first, second] = (fetch as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => JSON.parse(call[1].body as string),
     );
+    expect(first).toMatchObject({ bookId: "book-1", moduleIds: ["m1"] });
+    expect(second).not.toHaveProperty("bookId");
+    expect(second).not.toHaveProperty("moduleIds");
   });
 
   it("throws the server's error message on failure", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ error: "AI Assistant failed. Please try again." }, 502),
     );
+    const empty = { ar: "", en: "" };
 
     await expect(
       suggestBookDescription({
-        text: "",
-        language: "ar",
-        bookTitle: "",
-        bookLongDescription: "",
+        text: empty,
+        bookTitle: empty,
+        bookLongDescription: empty,
       }),
     ).rejects.toThrow("AI Assistant failed. Please try again.");
   });
 });
 
 describe("suggestBookLongDescription", () => {
-  it("POSTs field: bookLongDescription, text, language, bookTitle, and bookDescription to /api/v1/ai/assist, with no bookId (ANA-100)", async () => {
+  it("POSTs field: bookLongDescription with both languages of text, bookTitle, and bookDescription, with no bookId, and returns both languages (ANA-100, ANA-135)", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Suggested long description" } }),
+      jsonResponse({
+        data: { ar: "وصف طويل مقترح", en: "Suggested long description" },
+      }),
     );
 
     const result = await suggestBookLongDescription({
-      text: "",
-      language: "ar",
-      bookTitle: "عنوان",
-      bookDescription: "وصف",
+      text: { ar: "", en: "Current long" },
+      bookTitle: { ar: "عنوان", en: "Title" },
+      bookDescription: { ar: "وصف", en: "Description" },
     });
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/ai/assist", {
@@ -302,52 +308,38 @@ describe("suggestBookLongDescription", () => {
       body: JSON.stringify({
         field: "bookLongDescription",
         text: "",
-        language: "ar",
+        textEn: "Current long",
         bookTitle: "عنوان",
+        bookTitleEn: "Title",
         bookDescription: "وصف",
+        bookDescriptionEn: "Description",
       }),
     });
-    expect(result).toBe("Suggested long description");
-  });
-
-  it("POSTs language: en when the English tab is the one being assisted (PR review)", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ data: { text: "Suggested long description" } }),
-    );
-
-    await suggestBookLongDescription({
-      text: "",
-      language: "en",
-      bookTitle: "Title",
-      bookDescription: "Description",
+    expect(result).toEqual({
+      ar: "وصف طويل مقترح",
+      en: "Suggested long description",
     });
-
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/ai/assist",
-      expect.objectContaining({
-        body: JSON.stringify({
-          field: "bookLongDescription",
-          text: "",
-          language: "en",
-          bookTitle: "Title",
-          bookDescription: "Description",
-        }),
-      }),
-    );
   });
 
   it("throws the server's error message on failure", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse({ error: "AI Assistant failed. Please try again." }, 502),
     );
+    const empty = { ar: "", en: "" };
 
     await expect(
       suggestBookLongDescription({
-        text: "",
-        language: "ar",
-        bookTitle: "",
-        bookDescription: "",
+        text: empty,
+        bookTitle: empty,
+        bookDescription: empty,
       }),
     ).rejects.toThrow("AI Assistant failed. Please try again.");
+  });
+});
+
+describe("toFieldValue", () => {
+  it("keeps both languages, and omits an absent English (a selection)", () => {
+    expect(toFieldValue({ ar: "ع", en: "e" })).toEqual({ ar: "ع", en: "e" });
+    expect(toFieldValue({ ar: "ع" })).toEqual({ ar: "ع" });
   });
 });
