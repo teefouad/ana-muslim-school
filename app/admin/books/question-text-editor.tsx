@@ -4,6 +4,7 @@ import { useId } from "react";
 import { Languages } from "lucide-react";
 import { Group, Stack, Text, Textarea } from "@mantine/core";
 
+import { AiInstructionsModal } from "@/components/ui/ai-instructions-modal";
 import { ActionIconButton } from "@/components/ui/action-icon-button";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import type { LanguageOption } from "@/components/ui/translatable-value";
@@ -114,7 +115,7 @@ export function QuestionTextEditor({
                 ? "Add valid Arabic question text first."
                 : undefined
             }
-            onClick={translate.translate}
+            onClick={translate.openDialog}
           >
             <Languages size={16} aria-hidden="true" />
           </ActionIconButton>
@@ -140,6 +141,20 @@ export function QuestionTextEditor({
         error={parseResult.ok ? undefined : parseResult.error}
       />
 
+      {translate.isDialogOpen && (
+        <AiInstructionsModal
+          opened
+          title="Translate question with AI"
+          description="The AI will translate the question, its explanation, and each choice into English. Every part is sent with the base prompt below."
+          generateLabel="Translate"
+          promptTask="translate.plain"
+          showInstructions={false}
+          onCancel={translate.closeDialog}
+          onGenerate={(_instructions, basePrompt) =>
+            translate.translate(basePrompt)
+          }
+        />
+      )}
       {translate.error && (
         <Text role="alert" size="xs" c="red">
           {translate.error}

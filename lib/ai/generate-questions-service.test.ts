@@ -97,6 +97,7 @@ describe("generateQuestionsService", () => {
       "نص المصدر",
       5,
       "ركز على الفقرة الأولى",
+      undefined,
     );
     expect(result).toEqual({
       ok: true,
@@ -112,6 +113,7 @@ describe("generateQuestionsService", () => {
     expect(generateQuestionsMock).toHaveBeenCalledWith(
       "نص المصدر",
       5,
+      undefined,
       undefined,
     );
   });

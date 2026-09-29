@@ -14,6 +14,8 @@ export interface GeneratedQuestion {
 export interface GenerateQuestionsInput {
   sourceText: string;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   count: number;
 }
 
@@ -25,12 +27,18 @@ export interface GenerateQuestionsInput {
 export async function generateQuestions({
   sourceText,
   additionalInstructions,
+  basePrompt,
   count,
 }: GenerateQuestionsInput): Promise<GeneratedQuestion[]> {
   const response = await fetch("/api/v1/ai/generate-questions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceText, additionalInstructions, count }),
+    body: JSON.stringify({
+      sourceText,
+      additionalInstructions,
+      basePrompt,
+      count,
+    }),
   });
 
   if (!response.ok) {

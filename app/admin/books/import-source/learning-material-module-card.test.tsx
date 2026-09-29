@@ -1,11 +1,22 @@
 import { useState } from "react";
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TranslatableString } from "@/lib/learning-content/translatable-string";
 import { LearningMaterialModuleCard } from "./learning-material-module-card";
+
+// Translate opens its base-prompt review dialog first (ANA-134); clicks the
+// header action, then confirms in that dialog.
+function clickTranslate() {
+  fireEvent.click(screen.getByRole("button", { name: "Translate to English" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
+}
 
 // Selects the first `length` characters of the editor's first text node
 // directly through the native Selection API -- jsdom doesn't support real
@@ -399,6 +410,28 @@ describe("LearningMaterialModuleCard", () => {
   });
 
   describe("Translate", () => {
+    it("shows the base prompt first and only translates once confirmed, with the edited prompt (ANA-134)", async () => {
+      const onTranslate = vi.fn().mockResolvedValue(undefined);
+      renderCard({
+        material: { ar: "Arabic content", en: "" },
+        onTranslate,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate to English" }),
+      );
+
+      expect(onTranslate).not.toHaveBeenCalled();
+      fireEvent.change(screen.getByLabelText("Base prompt"), {
+        target: { value: "Custom translate prompt" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Translate" }));
+
+      await vi.waitFor(() =>
+        expect(onTranslate).toHaveBeenCalledWith("Custom translate prompt"),
+      );
+    });
+
     it("is disabled when the Arabic draft is empty", () => {
       renderCard({ material: { ar: "", en: "" }, onTranslate: vi.fn() });
 
@@ -421,9 +454,7 @@ describe("LearningMaterialModuleCard", () => {
       // switched it.
       expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
       // The card never mutates `material` itself -- applying the returned
@@ -446,9 +477,7 @@ describe("LearningMaterialModuleCard", () => {
       fireEvent.click(screen.getByRole("radio", { name: "English" }));
       expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
       expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
@@ -462,9 +491,7 @@ describe("LearningMaterialModuleCard", () => {
       });
 
       fireEvent.click(screen.getByRole("radio", { name: "English" }));
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
       await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
 
       // Simulates the caller applying the translated result to `material.en`
@@ -486,9 +513,7 @@ describe("LearningMaterialModuleCard", () => {
 
       expect(screen.getByRole("radio", { name: "Arabic" })).toBeChecked();
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       await vi.waitFor(() => expect(onTranslate).toHaveBeenCalledTimes(1));
       expect(
@@ -508,9 +533,7 @@ describe("LearningMaterialModuleCard", () => {
         onTranslate,
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       expect(
         await screen.findByText("Translation failed. Please try again."),
@@ -533,9 +556,7 @@ describe("LearningMaterialModuleCard", () => {
         onTranslate,
       });
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       expect(
         screen.getByRole("button", { name: "Translate to English" }),
@@ -575,9 +596,7 @@ describe("LearningMaterialModuleCard", () => {
       const editable = await screen.findByRole("textbox");
       expect(editable).toHaveAttribute("contenteditable", "true");
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate to English" }),
-      );
+      clickTranslate();
 
       expect(editable).toHaveAttribute("contenteditable", "false");
       expect(
@@ -785,6 +804,7 @@ describe("LearningMaterialModuleCard", () => {
         "ar",
         "Use more headings",
         "Arabic",
+        "Default base prompt for assist.content",
       );
       expect(
         screen.getByRole("button", { name: "AI Assistant" }),

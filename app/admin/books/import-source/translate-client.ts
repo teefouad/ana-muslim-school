@@ -5,11 +5,14 @@ import { readErrorMessage } from "../fetch-json";
  * ANA-74) is never imported into a Client Component; this is the narrow
  * REST boundary for it. Returns only the translated text -- callers apply
  * it to their own `material.en` draft themselves. */
-export async function translateArabicToEnglish(text: string): Promise<string> {
+export async function translateArabicToEnglish(
+  text: string,
+  basePrompt?: string,
+): Promise<string> {
   const response = await fetch("/api/v1/ai/translate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, basePrompt }),
   });
 
   if (!response.ok) {
@@ -28,6 +31,8 @@ export interface TranslateModuleFieldInput {
   field: TranslatableModuleField;
   text: string;
   additionalInstructions?: string;
+  /** The admin-confirmed base prompt (ANA-134); omitted -> server default. */
+  basePrompt?: string;
   /** This Module's own Arabic sibling fields, when known (ANA-98/ANA-99) --
    * whichever of these aren't the field being translated, supplied as
    * orientation context so the translation preserves the meaning
@@ -48,6 +53,7 @@ export async function translateModuleField({
   field,
   text,
   additionalInstructions,
+  basePrompt,
   moduleTitle,
   moduleDescription,
   moduleContent,
@@ -60,6 +66,7 @@ export async function translateModuleField({
       field,
       text,
       additionalInstructions,
+      basePrompt,
       moduleTitle,
       moduleDescription,
       moduleContent,

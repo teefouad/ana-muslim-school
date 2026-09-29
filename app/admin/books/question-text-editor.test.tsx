@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,19 @@ function renderEditor(overrides: Partial<QuestionTextEditorProps> = {}) {
     </MantineProvider>,
   );
   return { onChange, ...utils };
+}
+
+// Translate opens its base-prompt review dialog first (ANA-134); clicks the
+// icon button, then confirms in that dialog.
+function clickTranslate() {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Translate question with AI" }),
+  );
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
 }
 
 describe("QuestionTextEditor", () => {
@@ -176,7 +189,19 @@ describe("QuestionTextEditor", () => {
 
     const { onChange } = renderEditor({ question });
 
-    fireEvent.click(screen.getByRole("button", { name: /translate/i }));
+    clickTranslate();
+
+    // Every request in the batch carries the reviewed base prompt (ANA-134).
+    await vi.waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/ai/translate",
+        expect.objectContaining({
+          body: expect.stringContaining(
+            '"basePrompt":"Default base prompt for translate.plain"',
+          ),
+        }),
+      ),
+    );
 
     await vi.waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
@@ -205,7 +230,7 @@ describe("QuestionTextEditor", () => {
 
     renderEditor({ question });
 
-    fireEvent.click(screen.getByRole("button", { name: /translate/i }));
+    clickTranslate();
 
     expect(await screen.findByText("Translation failed.")).toBeInTheDocument();
   });
@@ -225,7 +250,7 @@ describe("QuestionTextEditor", () => {
 
     renderEditor({ question, onTranslatingChange });
 
-    fireEvent.click(screen.getByRole("button", { name: /translate/i }));
+    clickTranslate();
 
     await vi.waitFor(() =>
       expect(onTranslatingChange).toHaveBeenCalledWith(true),

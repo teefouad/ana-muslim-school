@@ -86,6 +86,7 @@ test("calls onGenerate with the trimmed source text, instructions, and count", (
   expect(onGenerate).toHaveBeenCalledWith({
     sourceText: "A source passage.",
     additionalInstructions: "Focus on the first section.",
+    basePrompt: "Default base prompt for generateQuestions",
     count: 6,
   });
 });
@@ -109,8 +110,34 @@ test("omits additionalInstructions when left blank", () => {
   expect(onGenerate).toHaveBeenCalledWith({
     sourceText: "A source passage.",
     additionalInstructions: undefined,
+    basePrompt: "Default base prompt for generateQuestions",
     count: 5,
   });
+});
+
+test("shows the base prompt and submits the edited one (ANA-134)", () => {
+  const onGenerate = vi.fn();
+
+  renderWithProvider(
+    <GenerateQuestionsModal
+      opened
+      onCancel={vi.fn()}
+      onGenerate={onGenerate}
+    />,
+  );
+
+  const prompt = screen.getByLabelText("Base prompt");
+  expect(prompt).toHaveValue("Default base prompt for generateQuestions");
+
+  fireEvent.change(prompt, { target: { value: "Edited questions prompt" } });
+  fireEvent.change(screen.getByLabelText("Source text"), {
+    target: { value: "A source passage." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+  expect(onGenerate).toHaveBeenCalledWith(
+    expect.objectContaining({ basePrompt: "Edited questions prompt" }),
+  );
 });
 
 test("calls onCancel when Cancel is clicked", () => {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
+import { readBasePrompt } from "./read-base-prompt";
 import { AiTaskError } from "./run-ai-task";
 import { suggestLessonDescription } from "./suggest-lesson-description";
 
@@ -37,6 +38,12 @@ export async function suggestLessonDescriptionService(
       ? body.additionalInstructions.trim() || undefined
       : undefined;
 
+  const basePrompt = readBasePrompt(body.basePrompt);
+
+  if (!basePrompt.ok) {
+    return fail("invalid-input", basePrompt.message);
+  }
+
   try {
     const text = await suggestLessonDescription(
       body.text,
@@ -46,6 +53,7 @@ export async function suggestLessonDescriptionService(
         moduleContent: body.moduleContent,
       },
       additionalInstructions,
+      basePrompt.value,
     );
 
     return ok({ text });

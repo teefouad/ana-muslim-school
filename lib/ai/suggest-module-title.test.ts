@@ -4,7 +4,8 @@ const { runAiTaskMock } = vi.hoisted(() => ({ runAiTaskMock: vi.fn() }));
 
 vi.mock("./run-ai-task", () => ({ runAiTask: runAiTaskMock }));
 
-const { suggestModuleTitle } = await import("./suggest-module-title");
+const { suggestModuleTitle, BASE_PROMPT } =
+  await import("./suggest-module-title");
 
 const EMPTY = { ar: "", en: "" };
 
@@ -141,5 +142,27 @@ describe("suggestModuleTitle", () => {
     const basePromptWith = runAiTaskMock.mock.calls[0][0].basePrompt;
 
     expect(basePromptWith).toBe(basePromptWithout);
+  });
+
+  it("sends the supplied base prompt instead of the default when one is given (ANA-134)", async () => {
+    await suggestModuleTitle(
+      "",
+      "",
+      { title: EMPTY, description: EMPTY, longDescription: EMPTY },
+      undefined,
+      "Edited prompt",
+    );
+
+    expect(runAiTaskMock.mock.calls[0][0].basePrompt).toBe("Edited prompt");
+  });
+
+  it("sends the default base prompt when none is supplied (ANA-134)", async () => {
+    await suggestModuleTitle("", "", {
+      title: EMPTY,
+      description: EMPTY,
+      longDescription: EMPTY,
+    });
+
+    expect(runAiTaskMock.mock.calls[0][0].basePrompt).toBe(BASE_PROMPT);
   });
 });

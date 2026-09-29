@@ -2,6 +2,7 @@ import "server-only";
 
 import { getBookByIdService } from "@/lib/books/books-service";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
+import { readBasePrompt } from "./read-base-prompt";
 import { AiTaskError } from "./run-ai-task";
 import { readOptionalString } from "./read-optional-string";
 import {
@@ -67,6 +68,12 @@ export async function translateModuleFieldService(
       ? body.additionalInstructions.trim() || undefined
       : undefined;
 
+  const basePrompt = readBasePrompt(body.basePrompt);
+
+  if (!basePrompt.ok) {
+    return fail("invalid-input", basePrompt.message);
+  }
+
   const field = body.field as TranslatableModuleField;
   const bookResult = await getBookByIdService(body.bookId);
 
@@ -89,6 +96,7 @@ export async function translateModuleFieldService(
         content: moduleContent.value,
       },
       additionalInstructions,
+      basePrompt.value,
     );
 
     return ok({ text });

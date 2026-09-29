@@ -238,7 +238,11 @@ describe("SourceModulesPanel", () => {
     fireEvent.click(
       screen.getAllByRole("button", { name: "Translate to English" })[1],
     );
-    expect(onTranslateItem).toHaveBeenCalledWith("module-2");
+    fireEvent.click(screen.getByRole("button", { name: "Translate" }));
+    expect(onTranslateItem).toHaveBeenCalledWith(
+      "module-2",
+      "Default base prompt for translate.plain",
+    );
   });
 
   it("wires AI Assistant per item, keyed by getKey, forwarding the active language, instructions, and selected Markdown (ANA-85, PR review)", async () => {
@@ -262,6 +266,7 @@ describe("SourceModulesPanel", () => {
       "ar",
       undefined,
       "ثاني",
+      "Default base prompt for assist.content",
     );
     expect(await screen.findByText("Refined text")).toBeInTheDocument();
   });

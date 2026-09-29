@@ -10,6 +10,11 @@ import {
   Textarea,
 } from "@mantine/core";
 
+import type { AiPromptTask } from "@/lib/ai/base-prompt-tasks";
+
+import { BasePromptField } from "./base-prompt-field";
+import { useBasePrompt } from "./use-base-prompt";
+
 export interface AiInstructionsModalProps {
   /** Always `true` in practice -- callers mount this modal only while the
    * Additional Instructions step is open (`{open && <AiInstructionsModal
@@ -21,8 +26,18 @@ export interface AiInstructionsModalProps {
   cancelLabel?: string;
   generateLabel?: string;
   onCancel: () => void;
-  /** Called with the trimmed instructions, or `undefined` when left blank. */
-  onGenerate: (instructions: string | undefined) => void;
+  /** Which AI action's base prompt to show (ANA-134). The prompt is always
+   * displayed in an editable field before the request is sent. */
+  promptTask: AiPromptTask;
+  /** Language for the language-parameterized Book description prompts. */
+  promptLanguage?: string;
+  /** Hides the Additional instructions field -- for an action (Translate
+   * with AI) that has no free-form guidance, only the base prompt. */
+  showInstructions?: boolean;
+  /** Called with the trimmed instructions (or `undefined` when blank, or
+   * always `undefined` when `showInstructions` is off) and the final base
+   * prompt -- the admin's edit, or the untouched default. */
+  onGenerate: (instructions: string | undefined, basePrompt: string) => void;
   /** Extra caller-owned controls rendered above the instructions field
    * (e.g. ANA-133's module picker). */
   children?: ReactNode;
@@ -41,10 +56,14 @@ export function AiInstructionsModal({
   cancelLabel = "Cancel",
   generateLabel = "Generate",
   onCancel,
+  promptTask,
+  promptLanguage,
+  showInstructions = true,
   onGenerate,
   children,
 }: AiInstructionsModalProps) {
   const [instructions, setInstructions] = useState("");
+  const basePrompt = useBasePrompt(promptTask, promptLanguage);
 
   return (
     <Modal
@@ -67,20 +86,31 @@ export function AiInstructionsModal({
         {description}
       </Text>
       {children}
-      <Textarea
-        label="Additional instructions or context (optional)"
-        value={instructions}
-        onChange={(event) => setInstructions(event.currentTarget.value)}
-        autosize
-        minRows={3}
-        maxRows={8}
-        mb="lg"
-      />
+      <BasePromptField state={basePrompt} />
+      {showInstructions && (
+        <Textarea
+          label="Additional instructions or context (optional)"
+          value={instructions}
+          onChange={(event) => setInstructions(event.currentTarget.value)}
+          autosize
+          minRows={3}
+          maxRows={8}
+          mb="lg"
+        />
+      )}
       <Group justify="flex-end" gap="sm">
         <Button variant="default" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button onClick={() => onGenerate(instructions.trim() || undefined)}>
+        <Button
+          disabled={!basePrompt.isReady}
+          onClick={() =>
+            onGenerate(
+              showInstructions ? instructions.trim() || undefined : undefined,
+              basePrompt.prompt,
+            )
+          }
+        >
           {generateLabel}
         </Button>
       </Group>

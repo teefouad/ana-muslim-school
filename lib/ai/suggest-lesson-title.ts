@@ -15,7 +15,7 @@ export type SuggestLessonTitleModuleContext = {
   moduleContent: string;
 };
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Suggest or improve the title of one Lesson inside a Module of Islamic
 educational content.
 
@@ -89,10 +89,11 @@ export async function suggestLessonTitle(
   currentTitle: string,
   module: SuggestLessonTitleModuleContext,
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: composeInput(currentTitle, module),
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
   });
 }

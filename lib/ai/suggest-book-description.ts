@@ -5,7 +5,7 @@ import { runAiTask } from "./run-ai-task";
 
 const LANGUAGE_NAME = { ar: "Arabic", en: "English" } as const;
 
-function basePrompt(language: "ar" | "en"): string {
+export function basePrompt(language: "ar" | "en"): string {
   const languageName = LANGUAGE_NAME[language];
 
   return `
@@ -110,6 +110,7 @@ export async function suggestBookDescription(
   language: "ar" | "en",
   additionalInstructions?: string,
   moduleContext?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: composeInput(
@@ -118,7 +119,7 @@ export async function suggestBookDescription(
       bookLongDescription,
       moduleContext,
     ),
-    basePrompt: basePrompt(language),
+    basePrompt: basePromptOverride ?? basePrompt(language),
     additionalInstructions,
   });
 }

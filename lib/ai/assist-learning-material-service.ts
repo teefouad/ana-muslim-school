@@ -2,6 +2,7 @@ import "server-only";
 
 import { getBookByIdService } from "@/lib/books/books-service";
 import { fail, ok, type ServiceResult } from "@/lib/http/service-result";
+import { readBasePrompt } from "./read-base-prompt";
 import { AiTaskError } from "./run-ai-task";
 import { readOptionalString } from "./read-optional-string";
 import { refineLearningMaterial } from "./refine-learning-material";
@@ -53,6 +54,12 @@ export async function assistLearningMaterialService(
       ? body.additionalInstructions.trim() || undefined
       : undefined;
 
+  const basePrompt = readBasePrompt(body.basePrompt);
+
+  if (!basePrompt.ok) {
+    return fail("invalid-input", basePrompt.message);
+  }
+
   const bookResult = await getBookByIdService(body.bookId);
 
   if (!bookResult.ok) {
@@ -70,6 +77,7 @@ export async function assistLearningMaterialService(
       { title: moduleTitle.value, description: moduleDescription.value },
       fullMaterial.value,
       additionalInstructions,
+      basePrompt.value,
     );
 
     return ok({ text });

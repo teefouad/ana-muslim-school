@@ -27,6 +27,17 @@ function selectFirstCharacters(root: HTMLElement, length: number) {
   document.dispatchEvent(new Event("selectionchange"));
 }
 
+// Translate with AI opens its base-prompt review dialog first (ANA-134);
+// this clicks the field's Translate button, then confirms in that dialog.
+function clickTranslate(buttonName: string) {
+  fireEvent.click(screen.getByRole("button", { name: buttonName }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Translate",
+    }),
+  );
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (err: unknown) => void;
@@ -164,6 +175,7 @@ describe("FormField", () => {
           value="Some text"
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={vi.fn()}
         />,
       );
@@ -184,6 +196,7 @@ describe("FormField", () => {
           value=""
           onChange={onChange}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
           getAIAssistanceContext={getContext}
         />,
@@ -223,6 +236,7 @@ describe("FormField", () => {
           value={{ ar: "وصف" }}
           onChange={onChange}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
           getAIAssistanceContext={getContext}
         />,
@@ -248,6 +262,7 @@ describe("FormField", () => {
         text: "وصف",
         language: "ar",
         instructions: "Make it shorter",
+        basePrompt: "Default base prompt for assist.title",
         isSelection: false,
         context: { bookId: "book-1" },
       });
@@ -268,6 +283,7 @@ describe("FormField", () => {
           value="Some text"
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
         />,
       );
@@ -298,6 +314,7 @@ describe("FormField", () => {
           value={{ ar: "عنوان", en: "Title" }}
           onChange={onChange}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
           aiAssistanceLanguage="ar"
         />,
@@ -338,6 +355,7 @@ describe("FormField", () => {
           value={{ ar: "عنوان", en: "Title" }}
           onChange={onChange}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
         />,
       );
@@ -375,6 +393,7 @@ describe("FormField", () => {
           value="Hello world"
           onChange={onChange}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
         />,
       );
@@ -427,6 +446,7 @@ describe("FormField", () => {
           value="Hello world"
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
         />,
       );
@@ -453,7 +473,7 @@ describe("FormField", () => {
   });
 
   describe("Translate with AI flow", () => {
-    it("translates immediately when English is empty, without opening Additional Instructions (ANA-98)", async () => {
+    it("translates with the reviewed base prompt when English is empty, without an Additional Instructions field (ANA-98/ANA-134)", async () => {
       const onChange = vi.fn();
       const getContext = vi.fn().mockReturnValue({ bookId: "book-1" });
       const onAiTranslate = vi.fn().mockResolvedValue("Description");
@@ -465,20 +485,20 @@ describe("FormField", () => {
           value={{ ar: "وصف", en: "" }}
           onChange={onChange}
           aiTranslation
+          aiTranslationTask="translate.plain"
           onAiTranslate={onAiTranslate}
           getAITranslationContext={getContext}
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
+      clickTranslate("Translate Description with AI");
 
       expect(getContext).toHaveBeenCalledTimes(1);
       await vi.waitFor(() =>
         expect(onAiTranslate).toHaveBeenCalledWith({
           text: "وصف",
           language: "ar",
+          basePrompt: "Default base prompt for translate.plain",
           isSelection: false,
           context: { bookId: "book-1" },
         }),
@@ -489,6 +509,57 @@ describe("FormField", () => {
       expect(
         screen.queryByRole("dialog", { name: "Translate with AI" }),
       ).not.toBeInTheDocument();
+    });
+
+    it("shows the base prompt before translating and sends the edited one (ANA-134)", async () => {
+      const onAiTranslate = vi.fn().mockResolvedValue("Description");
+
+      renderWithProvider(
+        <FormField
+          label="Description"
+          translatable
+          value={{ ar: "وصف", en: "" }}
+          onChange={vi.fn()}
+          aiTranslation
+          aiTranslationTask="translate.plain"
+          onAiTranslate={onAiTranslate}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Translate Description with AI" }),
+      );
+
+      // Nothing has been sent yet -- only the prompt is on screen.
+      expect(onAiTranslate).not.toHaveBeenCalled();
+      const prompt = screen.getByLabelText("Base prompt");
+      expect(prompt).toHaveValue("Default base prompt for translate.plain");
+
+      fireEvent.change(prompt, { target: { value: "Edited prompt" } });
+      fireEvent.click(screen.getByRole("button", { name: "Translate" }));
+
+      await vi.waitFor(() =>
+        expect(onAiTranslate).toHaveBeenCalledWith(
+          expect.objectContaining({ basePrompt: "Edited prompt" }),
+        ),
+      );
+    });
+
+    it("keeps Translate disabled when no base-prompt task is supplied (ANA-134)", () => {
+      renderWithProvider(
+        <FormField
+          label="Description"
+          translatable
+          value={{ ar: "وصف", en: "" }}
+          onChange={vi.fn()}
+          aiTranslation
+          onAiTranslate={vi.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Translate Description with AI" }),
+      ).toBeDisabled();
     });
 
     it("replaces a non-empty English value immediately, without a confirmation modal (ANA-102)", async () => {
@@ -502,13 +573,12 @@ describe("FormField", () => {
           value={{ ar: "وصف", en: "Old description" }}
           onChange={onChange}
           aiTranslation
+          aiTranslationTask="translate.plain"
           onAiTranslate={onAiTranslate}
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
+      clickTranslate("Translate Description with AI");
 
       await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
       await vi.waitFor(() =>
@@ -534,13 +604,12 @@ describe("FormField", () => {
           value={{ ar: "وصف", en: "Old description" }}
           onChange={onChange}
           aiTranslation
+          aiTranslationTask="translate.plain"
           onAiTranslate={onAiTranslate}
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
+      clickTranslate("Translate Description with AI");
 
       await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
       expect(onChange).not.toHaveBeenCalled();
@@ -567,13 +636,12 @@ describe("FormField", () => {
           value={{ ar: "وصف", en: "Old description" }}
           onChange={onChange}
           aiTranslation
+          aiTranslationTask="translate.plain"
           onAiTranslate={onAiTranslate}
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Description with AI" }),
-      );
+      clickTranslate("Translate Description with AI");
 
       expect(
         await screen.findByText("Translation failed."),
@@ -593,6 +661,7 @@ describe("FormField", () => {
             value={{ ar: "عنوان", en: "" }}
             onChange={vi.fn()}
             aiTranslation
+            aiTranslationTask="translate.plain"
             onAiTranslate={onAiTranslate}
           />
           <FormField
@@ -601,14 +670,13 @@ describe("FormField", () => {
             value={{ ar: "وصف", en: "Existing description" }}
             onChange={onDescriptionChange}
             aiTranslation
+            aiTranslationTask="translate.plain"
             onAiTranslate={vi.fn()}
           />
         </>,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Title with AI" }),
-      );
+      clickTranslate("Translate Title with AI");
 
       await vi.waitFor(() => expect(onAiTranslate).toHaveBeenCalled());
       expect(onDescriptionChange).not.toHaveBeenCalled();
@@ -626,6 +694,7 @@ describe("FormField", () => {
           value="Some text"
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
         />,
       );
@@ -660,6 +729,7 @@ describe("FormField", () => {
           value="Some text"
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
           onBusyChange={onBusyChange}
         />,
@@ -690,6 +760,7 @@ describe("FormField", () => {
           onChange={vi.fn()}
           disabled
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={vi.fn()}
         />,
       );
@@ -714,6 +785,7 @@ describe("FormField", () => {
           value="Some text"
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={onAiAssist}
         />,
       );
@@ -753,13 +825,12 @@ describe("FormField", () => {
           value={{ ar: "عنوان", en: "" }}
           onChange={vi.fn()}
           aiTranslation
+          aiTranslationTask="translate.plain"
           onAiTranslate={onAiTranslate}
         />,
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Translate Title with AI" }),
-      );
+      clickTranslate("Translate Title with AI");
 
       expect(
         await screen.findByText("Translation failed."),
@@ -777,8 +848,10 @@ describe("FormField", () => {
           value={{ ar: "وصف" }}
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           onAiAssist={vi.fn()}
           aiTranslation
+          aiTranslationTask="translate.plain"
           onAiTranslate={vi.fn()}
         />,
       );
@@ -806,6 +879,7 @@ describe("FormField", () => {
           value=""
           onChange={vi.fn()}
           aiAssistance
+          aiAssistanceTask="assist.title"
           // No `onAiAssist` -- the action-button styling's disabled state
           // must apply even when disabled for a reason other than a busy
           // field (ANA-100's "Disabled state: ... background must be

@@ -42,7 +42,7 @@ export interface SourceModulesPanelProps<T> {
    * Module default copy. */
   getDeleteConfirmDescription?: (key: string) => string | undefined;
   isDeleteDisabled: (key: string) => boolean;
-  onTranslateItem: (key: string) => Promise<void>;
+  onTranslateItem: (key: string, basePrompt: string) => Promise<void>;
   /** AI Assistant for a given item (ANA-85, PR review), keyed by `getKey` --
    * called with the active language tab (owned by the card itself), the
    * optional trimmed instructions, and the exact selected Markdown the
@@ -55,6 +55,7 @@ export interface SourceModulesPanelProps<T> {
     language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
+    basePrompt: string,
   ) => Promise<string>;
 }
 
@@ -89,11 +90,12 @@ function SortableModuleCard<T>({
   onDelete: () => Promise<void> | void;
   deleteConfirmDescription: string | undefined;
   deleteDisabled: boolean;
-  onTranslate: () => Promise<void>;
+  onTranslate: (basePrompt: string) => Promise<void>;
   onAiAssist: (
     language: "ar" | "en",
     instructions: string | undefined,
     selectedMarkdown: string,
+    basePrompt: string,
   ) => Promise<string>;
   testId: string;
 }) {
@@ -215,13 +217,19 @@ export function SourceModulesPanel<T>({
                   onDelete={() => onDeleteItem(key)}
                   deleteConfirmDescription={getDeleteConfirmDescription?.(key)}
                   deleteDisabled={isDeleteDisabled(key)}
-                  onTranslate={() => onTranslateItem(key)}
-                  onAiAssist={(language, instructions, selectedMarkdown) =>
+                  onTranslate={(basePrompt) => onTranslateItem(key, basePrompt)}
+                  onAiAssist={(
+                    language,
+                    instructions,
+                    selectedMarkdown,
+                    basePrompt,
+                  ) =>
                     onAiAssistItem(
                       key,
                       language,
                       instructions,
                       selectedMarkdown,
+                      basePrompt,
                     )
                   }
                   testId={`module-card-${key}`}

@@ -163,6 +163,7 @@ describe("suggestModuleDescriptionService", () => {
         longDescription: SAMPLE_BOOK.longDescription,
       },
       "Make it shorter",
+      undefined,
     );
     expect(result).toEqual({
       ok: true,

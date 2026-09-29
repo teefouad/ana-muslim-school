@@ -25,7 +25,7 @@ export type LearningMaterialModuleContext = {
   description?: string;
 };
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Turn the given Module's existing Arabic Learning Material Markdown into
 substantially clearer, simpler learning material for a general, non-expert
 learner -- roughly the level of explanation suitable for a 10-year-old,
@@ -161,10 +161,11 @@ export async function refineLearningMaterial(
   module?: LearningMaterialModuleContext,
   fullMaterial?: string,
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: composeInput(text, book, module, fullMaterial),
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
   });
 }

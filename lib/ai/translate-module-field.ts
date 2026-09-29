@@ -37,7 +37,7 @@ const FIELD_LABEL: Record<TranslatableModuleField, string> = {
   content: "Module Learning Material",
 };
 
-const BASE_PROMPT = `
+export const BASE_PROMPT = `
 Translate the given Arabic text to natural, concise English.
 
 - The text to translate is one specific field of a Module inside a Book of
@@ -132,10 +132,11 @@ export async function translateModuleField(
   book: TranslateModuleFieldBookContext,
   module: TranslateModuleFieldModuleContext = {},
   additionalInstructions?: string,
+  basePromptOverride?: string,
 ): Promise<string> {
   return runAiTask({
     input: composeInput(text, field, book, module),
-    basePrompt: BASE_PROMPT,
+    basePrompt: basePromptOverride ?? BASE_PROMPT,
     additionalInstructions,
   });
 }

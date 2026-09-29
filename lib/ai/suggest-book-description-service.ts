@@ -5,6 +5,7 @@ import {
   loadBookModuleContext,
   readModuleSelection,
 } from "./book-module-context";
+import { readBasePrompt } from "./read-base-prompt";
 import { AiTaskError } from "./run-ai-task";
 import { suggestBookDescription } from "./suggest-book-description";
 
@@ -68,6 +69,12 @@ export async function suggestBookDescriptionService(
       ? body.additionalInstructions.trim() || undefined
       : undefined;
 
+  const basePrompt = readBasePrompt(body.basePrompt);
+
+  if (!basePrompt.ok) {
+    return fail("invalid-input", basePrompt.message);
+  }
+
   try {
     const text = await suggestBookDescription(
       body.text,
@@ -76,6 +83,7 @@ export async function suggestBookDescriptionService(
       body.language,
       additionalInstructions,
       moduleContext,
+      basePrompt.value,
     );
 
     return ok({ text });

@@ -6,6 +6,20 @@ import { DrawerShell } from "@/components/ui/drawer-shell";
 import { buildLessonFixture } from "./lesson-fixtures";
 import { LessonEditor, type LessonEditorProps } from "./lesson-editor";
 
+// Translate with AI opens its base-prompt review dialog first (ANA-134);
+// clicks the field's Translate button, then confirms in that dialog.
+function clickTranslate(buttonName: string) {
+  fireEvent.click(screen.getByRole("button", { name: buttonName }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Translate with AI" })).getByRole(
+      "button",
+      {
+        name: "Translate",
+      },
+    ),
+  );
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -218,9 +232,7 @@ describe("LessonEditor (ANA-115 UI, wired to the real backend in ANA-116)", () =
     );
     renderEditor();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Translate Title with AI" }),
-    );
+    clickTranslate("Translate Title with AI");
 
     await vi.waitFor(() =>
       expect(

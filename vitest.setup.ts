@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { vi } from "vitest";
 
 // jsdom doesn't implement matchMedia, but Mantine's MantineProvider reads it
 // (for color-scheme detection) as soon as it mounts.
@@ -85,4 +86,34 @@ if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
 // was before that region existed).
 if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
+}
+
+// Every AI dialog shows its editable base prompt via `useBasePrompt`
+// (ANA-134), which would otherwise GET /api/v1/ai/base-prompt through SWR.
+// Stub it globally with a synchronous, stateful equivalent so AI-flow tests
+// don't each have to mock that extra request (and their own `fetch` call
+// assertions stay about the AI request itself). The real hook is covered by
+// components/ui/use-base-prompt.test.tsx via `vi.importActual`.
+if (typeof window !== "undefined") {
+  vi.mock("@/components/ui/use-base-prompt", async () => {
+    const { useState } = await import("react");
+
+    return {
+      useBasePrompt: (task: string) => {
+        const defaultPrompt = `Default base prompt for ${task}`;
+        const [edited, setEdited] = useState<string | null>(null);
+        const prompt = edited ?? defaultPrompt;
+
+        return {
+          prompt,
+          isLoading: false,
+          error: null,
+          isEdited: edited !== null && edited !== defaultPrompt,
+          setPrompt: setEdited,
+          reset: () => setEdited(null),
+          isReady: prompt.trim().length > 0,
+        };
+      },
+    };
+  });
 }
